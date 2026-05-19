@@ -48,6 +48,40 @@ export function getNextPatientNo(visitDate: string): string {
   return String(val).padStart(2, "0");
 }
 
+// Case number format: "00" + DD + MM + YY + 2-digit seq  e.g. 0019052601
+export function getNextCaseNo(visitDate: string): string {
+  const d = new Date(visitDate + "T00:00:00");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  const dateKey = `${dd}${mm}${yy}`;
+  const counterKey = `mc_case_no_${dateKey}`;
+  const val = parseInt(localStorage.getItem(counterKey) || "0") + 1;
+  localStorage.setItem(counterKey, String(val));
+  return `00${dateKey}${String(val).padStart(2, "0")}`;
+}
+
+export function lookupByComplaint(query: string): Patient[] {
+  if (!query || query.length < 2) return [];
+  const q = query.toLowerCase();
+  return getPatients()
+    .filter(p =>
+      (p.complaint || "").toLowerCase().includes(q) ||
+      (p.complaintCode || "").toLowerCase().includes(q)
+    )
+    .sort((a, b) => b.visitDate.localeCompare(a.visitDate))
+    .slice(0, 50);
+}
+
+export function lookupByAddress(query: string): Patient[] {
+  if (!query || query.length < 2) return [];
+  const q = query.toLowerCase();
+  return getPatients()
+    .filter(p => (p.address || "").toLowerCase().includes(q))
+    .sort((a, b) => b.visitDate.localeCompare(a.visitDate))
+    .slice(0, 50);
+}
+
 // ─── Patients ───────────────────────────────────────────────────────────────
 
 export function getPatients(): Patient[] {
