@@ -69,8 +69,7 @@ export function lookupByComplaint(query: string): Patient[] {
       (p.complaint || "").toLowerCase().includes(q) ||
       (p.complaintCode || "").toLowerCase().includes(q)
     )
-    .sort((a, b) => b.visitDate.localeCompare(a.visitDate))
-    .slice(0, 50);
+    .sort((a, b) => b.visitDate.localeCompare(a.visitDate));
 }
 
 export function lookupByAddress(query: string): Patient[] {
@@ -78,8 +77,46 @@ export function lookupByAddress(query: string): Patient[] {
   const q = query.toLowerCase();
   return getPatients()
     .filter(p => (p.address || "").toLowerCase().includes(q))
-    .sort((a, b) => b.visitDate.localeCompare(a.visitDate))
-    .slice(0, 50);
+    .sort((a, b) => b.visitDate.localeCompare(a.visitDate));
+}
+
+// Follow-up reminders: parse "F5", "F 7", "f10" from advice field of Ayurvedic patients
+export interface FollowUpReminder {
+  patient: Patient;
+  followUpDate: string;
+  daysOverdue: number; // negative = upcoming, 0 = today, positive = overdue
+}
+
+export function getFollowUpReminders(): FollowUpReminder[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().slice(0, 10);
+
+  const ayurvedicPatients = getPatients().filter(p => p.registerType === "ayurvedic");
+  const seen = new Set<string>(); // dedupe by mobile+visitDate
+  const reminders: FollowUpReminder[] = [];
+
+  for (const p of ayurvedicPatients) {
+    const advice = p.advice || "";
+    const match = advice.match(/f\s*(\d+)/i);
+    if (!match) continue;
+    const days = parseInt(match[1]);
+    if (!days || days <= 0) continue;
+    const visitDate = new Date(p.visitDate + "T00:00:00");
+    const followUp = new Date(visitDate);
+    followUp.setDate(followUp.getDate() + days);
+    const followUpStr = followUp.toISOString().slice(0, 10);
+    // Only show if within 3 days upcoming OR overdue
+    const diffMs = today.getTime() - followUp.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays < -3) continue; // more than 3 days in future — skip
+    const key = `${p.mobile}_${p.visitDate}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    reminders.push({ patient: p, followUpDate: followUpStr, daysOverdue: diffDays });
+  }
+
+  return reminders.sort((a, b) => a.followUpDate.localeCompare(b.followUpDate));
 }
 
 // ─── Patients ───────────────────────────────────────────────────────────────
