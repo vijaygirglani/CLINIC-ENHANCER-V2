@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
+import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
   getDailyStats, updatePatient, deletePatient, getAllDates,
-  exportBackup, importBackup, addPatient, getMonthlyStats,
-  type Patient, type DailyStats,
+  exportBackup, importBackup, addPatient, getMonthlyStats, getFollowUpReminders,
+  type Patient, type DailyStats, type FollowUpReminder,
 } from "@/lib/store";
 import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
-  TrendingUp, Leaf,
+  TrendingUp, Leaf, Bell, X, Clock, AlertTriangle,
 } from "lucide-react";
 import { exportToExcel, parseExcelFile } from "@/lib/export";
 import { formatCurrency } from "@/lib/utils";
@@ -49,6 +49,8 @@ export default function DailyRegister() {
   const [filterType, setFilterType] = useState<"all" | "general" | "ayurvedic">("all");
   const [monthlyMonth, setMonthlyMonth] = useState(new Date().getMonth() + 1);
   const [monthlyYear, setMonthlyYear] = useState(new Date().getFullYear());
+  const [reminders, setReminders] = useState<FollowUpReminder[]>([]);
+  const [showReminders, setShowReminders] = useState(true);
   const importRef = useRef<HTMLInputElement>(null);
   const excelImportRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -56,6 +58,7 @@ export default function DailyRegister() {
   const refresh = useCallback(() => {
     setStats(getDailyStats(selectedDate));
     setAllDates(getAllDates());
+    setReminders(getFollowUpReminders());
   }, [selectedDate]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -71,14 +74,14 @@ export default function DailyRegister() {
   const monthlyStats = showMonthly ? getMonthlyStats(monthlyYear, monthlyMonth) : null;
 
   const handleExport = () => {
-    if (!stats?.patients || stats.patients.length === 0) {
+    if (!stats?.patients?.length) {
       toast({ variant: "destructive", title: "No Data", description: "No patients to export for this date." });
       return;
     }
-    const exportData = stats.patients.map((p, index) => ({
-      "S.No": index + 1, "Pt.No": p.patientNo || "", "Name": p.name,
+    const exportData = stats.patients.map((p, i) => ({
+      "S.No": i + 1, "Name": p.name,
       "Age": `${p.age || 0} yrs${p.ageMonths ? ` ${p.ageMonths} mo` : ""}`,
-      "Weight": p.weight || "-", "Address": p.address || "-", "Mobile": p.mobile,
+      "Weight": p.weight || "-", "Address": p.address || "-", "Mobile/Case": p.mobile,
       "Register": p.registerType === "ayurvedic" ? "Ayurvedic" : "General",
       "Complaint Code": p.complaintCode || "-", "Complaint": p.complaint || "-",
       "Treatment": p.treatment || "-", "Advice": p.advice || "-", "Reports": p.reports || "-",
@@ -93,69 +96,51 @@ export default function DailyRegister() {
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `Manglam_Clinic_Backup_${format(new Date(), "yyyy-MM-dd")}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast({ title: "Backup Created", description: "All patient data backed up to JSON file." });
+    a.href = url; a.download = `Manglam_Clinic_Backup_${format(new Date(), "yyyy-MM-dd")}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    toast({ title: "Backup Created", description: "All patient data backed up." });
   };
 
   const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const json = ev.target?.result as string;
-      if (!confirm("This will replace ALL current data with the backup. Are you sure?")) return;
-      const result = importBackup(json);
-      if (result.success) {
-        toast({ title: "Restore Successful", description: result.message });
-        refresh();
-      } else {
-        toast({ variant: "destructive", title: "Restore Failed", description: result.message });
-      }
+    reader.onload = ev => {
+      if (!confirm("This will replace ALL data with the backup. Are you sure?")) return;
+      const result = importBackup(ev.target?.result as string);
+      if (result.success) { toast({ title: "Restore Successful", description: result.message }); refresh(); }
+      else toast({ variant: "destructive", title: "Restore Failed", description: result.message });
     };
     reader.readAsText(file);
     if (importRef.current) importRef.current.value = "";
   };
 
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]; if (!file) return;
     try {
       const rows = await parseExcelFile(file);
       let imported = 0;
       for (const row of rows) {
         const name = String(row["Name"] || row["name"] || "").trim();
-        const mobile = String(row["Mobile"] || row["mobile"] || row["Phone"] || "").trim();
+        const mobile = String(row["Mobile"] || row["mobile"] || row["Mobile/Case"] || "").trim();
         if (!name || !mobile) continue;
         const visitDateRaw = String(row["Date"] || row["date"] || row["Visit Date"] || selectedDate);
         let visitDate = selectedDate;
-        try {
-          const d = new Date(visitDateRaw);
-          if (!isNaN(d.getTime())) visitDate = format(d, "yyyy-MM-dd");
-        } catch {}
+        try { const d = new Date(visitDateRaw); if (!isNaN(d.getTime())) visitDate = format(d, "yyyy-MM-dd"); } catch {}
         addPatient({
-          name, mobile, patientNo: String(row["Pt.No"] || row["Patient No"] || ""),
-          age: Number(row["Age"] || row["age"] || 0) || 0,
-          weight: String(row["Weight"] || row["weight"] || ""),
-          address: String(row["Address"] || row["address"] || ""),
-          complaint: String(row["Complaint"] || row["complaint"] || ""),
-          complaintCode: String(row["Complaint Code"] || row["complaintCode"] || ""),
-          treatment: String(row["Treatment"] || row["treatment"] || ""),
-          advice: String(row["Advice"] || row["advice"] || ""),
-          reports: String(row["Reports"] || row["reports"] || ""),
-          fees: Number(row["Fees"] || row["fees"] || 0) || 0,
-          registerType: String(row["Register"] || row["Type"] || "").toLowerCase().includes("ayur") ? "ayurvedic" : "general",
+          name, mobile, patientNo: String(row["Pt.No"] || ""),
+          age: Number(row["Age"] || 0) || 0, weight: String(row["Weight"] || ""),
+          address: String(row["Address"] || ""), complaint: String(row["Complaint"] || ""),
+          complaintCode: String(row["Complaint Code"] || ""), treatment: String(row["Treatment"] || ""),
+          advice: String(row["Advice"] || ""), reports: String(row["Reports"] || ""),
+          fees: Number(row["Fees"] || 0) || 0,
+          registerType: String(row["Register"] || "").toLowerCase().includes("ayur") ? "ayurvedic" : "general",
           visitDate,
         });
         imported++;
       }
       toast({ title: "Import Successful", description: `${imported} patients imported.` });
       refresh();
-    } catch {
-      toast({ variant: "destructive", title: "Import Failed", description: "Could not read the Excel file." });
-    }
+    } catch { toast({ variant: "destructive", title: "Import Failed", description: "Could not read the Excel file." }); }
     if (excelImportRef.current) excelImportRef.current.value = "";
   };
 
@@ -163,30 +148,30 @@ export default function DailyRegister() {
     if (!editingPatient) return;
     updatePatient(editingPatient.id, { ...data, fees: Number(data.fees || 0) });
     toast({ title: "Updated", description: "Patient record updated." });
-    setEditingPatient(null);
-    refresh();
+    setEditingPatient(null); refresh();
   };
 
   const handleDelete = (id: number) => {
-    if (!confirm("Are you sure you want to delete this record?")) return;
+    if (!confirm("Delete this record?")) return;
     deletePatient(id);
-    toast({ title: "Deleted", description: "Patient record deleted." });
-    refresh();
+    toast({ title: "Deleted" }); refresh();
   };
 
   const exportMonthlyReport = () => {
     if (!monthlyStats) return;
     const rows = monthlyStats.dailyBreakdown.map(d => ({
       "Date": format(new Date(d.date + "T00:00:00"), "dd-MMM-yyyy"),
-      "Patients": d.count,
-      "Total Collection (₹)": d.totalFees,
-      "General (₹)": d.generalFees,
-      "Ayurvedic (₹)": d.ayurvedicFees,
+      "Patients": d.count, "Total Collection (₹)": d.totalFees,
+      "General (₹)": d.generalFees, "Ayurvedic (₹)": d.ayurvedicFees,
     }));
     rows.push({ "Date": "TOTAL", "Patients": monthlyStats.totalPatients, "Total Collection (₹)": monthlyStats.totalFees, "General (₹)": monthlyStats.generalFees, "Ayurvedic (₹)": monthlyStats.ayurvedicFees });
     exportToExcel(rows, `Monthly_Report_${MONTHS[monthlyMonth - 1]}_${monthlyYear}`);
-    toast({ title: "Monthly Report Exported", description: "Excel file downloaded." });
+    toast({ title: "Monthly Report Exported" });
   };
+
+  const overdueReminders = reminders.filter(r => r.daysOverdue > 0);
+  const todayReminders = reminders.filter(r => r.daysOverdue === 0);
+  const upcomingReminders = reminders.filter(r => r.daysOverdue < 0);
 
   return (
     <Layout>
@@ -194,83 +179,117 @@ export default function DailyRegister() {
       <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleRestoreFile} />
       <input ref={excelImportRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportExcel} />
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* ── STICKY HEADER ── */}
         <div className="sticky top-16 z-30 -mx-4 md:-mx-8 px-4 md:px-8 bg-white/95 backdrop-blur-md border-b border-slate-200/80 py-3 shadow-sm">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 max-w-7xl">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-display font-bold text-slate-900">Daily Register</h2>
-              <p className="text-slate-500 text-xs">All patients (General + Ayurvedic) for selected date</p>
+              <p className="text-slate-500 text-xs">General + Ayurvedic patients for selected date</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
-                  className="pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 shadow-sm text-slate-700 font-medium text-sm" />
+                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+                  className="pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary shadow-sm text-slate-700 font-medium text-sm" />
               </div>
-              <button onClick={handleExport}
-                className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-1.5 text-sm">
+              <button onClick={handleExport} className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-sm flex items-center gap-1.5">
                 <Download className="w-4 h-4" /> Export
               </button>
-              <button onClick={() => excelImportRef.current?.click()}
-                className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-1.5 text-sm">
-                <Upload className="w-4 h-4" /> Import Excel
+              <button onClick={() => excelImportRef.current?.click()} className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-sm flex items-center gap-1.5">
+                <Upload className="w-4 h-4" /> Import
               </button>
-              <button onClick={handleBackup}
-                className="px-3 py-2 rounded-xl font-semibold bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 transition-all flex items-center gap-1.5 text-sm">
+              <button onClick={handleBackup} className="px-3 py-2 rounded-xl font-semibold bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 text-sm flex items-center gap-1.5">
                 <Save className="w-4 h-4" /> Backup
               </button>
-              <button onClick={() => importRef.current?.click()}
-                className="px-3 py-2 rounded-xl font-semibold bg-orange-500 text-white shadow-sm hover:bg-orange-600 transition-all flex items-center gap-1.5 text-sm">
+              <button onClick={() => importRef.current?.click()} className="px-3 py-2 rounded-xl font-semibold bg-orange-500 text-white shadow-sm hover:bg-orange-600 text-sm flex items-center gap-1.5">
                 <RotateCcw className="w-4 h-4" /> Restore
               </button>
             </div>
           </div>
         </div>
 
-        {/* Stats Cards */}
+        {/* ── FOLLOW-UP REMINDERS ── */}
+        {showReminders && reminders.length > 0 && (
+          <div className="rounded-2xl border overflow-hidden">
+            {/* Header */}
+            <div className={`flex items-center justify-between px-4 py-3 ${overdueReminders.length > 0 ? "bg-red-50 border-red-200" : todayReminders.length > 0 ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
+              <div className="flex items-center gap-2">
+                <Bell className={`w-4 h-4 ${overdueReminders.length > 0 ? "text-red-500" : todayReminders.length > 0 ? "text-amber-500" : "text-blue-500"}`} />
+                <span className="font-semibold text-sm text-slate-800">Ayurvedic Follow-up Reminders</span>
+                {overdueReminders.length > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-500 text-white">{overdueReminders.length} overdue</span>}
+                {todayReminders.length > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{todayReminders.length} today</span>}
+                {upcomingReminders.length > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-400 text-white">{upcomingReminders.length} upcoming</span>}
+              </div>
+              <button onClick={() => setShowReminders(false)} className="p-1 text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Reminder Rows */}
+            <div className="divide-y divide-slate-100 bg-white">
+              {reminders.map((r, i) => {
+                const isOverdue = r.daysOverdue > 0;
+                const isToday = r.daysOverdue === 0;
+                return (
+                  <div key={i} className="flex items-center gap-4 px-4 py-2.5 hover:bg-slate-50">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${isOverdue ? "bg-red-100" : isToday ? "bg-amber-100" : "bg-blue-100"}`}>
+                      {isOverdue ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" /> : isToday ? <Bell className="w-3.5 h-3.5 text-amber-500" /> : <Clock className="w-3.5 h-3.5 text-blue-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-slate-900 truncate">{r.patient.name}</p>
+                      <p className="text-xs font-mono text-slate-400">{r.patient.mobile}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-xs font-bold ${isOverdue ? "text-red-600" : isToday ? "text-amber-600" : "text-blue-500"}`}>
+                        {isOverdue ? `${r.daysOverdue}d overdue` : isToday ? "Due today" : `In ${Math.abs(r.daysOverdue)}d`}
+                      </p>
+                      <p className="text-xs text-slate-400">{format(new Date(r.followUpDate + "T00:00:00"), "dd MMM")}</p>
+                    </div>
+                    <button
+                      onClick={() => { setSelectedDate(r.patient.visitDate); }}
+                      className="text-xs px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary font-semibold hover:bg-primary/20 transition-colors shrink-0">
+                      View
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Re-open reminders if dismissed */}
+        {!showReminders && reminders.length > 0 && (
+          <button onClick={() => setShowReminders(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-100 transition-colors">
+            <Bell className="w-4 h-4" />
+            {reminders.length} follow-up reminder{reminders.length > 1 ? "s" : ""} — click to show
+          </button>
+        )}
+
+        {/* ── STATS CARDS ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="medical-card p-4 flex items-center gap-3 bg-gradient-to-br from-white to-blue-50/50">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-primary shrink-0">
-              <Users className="w-5 h-5" />
+          {[
+            { label: "Total", value: stats?.totalPatients || 0, icon: Users, color: "bg-blue-100 text-primary" },
+            { label: "General", value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, icon: FileText, color: "bg-slate-100 text-slate-600" },
+            { label: "Ayurvedic", value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, icon: Leaf, color: "bg-emerald-100 text-emerald-600" },
+            { label: "Collection", value: formatCurrency(stats?.totalFees || 0), icon: IndianRupee, color: "bg-emerald-100 text-emerald-600" },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <div key={label} className="medical-card p-4 flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
+                <Icon className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+                <p className="text-2xl font-display font-bold text-slate-900">{value}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</p>
-              <p className="text-2xl font-display font-bold text-slate-900">{stats?.totalPatients || 0}</p>
-            </div>
-          </div>
-          <div className="medical-card p-4 flex items-center gap-3 bg-gradient-to-br from-white to-slate-50/50">
-            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-              <FileText className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">General</p>
-              <p className="text-2xl font-display font-bold text-slate-900">{(stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length}</p>
-            </div>
-          </div>
-          <div className="medical-card p-4 flex items-center gap-3 bg-gradient-to-br from-white to-emerald-50/50">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
-              <Leaf className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Ayurvedic</p>
-              <p className="text-2xl font-display font-bold text-slate-900">{(stats?.patients || []).filter(p => p.registerType === "ayurvedic").length}</p>
-            </div>
-          </div>
-          <div className="medical-card p-4 flex items-center gap-3 bg-gradient-to-br from-white to-emerald-50/50">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
-              <IndianRupee className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Collection</p>
-              <p className="text-2xl font-display font-bold text-slate-900">{formatCurrency(stats?.totalFees || 0)}</p>
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* Filter Tabs */}
+        {/* ── FILTER TABS ── */}
         <div className="flex items-center gap-2">
-          {(["all", "general", "ayurvedic"] as const).map((type) => (
+          {(["all", "general", "ayurvedic"] as const).map(type => (
             <button key={type} onClick={() => setFilterType(type)}
               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all capitalize ${
                 filterType === type
@@ -283,14 +302,13 @@ export default function DailyRegister() {
           <span className="text-sm text-slate-400 ml-2">{filteredPatients.length} patients</span>
         </div>
 
-        {/* Patient Table */}
+        {/* ── PATIENT TABLE ── */}
         <div className="medical-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-slate-50 border-b border-slate-200/60">
                 <tr>
                   <th className="px-4 py-3 font-semibold text-slate-600">#</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">Pt.No</th>
                   <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
                   <th className="px-4 py-3 font-semibold text-slate-600">Weight</th>
                   <th className="px-4 py-3 font-semibold text-slate-600">Complaint</th>
@@ -305,11 +323,10 @@ export default function DailyRegister() {
                   filteredPatients.map((p, i) => (
                     <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-4 py-3 font-medium text-slate-400">{i + 1}</td>
-                      <td className="px-4 py-3 text-slate-500 text-xs font-mono">{p.patientNo || "—"}</td>
                       <td className="px-4 py-3">
                         <p className="font-bold text-slate-900">{p.name}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {p.age ? `${p.age} yrs${p.ageMonths ? ` ${p.ageMonths} mo` : ""}` : ""}
+                        <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                          {p.age ? `${p.age}y` : ""}{p.ageMonths ? ` ${p.ageMonths}m` : ""}
                           {p.age && p.mobile ? " · " : ""}{p.mobile}
                         </p>
                       </td>
@@ -322,8 +339,7 @@ export default function DailyRegister() {
                       <td className="px-4 py-3">
                         {p.registerType === "ayurvedic"
                           ? <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700">Ayurvedic</span>
-                          : <span className="text-xs font-bold px-2 py-1 rounded-md bg-blue-100 text-blue-700">General</span>
-                        }
+                          : <span className="text-xs font-bold px-2 py-1 rounded-md bg-blue-100 text-blue-700">General</span>}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-slate-900">{p.fees ? `₹${p.fees}` : "-"}</td>
                       <td className="px-4 py-3">
@@ -346,10 +362,10 @@ export default function DailyRegister() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={9} className="px-6 py-16 text-center">
-                      <div className="flex flex-col items-center justify-center text-slate-400">
+                    <td colSpan={8} className="px-6 py-16 text-center">
+                      <div className="flex flex-col items-center text-slate-400">
                         <FileText className="w-12 h-12 mb-3 text-slate-300" />
-                        <p className="text-base font-medium">No patients found for this date</p>
+                        <p className="font-medium">No patients for this date</p>
                       </div>
                     </td>
                   </tr>
@@ -372,49 +388,40 @@ export default function DailyRegister() {
 
           {showMonthly && (
             <div className="border-t border-slate-100">
-              {/* Month / Year selector */}
               <div className="px-6 py-4 bg-slate-50 flex flex-wrap items-center gap-3">
-                <select
-                  value={monthlyMonth}
-                  onChange={e => setMonthlyMonth(Number(e.target.value))}
-                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold focus:outline-none focus:border-primary"
-                >
+                <select value={monthlyMonth} onChange={e => setMonthlyMonth(Number(e.target.value))}
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold focus:outline-none focus:border-primary">
                   {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                 </select>
-                <select
-                  value={monthlyYear}
-                  onChange={e => setMonthlyYear(Number(e.target.value))}
-                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold focus:outline-none focus:border-primary"
-                >
+                <select value={monthlyYear} onChange={e => setMonthlyYear(Number(e.target.value))}
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold focus:outline-none focus:border-primary">
                   {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => (
                     <option key={y} value={y}>{y}</option>
                   ))}
                 </select>
                 <button onClick={exportMonthlyReport}
-                  className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-all flex items-center gap-1.5 shadow-sm">
+                  className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 flex items-center gap-1.5 shadow-sm">
                   <Download className="w-4 h-4" /> Export Monthly
                 </button>
               </div>
 
               {monthlyStats && (
                 <>
-                  {/* Summary Cards */}
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 px-6 py-4 bg-gradient-to-br from-primary/5 to-emerald-50/40 border-b border-slate-100">
                     {[
-                      { label: "Total Patients", value: monthlyStats.totalPatients, color: "text-slate-900" },
-                      { label: "General Pts.", value: monthlyStats.generalPatients, color: "text-blue-700" },
-                      { label: "Ayurvedic Pts.", value: monthlyStats.ayurvedicPatients, color: "text-emerald-700" },
-                      { label: "Total Collection", value: formatCurrency(monthlyStats.totalFees), color: "text-slate-900" },
-                      { label: "General Fees", value: formatCurrency(monthlyStats.generalFees), color: "text-blue-700" },
+                      { label: "Total Patients", value: monthlyStats.totalPatients },
+                      { label: "General Pts.", value: monthlyStats.generalPatients },
+                      { label: "Ayurvedic Pts.", value: monthlyStats.ayurvedicPatients },
+                      { label: "Total Collection", value: formatCurrency(monthlyStats.totalFees) },
+                      { label: "Ayurvedic Fees", value: formatCurrency(monthlyStats.ayurvedicFees) },
                     ].map((item, i) => (
                       <div key={i} className="text-center">
                         <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{item.label}</p>
-                        <p className={`text-xl font-display font-bold mt-1 ${item.color}`}>{item.value}</p>
+                        <p className="text-xl font-display font-bold mt-1 text-slate-900">{item.value}</p>
                       </div>
                     ))}
                   </div>
 
-                  {/* Daily Breakdown Table */}
                   {monthlyStats.dailyBreakdown.length > 0 ? (
                     <table className="w-full text-sm text-left">
                       <thead className="bg-slate-50">
@@ -431,12 +438,12 @@ export default function DailyRegister() {
                           <tr key={d.date} onClick={() => { setSelectedDate(d.date); setShowMonthly(false); }}
                             className="hover:bg-primary/5 transition-colors cursor-pointer">
                             <td className="px-6 py-2.5 font-medium text-slate-700">
-                              {format(new Date(d.date + "T00:00:00"), "dd MMM, yyyy (EEE)")}
+                              {format(new Date(d.date + "T00:00:00"), "dd MMM yyyy (EEE)")}
                               {d.date === format(new Date(), "yyyy-MM-dd") && (
                                 <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-bold">Today</span>
                               )}
                             </td>
-                            <td className="px-6 py-2.5 text-slate-600 text-center">{d.count}</td>
+                            <td className="px-6 py-2.5 text-center text-slate-600">{d.count}</td>
                             <td className="px-6 py-2.5 text-right text-blue-700 font-medium">{d.generalFees > 0 ? formatCurrency(d.generalFees) : "—"}</td>
                             <td className="px-6 py-2.5 text-right text-emerald-700 font-medium">{d.ayurvedicFees > 0 ? formatCurrency(d.ayurvedicFees) : "—"}</td>
                             <td className="px-6 py-2.5 text-right font-bold text-slate-900">{formatCurrency(d.totalFees)}</td>
@@ -507,8 +514,8 @@ export default function DailyRegister() {
         </div>
       </div>
 
-      {/* Edit Dialog */}
-      <Dialog open={!!editingPatient} onOpenChange={(open) => !open && setEditingPatient(null)}>
+      {/* ── EDIT DIALOG ── */}
+      <Dialog open={!!editingPatient} onOpenChange={open => !open && setEditingPatient(null)}>
         <DialogContent className="max-w-md bg-white rounded-2xl">
           <DialogHeader>
             <DialogTitle className="font-display text-xl">Edit Patient Visit</DialogTitle>
@@ -520,8 +527,8 @@ export default function DailyRegister() {
                 <input {...editForm.register("name")} className="w-full px-3 py-2 rounded-xl border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">Patient No.</label>
-                <input {...editForm.register("patientNo")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" placeholder="e.g. 42" />
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Mobile / Case No.</label>
+                <input {...editForm.register("mobile")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none font-mono" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -533,19 +540,13 @@ export default function DailyRegister() {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">Mobile / Case No.</label>
-                <input {...editForm.register("mobile")} className="w-full px-3 py-2 rounded-xl border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-mono" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
                 <label className="text-xs font-semibold text-slate-500 mb-1 block">Weight</label>
                 <input {...editForm.register("weight")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" placeholder="e.g. 65 kg" />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">Address</label>
-                <input {...editForm.register("address")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" />
-              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Address</label>
+              <input {...editForm.register("address")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" />
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 mb-1 block">Complaint Code</label>
@@ -560,7 +561,7 @@ export default function DailyRegister() {
               <textarea {...editForm.register("treatment")} rows={2} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none resize-none" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-500 mb-1 block">Advice</label>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Advice (use F5 for follow-up after 5 days)</label>
               <input {...editForm.register("advice")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" />
             </div>
             <div>
