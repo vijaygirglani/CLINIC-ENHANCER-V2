@@ -51,7 +51,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       {/* Header */}
       <header className="sticky top-0 z-50 glass border-b border-border/50 px-4 md:px-8 py-3 print:hidden">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto flex flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20 text-white">
               <Stethoscope className="w-6 h-6" />

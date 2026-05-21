@@ -3,13 +3,13 @@ import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
   getDailyStats, updatePatient, deletePatient, getAllDates,
-  exportBackup, importBackup, addPatient, getMonthlyStats, getFollowUpReminders,
-  type Patient, type DailyStats, type FollowUpReminder,
+  exportBackup, importBackup, addPatient, getMonthlyStats,
+  type Patient, type DailyStats,
 } from "@/lib/store";
 import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
-  TrendingUp, Leaf, Bell, X, Clock, AlertTriangle,
+  TrendingUp, Leaf,
 } from "lucide-react";
 import { exportToExcel, parseExcelFile } from "@/lib/export";
 import { formatCurrency } from "@/lib/utils";
@@ -49,8 +49,6 @@ export default function DailyRegister() {
   const [filterType, setFilterType] = useState<"all" | "general" | "ayurvedic">("all");
   const [monthlyMonth, setMonthlyMonth] = useState(new Date().getMonth() + 1);
   const [monthlyYear, setMonthlyYear] = useState(new Date().getFullYear());
-  const [reminders, setReminders] = useState<FollowUpReminder[]>([]);
-  const [showReminders, setShowReminders] = useState(true);
   const importRef = useRef<HTMLInputElement>(null);
   const excelImportRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -58,7 +56,6 @@ export default function DailyRegister() {
   const refresh = useCallback(() => {
     setStats(getDailyStats(selectedDate));
     setAllDates(getAllDates());
-    setReminders(getFollowUpReminders());
   }, [selectedDate]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -169,10 +166,6 @@ export default function DailyRegister() {
     toast({ title: "Monthly Report Exported" });
   };
 
-  const overdueReminders = reminders.filter(r => r.daysOverdue > 0);
-  const todayReminders = reminders.filter(r => r.daysOverdue === 0);
-  const upcomingReminders = reminders.filter(r => r.daysOverdue < 0);
-
   return (
     <Layout>
       {printPatient && <PrintPrescription patient={printPatient} />}
@@ -182,7 +175,7 @@ export default function DailyRegister() {
       <div className="space-y-5">
         {/* ── STICKY HEADER ── */}
         <div className="sticky top-16 z-30 -mx-4 md:-mx-8 px-4 md:px-8 bg-white/95 backdrop-blur-md border-b border-slate-200/80 py-3 shadow-sm">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex flex-row flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-xl font-display font-bold text-slate-900">Daily Register</h2>
               <p className="text-slate-500 text-xs">General + Ayurvedic patients for selected date</p>
@@ -208,64 +201,6 @@ export default function DailyRegister() {
             </div>
           </div>
         </div>
-
-        {/* ── FOLLOW-UP REMINDERS ── */}
-        {showReminders && reminders.length > 0 && (
-          <div className="rounded-2xl border overflow-hidden">
-            {/* Header */}
-            <div className={`flex items-center justify-between px-4 py-3 ${overdueReminders.length > 0 ? "bg-red-50 border-red-200" : todayReminders.length > 0 ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
-              <div className="flex items-center gap-2">
-                <Bell className={`w-4 h-4 ${overdueReminders.length > 0 ? "text-red-500" : todayReminders.length > 0 ? "text-amber-500" : "text-blue-500"}`} />
-                <span className="font-semibold text-sm text-slate-800">Ayurvedic Follow-up Reminders</span>
-                {overdueReminders.length > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-500 text-white">{overdueReminders.length} overdue</span>}
-                {todayReminders.length > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{todayReminders.length} today</span>}
-                {upcomingReminders.length > 0 && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-400 text-white">{upcomingReminders.length} upcoming</span>}
-              </div>
-              <button onClick={() => setShowReminders(false)} className="p-1 text-slate-400 hover:text-slate-600 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Reminder Rows */}
-            <div className="divide-y divide-slate-100 bg-white">
-              {reminders.map((r, i) => {
-                const isOverdue = r.daysOverdue > 0;
-                const isToday = r.daysOverdue === 0;
-                return (
-                  <div key={i} className="flex items-center gap-4 px-4 py-2.5 hover:bg-slate-50">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${isOverdue ? "bg-red-100" : isToday ? "bg-amber-100" : "bg-blue-100"}`}>
-                      {isOverdue ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" /> : isToday ? <Bell className="w-3.5 h-3.5 text-amber-500" /> : <Clock className="w-3.5 h-3.5 text-blue-400" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-slate-900 truncate">{r.patient.name}</p>
-                      <p className="text-xs font-mono text-slate-400">{r.patient.mobile}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-xs font-bold ${isOverdue ? "text-red-600" : isToday ? "text-amber-600" : "text-blue-500"}`}>
-                        {isOverdue ? `${r.daysOverdue}d overdue` : isToday ? "Due today" : `In ${Math.abs(r.daysOverdue)}d`}
-                      </p>
-                      <p className="text-xs text-slate-400">{format(new Date(r.followUpDate + "T00:00:00"), "dd MMM")}</p>
-                    </div>
-                    <button
-                      onClick={() => { setSelectedDate(r.patient.visitDate); }}
-                      className="text-xs px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary font-semibold hover:bg-primary/20 transition-colors shrink-0">
-                      View
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Re-open reminders if dismissed */}
-        {!showReminders && reminders.length > 0 && (
-          <button onClick={() => setShowReminders(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-100 transition-colors">
-            <Bell className="w-4 h-4" />
-            {reminders.length} follow-up reminder{reminders.length > 1 ? "s" : ""} — click to show
-          </button>
-        )}
 
         {/* ── STATS CARDS ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

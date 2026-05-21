@@ -11,7 +11,7 @@ import {
 import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
 import {
   Loader2, User, Phone, MapPin, Activity, Save, RefreshCw,
-  FileText, Printer, Paperclip, X, Leaf, Weight, Hash, Calendar,
+  FileText, Printer, Paperclip, X, Leaf, Weight, Calendar,
   Zap, Search, SlidersHorizontal,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -21,7 +21,6 @@ import { motion, AnimatePresence } from "framer-motion";
 const patientSchema = z.object({
   name: z.string().min(1, "Name is required"),
   mobile: z.string().min(1, "Mobile / Case No. required"),
-  patientNo: z.string().optional(),
   visitDate: z.string().min(1, "Visit date required"),
   age: z.coerce.number().min(0).optional(),
   ageMonths: z.coerce.number().min(0).max(11).optional(),
@@ -41,7 +40,7 @@ type FilterMode = "history" | "complaint" | "address";
 const todayStr = format(new Date(), "yyyy-MM-dd");
 
 const emptyDefaults: PatientFormValues = {
-  name: "", mobile: "", patientNo: "", visitDate: todayStr,
+  name: "", mobile: "", visitDate: todayStr,
   age: 0, ageMonths: 0, weight: "", address: "",
   complaintCode: "", complaint: "", treatment: "",
   advice: "", reports: "", fees: 0,
@@ -59,6 +58,10 @@ export default function Home() {
   const [filterQuery, setFilterQuery] = useState("");
   const [filterResults, setFilterResults] = useState<Patient[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Separate refs so search always reads live DOM value
+  const mobileRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<PatientFormValues>({
     resolver: zodResolver(patientSchema),
@@ -78,9 +81,10 @@ export default function Home() {
     }
   }, [complaintCodeValue, form]);
 
+  // Read directly from DOM ref so we always get the latest typed value
   const runMobileLookup = useCallback(() => {
-    const mobile = form.getValues("mobile");
-    if (!mobile || mobile.length < 4) return;
+    const mobile = (mobileRef.current?.value || form.getValues("mobile") || "").trim();
+    if (!mobile || mobile.length < 3) return;
     setIsLookingUp(true);
     const result = lookupByMobile(mobile);
     if (result.latestInfo) {
@@ -95,6 +99,9 @@ export default function Home() {
     } else {
       setHistoryName("");
       setHistoryMobile(mobile);
+      if (mobile.length >= 5) {
+        toast({ title: "No patient found", description: `No record for "${mobile}".` });
+      }
     }
     setPatientHistory(result.history);
     setFilterMode("history");
@@ -102,7 +109,7 @@ export default function Home() {
   }, [form, toast]);
 
   const runNameLookup = useCallback(() => {
-    const name = form.getValues("name");
+    const name = (nameRef.current?.value || form.getValues("name") || "").trim();
     if (!name || name.length < 2) return;
     setIsLookingUp(true);
     const result = lookupByName(name);
@@ -118,6 +125,7 @@ export default function Home() {
     } else {
       setHistoryName(name);
       setHistoryMobile("");
+      toast({ title: "No patient found", description: `No record for "${name}".` });
     }
     setPatientHistory(result.history);
     setFilterMode("history");
@@ -128,6 +136,7 @@ export default function Home() {
     const date = form.getValues("visitDate") || todayStr;
     const caseNo = getNextCaseNo(date);
     form.setValue("mobile", caseNo);
+    if (mobileRef.current) mobileRef.current.value = caseNo;
     toast({ title: "Case No. Generated", description: caseNo });
   };
 
@@ -151,7 +160,7 @@ export default function Home() {
 
   const savePatient = (data: PatientFormValues, registerType: "general" | "ayurvedic") => {
     const visitDate = data.visitDate || todayStr;
-    const autoPatientNo = data.patientNo || getNextPatientNo(visitDate);
+    const autoPatientNo = getNextPatientNo(visitDate);
     const saved = addPatient({
       name: data.name, mobile: data.mobile, patientNo: autoPatientNo,
       age: data.age || 0, ageMonths: data.ageMonths || 0,
@@ -167,6 +176,8 @@ export default function Home() {
       description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
     });
     form.reset({ ...emptyDefaults, visitDate });
+    if (mobileRef.current) mobileRef.current.value = "";
+    if (nameRef.current) nameRef.current.value = "";
     setAttachments([]);
     setPatientHistory([]);
     setHistoryName("");
@@ -175,6 +186,10 @@ export default function Home() {
 
   const onSubmit = (data: PatientFormValues) => savePatient(data, "general");
   const onSaveAyurvedic = () => form.handleSubmit(data => savePatient(data, "ayurvedic"))();
+
+  // Register mobile/name with RHF but also attach our DOM ref
+  const { ref: mobileRHFRef, ...mobileRest } = form.register("mobile");
+  const { ref: nameRHFRef, ...nameRest } = form.register("name");
 
   return (
     <Layout>
@@ -195,7 +210,7 @@ export default function Home() {
             </div>
 
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Visit Date + Patient No */}
+              {/* Visit Date */}
               <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -204,14 +219,6 @@ export default function Home() {
                     </label>
                     <input type="date" {...form.register("visitDate")}
                       className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                      <Hash className="w-4 h-4 text-slate-400" /> Patient No. <span className="text-slate-400 text-xs">(optional)</span>
-                    </label>
-                    <input {...form.register("patientNo")}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800"
-                      placeholder="auto-generated if blank" />
                   </div>
                 </div>
 
@@ -224,16 +231,21 @@ export default function Home() {
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <input
-                          {...form.register("mobile")}
-                          onBlur={runMobileLookup}
-                          onKeyDown={e => e.key === "Enter" && (e.preventDefault(), runMobileLookup())}
+                          {...mobileRest}
+                          ref={(el) => {
+                            mobileRHFRef(el);
+                            (mobileRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") { e.preventDefault(); runMobileLookup(); }
+                          }}
                           className="w-full pl-4 pr-10 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800 font-mono"
                           placeholder="Mobile or Case No."
                         />
                         {isLookingUp && <Loader2 className="w-4 h-4 absolute right-3 top-3.5 animate-spin text-slate-400" />}
                       </div>
                       <button type="button" onClick={runMobileLookup}
-                        className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200 transition-all" title="Search">
+                        className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary hover:border-primary/20 transition-all" title="Search">
                         <Search className="w-4 h-4" />
                       </button>
                       <button type="button" onClick={handleAutoCase} title="Auto-generate case number"
@@ -244,7 +256,7 @@ export default function Home() {
                     {form.formState.errors.mobile && <p className="text-destructive text-xs">{form.formState.errors.mobile.message}</p>}
                     <p className="text-xs text-slate-400">
                       Case format: <span className="font-mono text-purple-600">00{format(new Date(visitDateValue || todayStr), "ddMMyy")}01</span>
-                      &nbsp;· Press Enter or <Search className="w-3 h-3 inline" /> to search
+                      &nbsp;· Press <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[10px]">Enter</kbd> or <Search className="w-3 h-3 inline" /> to search
                     </p>
                   </div>
 
@@ -254,14 +266,19 @@ export default function Home() {
                     </label>
                     <div className="flex gap-2">
                       <input
-                        {...form.register("name")}
-                        onBlur={runNameLookup}
-                        onKeyDown={e => e.key === "Enter" && (e.preventDefault(), runNameLookup())}
+                        {...nameRest}
+                        ref={(el) => {
+                          nameRHFRef(el);
+                          (nameRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") { e.preventDefault(); runNameLookup(); }
+                        }}
                         className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800"
                         placeholder="Full Name"
                       />
                       <button type="button" onClick={runNameLookup}
-                        className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200 transition-all" title="Search by name">
+                        className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary hover:border-primary/20 transition-all" title="Search by name">
                         <Search className="w-4 h-4" />
                       </button>
                     </div>
@@ -334,7 +351,7 @@ export default function Home() {
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">
                       Advice / Notes
-                      <span className="text-slate-400 font-normal text-xs ml-2">— write F5 for follow-up after 5 days</span>
+                      <span className="text-slate-400 font-normal text-xs ml-2">— F5 = follow-up after 5 days</span>
                     </label>
                     <textarea {...form.register("advice")} rows={2}
                       className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all resize-none text-slate-800" placeholder="F5 · Rest, diet..." />
@@ -482,8 +499,8 @@ export default function Home() {
                   ) : (
                     <div className="p-8 flex flex-col items-center justify-center text-center text-slate-400 h-64">
                       <FileText className="w-12 h-12 mb-4 text-slate-300" />
-                      <p className="font-medium">No history</p>
-                      <p className="text-sm mt-1">Enter mobile / case no. or name, then press Enter or <Search className="w-3 h-3 inline" /></p>
+                      <p className="font-medium">No history yet</p>
+                      <p className="text-sm mt-2">Type mobile / case no. then press<br /><kbd className="px-1.5 py-0.5 bg-slate-200 rounded text-xs mx-1">Enter</kbd>or click <Search className="w-3 h-3 inline mx-1" /></p>
                     </div>
                   )}
                 </motion.div>

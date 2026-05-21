@@ -174,18 +174,20 @@ export function getAyurvedicPatientsByDate(date: string): Patient[] {
 }
 
 export function lookupByMobile(mobile: string): { latestInfo?: Patient; history: Patient[] } {
-  if (!mobile || mobile.length < 5) return { history: [] };
+  const q = (mobile || "").trim();
+  if (q.length < 3) return { history: [] };
   const all = getPatients().filter((p) =>
-    p.mobile.toLowerCase().includes(mobile.toLowerCase())
+    p.mobile.toLowerCase().includes(q.toLowerCase())
   );
   const sorted = all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return { latestInfo: sorted[0], history: sorted };
 }
 
 export function lookupByName(name: string): { latestInfo?: Patient; history: Patient[] } {
-  if (!name || name.length < 2) return { history: [] };
+  const q = (name || "").trim();
+  if (q.length < 2) return { history: [] };
   const all = getPatients().filter((p) =>
-    p.name.toLowerCase().includes(name.toLowerCase())
+    p.name.toLowerCase().includes(q.toLowerCase())
   );
   const sorted = all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return { latestInfo: sorted[0], history: sorted };
