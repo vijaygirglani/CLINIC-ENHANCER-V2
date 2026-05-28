@@ -468,11 +468,17 @@ export default function Home() {
                       <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         {patientHistory.map((visit, i) => (
                           <div key={i} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-xs font-bold px-2 py-1 bg-white rounded-md border border-slate-200 text-slate-600">
-                                {format(new Date(visit.visitDate), "dd MMM yyyy")}
-                              </span>
-                              <div className="flex items-center gap-1.5">
+                            {/* ── Patient name + fees on every card ── */}
+                            <div className="flex justify-between items-start mb-1.5">
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold text-sm text-slate-900 truncate uppercase tracking-wide">
+                                  {visit.name}
+                                </p>
+                                <p className="text-xs font-mono text-slate-400 mt-0.5">
+                                  {visit.mobile}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0 ml-2">
                                 {visit.registerType === "ayurvedic" && (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">AYU</span>
                                 )}
@@ -481,6 +487,13 @@ export default function Home() {
                                 )}
                               </div>
                             </div>
+                            {/* ── Visit date ── */}
+                            <div className="mb-2">
+                              <span className="text-xs font-bold px-2 py-1 bg-white rounded-md border border-slate-200 text-slate-600">
+                                {format(new Date(visit.visitDate), "dd MMM yyyy")}
+                              </span>
+                            </div>
+                            {/* ── Medical details ── */}
                             <div className="space-y-1">
                               {visit.complaint && <p className="text-xs text-slate-700"><span className="text-[10px] uppercase text-slate-400 font-bold">Complaint: </span>{visit.complaint}</p>}
                               {visit.treatment && <p className="text-xs text-slate-600"><span className="text-[10px] uppercase text-slate-400 font-bold">Treatment: </span>{visit.treatment}</p>}
