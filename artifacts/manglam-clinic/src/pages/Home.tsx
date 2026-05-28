@@ -12,11 +12,70 @@ import { PrintPrescription, printPatientPrescription } from "@/components/PrintP
 import {
   Loader2, User, Phone, MapPin, Activity, Save, RefreshCw,
   FileText, Printer, Paperclip, X, Leaf, Weight, Calendar,
-  Zap, Search, SlidersHorizontal,
+  Zap, Search, SlidersHorizontal, Sheet, Link, ClipboardPaste,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
+
+// ── Google Sheet helpers ──────────────────────────────────────────────
+const SHEET_KEY = "manglam_sheet_url";
+
+function extractSheetId(input: string): string | null {
+  // Accept full URL or bare ID
+  const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) return match[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(input.trim())) return input.trim();
+  return null;
+}
+
+function sheetCsvUrl(sheetId: string): string {
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`;
+}
+
+interface SheetRow {
+  name: string;
+  mobile: string;
+  age: string;
+  weight: string;
+  address: string;
+}
+
+async function fetchSheetRows(sheetId: string): Promise<SheetRow[]> {
+  const url = sheetCsvUrl(sheetId);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Could not fetch sheet. Make sure it is published to web as CSV.");
+  const text = await res.text();
+  const lines = text.trim().split("\n").filter(Boolean);
+  if (lines.length < 2) return [];
+  // Detect header row — find column indices
+  const header = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/[^a-z]/g, ""));
+  const idx = (names: string[]) => names.reduce((found, n) => found >= 0 ? found : header.indexOf(n), -1);
+  const nameIdx    = idx(["name", "patientname", "patient"]);
+  const mobileIdx  = idx(["mobile", "mobileno", "phone", "caseno", "case"]);
+  const ageIdx     = idx(["age"]);
+  const weightIdx  = idx(["weight"]);
+  const addressIdx = idx(["address", "village", "city", "area"]);
+
+  return lines.slice(1).map(line => {
+    // Handle quoted CSV fields
+    const cols: string[] = [];
+    let cur = "", inQ = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === "," && !inQ) { cols.push(cur.trim()); cur = ""; }
+      else cur += ch;
+    }
+    cols.push(cur.trim());
+    return {
+      name:    nameIdx    >= 0 ? cols[nameIdx]    || "" : "",
+      mobile:  mobileIdx  >= 0 ? cols[mobileIdx]  || "" : "",
+      age:     ageIdx     >= 0 ? cols[ageIdx]      || "" : "",
+      weight:  weightIdx  >= 0 ? cols[weightIdx]   || "" : "",
+      address: addressIdx >= 0 ? cols[addressIdx]  || "" : "",
+    };
+  }).filter(r => r.name || r.mobile);
+}
 
 const patientSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -58,6 +117,15 @@ export default function Home() {
   const [filterQuery, setFilterQuery] = useState("");
   const [filterResults, setFilterResults] = useState<Patient[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Google Sheet state ──
+  const [sheetUrl, setSheetUrl] = useState<string>(() => localStorage.getItem(SHEET_KEY) || "");
+  const [showSheetModal, setShowSheetModal] = useState(false);
+  const [sheetInput, setSheetInput] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [sheetRows, setSheetRows] = useState<SheetRow[]>([]);
+  const [showSheetPicker, setShowSheetPicker] = useState(false);
+  const sheetConnected = !!sheetUrl;
 
   // Separate refs so search always reads live DOM value
   const mobileRef = useRef<HTMLInputElement>(null);
@@ -131,6 +199,57 @@ export default function Home() {
     setFilterMode("history");
     setIsLookingUp(false);
   }, [form, toast]);
+
+  // ── Google Sheet handlers ──
+  const handleSaveSheet = () => {
+    const id = extractSheetId(sheetInput);
+    if (!id) {
+      toast({ title: "Invalid URL", description: "Paste the full Google Sheet URL or just the Sheet ID.", variant: "destructive" });
+      return;
+    }
+    localStorage.setItem(SHEET_KEY, id);
+    setSheetUrl(id);
+    setShowSheetModal(false);
+    toast({ title: "Google Sheet connected!", description: "Tap Sync from Sheet to load patients." });
+  };
+
+  const handleSync = async () => {
+    if (!sheetUrl) { setShowSheetModal(true); return; }
+    setIsSyncing(true);
+    try {
+      const rows = await fetchSheetRows(sheetUrl);
+      if (rows.length === 0) {
+        toast({ title: "Sheet is empty", description: "No patient rows found. Check column headers.", variant: "destructive" });
+      } else {
+        setSheetRows(rows);
+        setShowSheetPicker(true);
+      }
+    } catch (e: any) {
+      toast({ title: "Sync failed", description: e.message || "Could not reach Google Sheet.", variant: "destructive" });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handlePickRow = (row: SheetRow) => {
+    form.setValue("name", row.name);
+    form.setValue("mobile", row.mobile);
+    if (mobileRef.current) mobileRef.current.value = row.mobile;
+    if (nameRef.current) nameRef.current.value = row.name;
+    const ageNum = parseInt(row.age) || 0;
+    form.setValue("age", ageNum);
+    form.setValue("weight", row.weight || "");
+    form.setValue("address", row.address || "");
+    setShowSheetPicker(false);
+    // Also run lookup so history loads
+    if (row.mobile) {
+      const result = lookupByMobile(row.mobile);
+      setPatientHistory(result.history);
+      setHistoryName(row.name);
+      setHistoryMobile(row.mobile);
+    }
+    toast({ title: "Patient filled!", description: `Details loaded for ${row.name}` });
+  };
 
   const handleAutoCase = () => {
     const date = form.getValues("visitDate") || todayStr;
@@ -207,7 +326,28 @@ export default function Home() {
                 <h2 className="text-2xl font-display text-slate-900">Patient Registration</h2>
                 <p className="text-slate-500 text-sm">Register a new visit and view medical history.</p>
               </div>
+              {/* Sheet action buttons */}
+              <div className="ml-auto flex items-center gap-2">
+                <button type="button" onClick={handleSync}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-all shadow">
+                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Sync from Sheet
+                </button>
+                <button type="button" onClick={() => { setSheetInput(sheetUrl); setShowSheetModal(true); }}
+                  title="Connect Google Sheet"
+                  className="p-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-all">
+                  <Sheet className="w-4 h-4" />
+                </button>
+              </div>
             </div>
+
+            {/* Sheet connected banner */}
+            {sheetConnected && (
+              <div className="mb-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                <span><strong>Google Sheet connected.</strong> Press "Sync from Sheet" to load today's patients.</span>
+              </div>
+            )}
 
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {/* Visit Date */}
@@ -468,17 +608,11 @@ export default function Home() {
                       <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         {patientHistory.map((visit, i) => (
                           <div key={i} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                            {/* ── Patient name + fees on every card ── */}
-                            <div className="flex justify-between items-start mb-1.5">
-                              <div className="min-w-0 flex-1">
-                                <p className="font-bold text-sm text-slate-900 truncate uppercase tracking-wide">
-                                  {visit.name}
-                                </p>
-                                <p className="text-xs font-mono text-slate-400 mt-0.5">
-                                  {visit.mobile}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-xs font-bold px-2 py-1 bg-white rounded-md border border-slate-200 text-slate-600">
+                                {format(new Date(visit.visitDate), "dd MMM yyyy")}
+                              </span>
+                              <div className="flex items-center gap-1.5">
                                 {visit.registerType === "ayurvedic" && (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">AYU</span>
                                 )}
@@ -487,13 +621,6 @@ export default function Home() {
                                 )}
                               </div>
                             </div>
-                            {/* ── Visit date ── */}
-                            <div className="mb-2">
-                              <span className="text-xs font-bold px-2 py-1 bg-white rounded-md border border-slate-200 text-slate-600">
-                                {format(new Date(visit.visitDate), "dd MMM yyyy")}
-                              </span>
-                            </div>
-                            {/* ── Medical details ── */}
                             <div className="space-y-1">
                               {visit.complaint && <p className="text-xs text-slate-700"><span className="text-[10px] uppercase text-slate-400 font-bold">Complaint: </span>{visit.complaint}</p>}
                               {visit.treatment && <p className="text-xs text-slate-600"><span className="text-[10px] uppercase text-slate-400 font-bold">Treatment: </span>{visit.treatment}</p>}
@@ -561,6 +688,96 @@ export default function Home() {
           </div>
         </div>
       </div>
+      {/* ── Google Sheet Connect Modal ── */}
+      <AnimatePresence>
+        {showSheetModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
+                  <Sheet className="w-5 h-5 text-emerald-600" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">Connect Google Sheet</h3>
+                <button onClick={() => setShowSheetModal(false)} className="ml-auto text-slate-400 hover:text-slate-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Instructions */}
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-4 text-sm text-slate-700 space-y-1.5">
+                <p className="font-semibold text-emerald-800 mb-2">One-time setup in Google Sheets:</p>
+                <p>1. Open your Google Sheet</p>
+                <p>2. Click <strong>File → Share → Publish to web</strong></p>
+                <p>3. Choose <strong>Sheet1</strong> and <strong>Comma-separated values (.csv)</strong></p>
+                <p>4. Click <strong>Publish</strong> → confirm with OK</p>
+                <p>5. Copy the URL shown, or just copy the Sheet ID from the browser address bar</p>
+                <p>6. Paste it below and click Save</p>
+                <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                  ⚠️ Use <strong>Publish to web</strong> (not the Share button) — this ensures the app can always read the data.
+                </div>
+                <p className="mt-2 text-xs text-slate-500">Sheet columns: <strong>Name | Mobile | Age | Weight | Address</strong></p>
+              </div>
+
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Google Sheet URL or ID</label>
+              <input
+                value={sheetInput}
+                onChange={e => setSheetInput(e.target.value)}
+                placeholder="Paste URL or Sheet ID here..."
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 text-sm font-mono"
+              />
+
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setShowSheetModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all">
+                  Cancel
+                </button>
+                <button onClick={handleSaveSheet}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition-all">
+                  Save & Connect
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Sheet Patient Picker Modal ── */}
+      <AnimatePresence>
+        {showSheetPicker && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[80vh]">
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+                <RefreshCw className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-bold text-slate-900">Select Patient from Sheet</h3>
+                <span className="ml-auto text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{sheetRows.length} patients</span>
+                <button onClick={() => setShowSheetPicker(false)} className="text-slate-400 hover:text-slate-600 ml-2">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                {sheetRows.map((row, i) => (
+                  <button key={i} onClick={() => handlePickRow(row)}
+                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-emerald-50 transition-colors text-left">
+                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 shrink-0 text-xs font-bold">
+                      {i + 1}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-slate-900 truncate">{row.name}</p>
+                      <p className="text-xs text-slate-400 font-mono">{row.mobile}{row.age ? ` · ${row.age} yrs` : ""}{row.address ? ` · ${row.address}` : ""}</p>
+                    </div>
+                    <span className="text-xs text-emerald-600 font-semibold shrink-0">Fill →</span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </Layout>
   );
 }
