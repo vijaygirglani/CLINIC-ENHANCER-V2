@@ -5,11 +5,11 @@ import {
 import { useState } from "react";
 
 const NAV = [
-  { to: "/",                label: "Patient Registration", icon: UserPlus },
-  { to: "/daily-register",  label: "Daily Register",       icon: BookOpen },
-  { to: "/ayurvedic",       label: "Ayurvedic Register",   icon: Leaf },
-  { to: "/complaint-codes", label: "Complaint Codes",      icon: Code2 },
-  { to: "/pathya-apathya",  label: "Pathya-Apathya",       icon: BookMarked },
+  { to: "/",                  label: "Patient Registration", icon: UserPlus },
+  { to: "/daily-register",    label: "Daily Register",       icon: BookOpen },
+  { to: "/ayurvedic-register",label: "Ayurvedic Register",   icon: Leaf },
+  { to: "/complaint-codes",   label: "Complaint Codes",      icon: Code2 },
+  { to: "/pathya-apathya",    label: "Pathya-Apathya",       icon: BookMarked },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
