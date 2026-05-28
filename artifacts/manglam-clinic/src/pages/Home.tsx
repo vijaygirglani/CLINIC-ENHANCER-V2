@@ -141,6 +141,19 @@ export default function Home() {
 
   const complaintCodeValue = form.watch("complaintCode");
   const visitDateValue = form.watch("visitDate");
+  const nameValue = form.watch("name");
+
+  // Live dropdown: watch name field, search on every keystroke
+  useEffect(() => {
+    if (nameValue && nameValue.length >= 2) {
+      const results = searchPatientSuggestions(nameValue);
+      setNameSuggestions(results);
+      setShowNameDropdown(results.length > 0);
+    } else {
+      setNameSuggestions([]);
+      setShowNameDropdown(false);
+    }
+  }, [nameValue]);
 
   useEffect(() => {
     if (complaintCodeValue && complaintCodeValue.length >= 2) {
@@ -203,7 +216,7 @@ export default function Home() {
     setIsLookingUp(false);
   }, [form, toast]);
 
-  // ── Name dropdown: select a suggestion → autofill all fields + load history ──
+  // When user clicks a suggestion: autofill all fields + load history
   const handleSelectSuggestion = useCallback((s: PatientSuggestion) => {
     form.setValue("name", s.name);
     form.setValue("mobile", s.mobile);
@@ -214,15 +227,15 @@ export default function Home() {
     if (mobileRef.current) mobileRef.current.value = s.mobile;
     if (nameRef.current) nameRef.current.value = s.name;
     setShowNameDropdown(false);
-    setNameSuggestions([]);
-    // Load full visit history into the sidebar
     const result = lookupByMobile(s.mobile);
     setPatientHistory(result.history);
     setHistoryName(s.name);
     setHistoryMobile(s.mobile);
     setFilterMode("history");
-    toast({ title: "Patient loaded", description: `${s.visitCount} visit(s) found.` });
+    toast({ title: "Patient found", description: `${s.visitCount} visit(s) found.` });
   }, [form, toast]);
+
+  // ── Google Sheet handlers ──
   const handleSaveSheet = () => {
     const id = extractSheetId(sheetInput);
     if (!id) {
@@ -438,22 +451,7 @@ export default function Home() {
                             if (e.key === "Enter") { e.preventDefault(); runNameLookup(); setShowNameDropdown(false); }
                             if (e.key === "Escape") setShowNameDropdown(false);
                           }}
-                          onChange={e => {
-                            nameRest.onChange(e);
-                            const val = e.target.value;
-                            if (val.length >= 2) {
-                              const suggestions = searchPatientSuggestions(val);
-                              setNameSuggestions(suggestions);
-                              setShowNameDropdown(suggestions.length > 0);
-                            } else {
-                              setNameSuggestions([]);
-                              setShowNameDropdown(false);
-                            }
-                          }}
-                          onBlur={e => {
-                            nameRest.onBlur(e);
-                            setTimeout(() => setShowNameDropdown(false), 200);
-                          }}
+                          onBlur={() => setTimeout(() => setShowNameDropdown(false), 200)}
                           className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800"
                           placeholder="Full Name"
                         />
@@ -463,13 +461,10 @@ export default function Home() {
                         </button>
                       </div>
 
-                      {/* ── Live Patient Suggestions Dropdown ── */}
+                      {/* Live patient suggestions dropdown */}
                       {showNameDropdown && nameSuggestions.length > 0 && (
-                        <div
-                          className="absolute left-0 right-0 top-full mt-1.5 z-[999] bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-y-auto"
-                          style={{ maxHeight: "288px" }}
-                        >
-                          <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2 bg-slate-50">
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-y-auto" style={{ zIndex: 9999, maxHeight: "280px" }}>
+                          <div className="px-3 py-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
                             <Search className="w-3 h-3 text-slate-400" />
                             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                               {nameSuggestions.length} patient{nameSuggestions.length > 1 ? "s" : ""} found
@@ -493,23 +488,19 @@ export default function Home() {
                                       {s.visitCount} visit{s.visitCount > 1 ? "s" : ""}
                                     </span>
                                   </div>
-                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                  <div className="flex items-center gap-2 mt-0.5">
                                     <span className="text-xs font-mono text-slate-500">{s.mobile}</span>
                                     {s.age > 0 && <span className="text-xs text-slate-400">{s.age}y</span>}
-                                    {s.address && <span className="text-xs text-slate-400 truncate max-w-[120px]">· {s.address}</span>}
+                                    {s.address && <span className="text-xs text-slate-400 truncate max-w-[100px]">· {s.address}</span>}
                                   </div>
                                   {s.recentVisits[0] && (
                                     <div className="mt-1 text-[10px] text-slate-400">
-                                      <span className="font-semibold text-slate-500">
-                                        {format(new Date(s.recentVisits[0].visitDate), "dd MMM yyyy")}
-                                      </span>
-                                      {s.recentVisits[0].complaint && (
-                                        <span className="ml-1">· {s.recentVisits[0].complaint.slice(0, 40)}</span>
-                                      )}
+                                      <span className="font-semibold text-slate-500">{format(new Date(s.recentVisits[0].visitDate), "dd MMM yyyy")}</span>
+                                      {s.recentVisits[0].complaint && <span className="ml-1">· {s.recentVisits[0].complaint.slice(0, 40)}</span>}
                                     </div>
                                   )}
                                 </div>
-                                <span className="text-[10px] text-primary font-semibold shrink-0 mt-1">Fill →</span>
+                                <span className="text-[10px] text-primary font-bold shrink-0 mt-1">Fill →</span>
                               </div>
                             </button>
                           ))}
