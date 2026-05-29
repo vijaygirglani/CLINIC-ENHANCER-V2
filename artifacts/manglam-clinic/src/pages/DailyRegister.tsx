@@ -9,7 +9,7 @@ import {
 import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
-  TrendingUp, Leaf,
+  TrendingUp, Leaf, MessageCircle, Send, X,
 } from "lucide-react";
 import { exportToExcel, parseExcelFile } from "@/lib/export";
 import { formatCurrency } from "@/lib/utils";
@@ -51,6 +51,8 @@ export default function DailyRegister() {
   const [monthlyYear, setMonthlyYear] = useState(new Date().getFullYear());
   const importRef = useRef<HTMLInputElement>(null);
   const excelImportRef = useRef<HTMLInputElement>(null);
+  const [showWaReport, setShowWaReport] = useState(false);
+  const [waCustomNote, setWaCustomNote] = useState("");
   const { toast } = useToast();
 
   const refresh = useCallback(() => {
@@ -166,6 +168,38 @@ export default function DailyRegister() {
     toast({ title: "Monthly Report Exported" });
   };
 
+  const buildDailyReportMsg = () => {
+    const generalCount = (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length;
+    const ayurvedicCount = (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length;
+    const generalFees = (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").reduce((s, p) => s + (p.fees || 0), 0);
+    const ayurvedicFees = (stats?.patients || []).filter(p => p.registerType === "ayurvedic").reduce((s, p) => s + (p.fees || 0), 0);
+    const dateStr = format(new Date(selectedDate + "T00:00:00"), "dd/MM/yyyy");
+    return `🏥 *Manglam Clinic Daily Update*
+
+📅 *Date:* ${dateStr}
+
+👥 *Patients Seen Today:* ${stats?.totalPatients || 0}
+
+💵 *Today's Collection:* ₹${(stats?.totalFees || 0).toLocaleString("en-IN")}
+
+🩺 *General Cases:* ${generalCount} (₹${generalFees.toLocaleString("en-IN")})
+
+🌿 *Ayurvedic Cases:* ${ayurvedicCount} (₹${ayurvedicFees.toLocaleString("en-IN")})${waCustomNote.trim() ? `\n\n📝 *Note:* ${waCustomNote.trim()}` : ""}
+
+Thank you everyone for your trust 🙏
+*Dr. Vijay Girglani*
+📍 Manglam Hospital, Morbi`;
+  };
+
+  const handleSendDailyReport = () => {
+    const msg = buildDailyReportMsg();
+    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
+    setShowWaReport(false);
+    setWaCustomNote("");
+    toast({ title: "Opening WhatsApp", description: "Daily report ready to share." });
+  };
+
   return (
     <Layout>
       {printPatient && <PrintPrescription patient={printPatient} />}
@@ -186,6 +220,10 @@ export default function DailyRegister() {
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
                   className="pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary shadow-sm text-slate-700 font-medium text-sm" />
               </div>
+              <button onClick={() => { setShowWaReport(true); setWaCustomNote(""); }}
+                className="px-3 py-2 rounded-xl font-semibold bg-green-500 text-white hover:bg-green-600 shadow-sm text-sm flex items-center gap-1.5">
+                <MessageCircle className="w-4 h-4" /> Daily Report
+              </button>
               <button onClick={handleExport} className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-sm flex items-center gap-1.5">
                 <Download className="w-4 h-4" /> Export
               </button>
@@ -448,6 +486,83 @@ export default function DailyRegister() {
           )}
         </div>
       </div>
+
+      {/* ── WHATSAPP DAILY REPORT MODAL ── */}
+      {showWaReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-green-50 rounded-t-2xl">
+              <div className="w-9 h-9 rounded-xl bg-green-500 flex items-center justify-center shrink-0">
+                <MessageCircle className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-slate-900">Send Daily Report</p>
+                <p className="text-xs text-slate-500">
+                  {format(new Date(selectedDate + "T00:00:00"), "dd MMM yyyy")}
+                </p>
+              </div>
+              <button onClick={() => setShowWaReport(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+              {/* Preview */}
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Report Preview</p>
+                <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
+                  {buildDailyReportMsg()}
+                </div>
+              </div>
+
+              {/* Optional note */}
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">
+                  Add a Note (optional)
+                </label>
+                <textarea
+                  value={waCustomNote}
+                  onChange={e => setWaCustomNote(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Camp tomorrow, Holiday notice..."
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-100 text-sm resize-none"
+                />
+              </div>
+
+              {/* Stats summary strip */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: "Total", value: stats?.totalPatients || 0, color: "bg-blue-50 text-blue-700" },
+                  { label: "General", value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, color: "bg-slate-50 text-slate-700" },
+                  { label: "Ayurvedic", value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, color: "bg-emerald-50 text-emerald-700" },
+                ].map(s => (
+                  <div key={s.label} className={`rounded-xl p-3 text-center ${s.color}`}>
+                    <p className="text-xl font-bold">{s.value}</p>
+                    <p className="text-xs font-semibold mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-xl bg-amber-50 p-3 text-center">
+                <p className="text-xl font-bold text-amber-700">₹{(stats?.totalFees || 0).toLocaleString("en-IN")}</p>
+                <p className="text-xs font-semibold text-amber-600 mt-0.5">Total Collection</p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
+              <button onClick={() => setShowWaReport(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all text-sm">
+                Cancel
+              </button>
+              <button onClick={handleSendDailyReport}
+                className="flex-1 py-2.5 rounded-xl bg-green-500 text-white font-bold hover:bg-green-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-500/25 text-sm">
+                <Send className="w-4 h-4" /> Send on WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── EDIT DIALOG ── */}
       <Dialog open={!!editingPatient} onOpenChange={open => !open && setEditingPatient(null)}>
