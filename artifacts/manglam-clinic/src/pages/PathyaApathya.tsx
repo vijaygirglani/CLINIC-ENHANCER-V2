@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Layout } from "@/components/Layout";
-import { Printer, Search, BookOpen, ChevronDown, ChevronRight } from "lucide-react";
+import { Printer, Search, BookOpen, ChevronDown, ChevronRight, Share2 } from "lucide-react";
 import { format } from "date-fns";
 
 type Lang = "gu" | "hi";
@@ -916,6 +916,38 @@ export default function PathyaApathya() {
   const apathyaTitle = lang === "gu" ? "અપથ્ય — શું ન ખાવું" : "अपथ्य — क्या न खाएं";
   const causesTitle  = lang === "gu" ? "કારણ (Nidana)" : "कारण (Nidana)";
 
+  const shareOnWhatsApp = () => {
+    const name   = lang === "gu" ? selected.nameGu : selected.nameHi;
+    const causes = getCauses().join(", ");
+    const pItems = selected.pathya.flatMap(s => getItems(s)).map(i => `  • ${i}`).join("\n");
+    const aItems = selected.apathya.flatMap(s => getItems(s)).map(i => `  • ${i}`).join("\n");
+
+    const patientLine = patientName ? `\n👤 *દર્દી / Patient:* ${patientName}` : "";
+    const dateLine    = `📅 *તારીખ / Date:* ${today}`;
+
+    const msg = [
+      `🏥 *Manglam Skin Care Clinic*`,
+      `Dr. Vijay Girglani | B.A.M.S., C.S.D. | Reg. GBI 17318`,
+      patientLine,
+      dateLine,
+      ``,
+      `🔖 *${name}* (${selected.nameEn})`,
+      ``,
+      `⚠️ *${causesTitle}:* ${causes}`,
+      ``,
+      `✅ *${pathyaTitle}*`,
+      pItems,
+      ``,
+      `❌ *${apathyaTitle}*`,
+      aItems,
+      ``,
+      `_આ માર્ગદર્શન Manglam Clinic, Tankara તરફથી / Guidance from Manglam Clinic, Tankara_`,
+    ].filter(l => l !== undefined).join("\n");
+
+    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
+  };
+
   const filtered = search.length > 0
     ? diseases.filter(d =>
         d.nameGu.toLowerCase().includes(search.toLowerCase()) ||
@@ -1067,6 +1099,10 @@ export default function PathyaApathya() {
                 <p className="text-emerald-300 text-xs">{today}</p>
                 <button onClick={printPathya} className="mt-2 flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-1.5 rounded-lg transition-colors ml-auto">
                   <Printer className="w-3.5 h-3.5"/> Print
+                </button>
+                <button onClick={shareOnWhatsApp} className="mt-1.5 flex items-center gap-1.5 bg-green-500 hover:bg-green-400 text-white text-xs px-3 py-1.5 rounded-lg transition-colors ml-auto font-semibold">
+                  <Share2 className="w-3.5 h-3.5"/>
+                  WhatsApp
                 </button>
               </div>
             </div>
