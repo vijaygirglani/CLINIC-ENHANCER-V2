@@ -14,7 +14,15 @@ import {
   Loader2, User, Phone, MapPin, Activity, Save, RefreshCw,
   FileText, Printer, Paperclip, X, Leaf, Weight, Calendar,
   Zap, Search, SlidersHorizontal, Sheet, Link, ClipboardPaste,
+  Hourglass, CheckCircle2, WalletCards,
 } from "lucide-react";
+
+// ── Pending Fees helpers ──────────────────────────────────────────────
+const PENDING_KEY = "manglam_pending_fees";
+interface PendingEntry { patientId: number; name: string; mobile: string; fees: number; date: string; markedAt: string; }
+function getPendingFees(): PendingEntry[] { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch { return []; } }
+function addPendingFee(e: PendingEntry) { const l = getPendingFees().filter(x => x.patientId !== e.patientId); l.push(e); localStorage.setItem(PENDING_KEY, JSON.stringify(l)); }
+function removePendingFee(id: number) { localStorage.setItem(PENDING_KEY, JSON.stringify(getPendingFees().filter(e => e.patientId !== id))); }
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -120,6 +128,9 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [nameSuggestions, setNameSuggestions] = useState<PatientSuggestion[]>([]);
   const [showNameDropdown, setShowNameDropdown] = useState(false);
+  const [pendingFees, setPendingFees] = useState<PendingEntry[]>(() => getPendingFees());
+  const [feesMarkedPending, setFeesMarkedPending] = useState(false);
+  const refreshPending = () => setPendingFees(getPendingFees());
 
   // ── Google Sheet state ──
   const [sheetUrl, setSheetUrl] = useState<string>(() => localStorage.getItem(SHEET_KEY) || "");
@@ -324,7 +335,12 @@ export default function Home() {
       reports: data.reports || "", fees: Number(data.fees || 0),
       attachments, registerType, visitDate,
     });
+    if (feesMarkedPending && saved.fees > 0) {
+      addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: saved.fees, date: visitDate, markedAt: new Date().toISOString() });
+      refreshPending();
+    }
     setLastSaved(saved);
+    setFeesMarkedPending(false);
     toast({
       title: "Saved!",
       description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
@@ -558,8 +574,26 @@ export default function Home() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Consultation Fees (₹)</label>
-                    <input type="number" {...form.register("fees")} min={0}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-semibold text-slate-900" placeholder="Amount" />
+                    <div className="flex gap-2 items-center">
+                      <input type="number" {...form.register("fees")} min={0}
+                        className="flex-1 px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-semibold text-slate-900" placeholder="Amount" />
+                      <button type="button"
+                        onClick={() => setFeesMarkedPending(p => !p)}
+                        title={feesMarkedPending ? "Click to unmark pending" : "Mark fees as pending"}
+                        className={`shrink-0 flex items-center gap-1.5 px-3 py-3 rounded-xl border font-semibold text-xs transition-all ${
+                          feesMarkedPending
+                            ? "bg-amber-100 border-amber-400 text-amber-700 shadow-inner"
+                            : "bg-white border-slate-200 text-slate-400 hover:border-amber-300 hover:text-amber-500"
+                        }`}>
+                        <Hourglass className="w-4 h-4" />
+                        {feesMarkedPending ? "Pending" : "Mark Pending"}
+                      </button>
+                    </div>
+                    {feesMarkedPending && (
+                      <p className="text-xs text-amber-600 flex items-center gap-1">
+                        <Hourglass className="w-3 h-3" /> Fees will be saved as pending after form submission
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -770,6 +804,55 @@ export default function Home() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* ── PENDING FEES PANEL ── */}
+            <div className="medical-card overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-amber-50 border-b border-amber-100">
+                <div className="flex items-center gap-2">
+                  <WalletCards className="w-4 h-4 text-amber-500" />
+                  <span className="font-semibold text-sm text-slate-800">Pending Fees</span>
+                  {pendingFees.length > 0 && (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{pendingFees.length}</span>
+                  )}
+                </div>
+                {pendingFees.length > 0 && (
+                  <span className="text-xs font-bold text-amber-700">
+                    Total: ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
+                  </span>
+                )}
+              </div>
+              {pendingFees.length === 0 ? (
+                <div className="px-4 py-6 text-center text-slate-400">
+                  <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-300" />
+                  <p className="text-xs font-medium">No pending fees</p>
+                  <p className="text-xs mt-1 text-slate-300">Use "Mark Pending" in the fees field</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-amber-50 max-h-64 overflow-y-auto">
+                  {pendingFees.map((e, i) => (
+                    <div key={e.patientId} className="flex items-center gap-2 px-3 py-2.5 hover:bg-amber-50/50 transition-colors">
+                      <span className="text-xs text-slate-400 w-4 shrink-0">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-xs text-slate-900 truncate">{e.name}</p>
+                        <p className="text-[10px] font-mono text-slate-400">{e.mobile} · {format(new Date(e.date + "T00:00:00"), "dd MMM")}</p>
+                      </div>
+                      <span className="font-bold text-amber-600 text-sm shrink-0">₹{e.fees}</span>
+                      <button
+                        onClick={() => { removePendingFee(e.patientId); refreshPending(); toast({ title: "Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
+                        title="Mark as paid"
+                        className="shrink-0 p-1.5 rounded-lg bg-emerald-100 text-emerald-600 hover:bg-emerald-200 transition-colors">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="px-3 py-2 bg-amber-50 flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-600">Total Pending</span>
+                    <span className="font-bold text-amber-600">₹{pendingFees.reduce((s, e) => s + e.fees, 0)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       </div>
