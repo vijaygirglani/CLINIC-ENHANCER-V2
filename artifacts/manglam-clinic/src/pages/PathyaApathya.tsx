@@ -14,10 +14,10 @@ interface DiseaseSection {
 
 interface Disease {
   id: string;
+  group: string;
   nameGu: string;
   nameHi: string;
   nameEn: string;
-  group: string;
   causesGu: string[];
   causesHi: string[];
   pathya: DiseaseSection[];
@@ -25,715 +25,863 @@ interface Disease {
 }
 
 const groupLabels: Record<string, { hi: string; gu: string }> = {
-  "Digestive Disorders":   { hi: "पाचन रोग",          gu: "પાचन रोग" },
-  "Respiratory Disorders": { hi: "श्वास रोग",          gu: "શ્વास रोग" },
-  "Metabolic Disorders":   { hi: "चयापचय रोग",         gu: "ચयापچय रोग" },
-  "Joint & Pain":          { hi: "जोड़ व दर्द",        gu: "સांधा ने दर्द" },
-  "Skin Disorders":        { hi: "त्वचा रोग",          gu: "ત्वचा रोग" },
-  "Women's Health":        { hi: "महिला स्वास्थ्य",    gu: "Mahila Swasthya" },
-  "Child Health":          { hi: "बाल स्वास्थ्य",      gu: "Bal Swasthya" },
-  "Urinary Disorders":     { hi: "मूत्र रोग",          gu: "Mutra Rog" },
-  "ENT & Head":            { hi: "ENT व सिर रोग",      gu: "ENT ने माथा रोग" },
-  "Liver & Metabolic":     { hi: "यकृत रोग",           gu: "Yakrut Rog" },
-  "Thyroid & Hormonal":    { hi: "थायरॉइड",            gu: "Thyroid" },
-  "Mental & Lifestyle":    { hi: "मानसिक स्वास्थ्य",  gu: "Mansik Swasthya" },
-  "Sexual & Reproductive": { hi: "प्रजनन स्वास्थ्य",  gu: "Prajanam Swasthya" },
-  "Eye Disorders":         { hi: "नेत्र रोग",          gu: "Netra Rog" },
-  "Panchakarma":           { hi: "पंचकर्म पथ्य",       gu: "Panchakarma Pathya" },
-  "Seasonal (Ritucharya)": { hi: "ऋतुचर्या",           gu: "Ritucharya" },
-  "Geriatric":             { hi: "वृद्धावस्था",         gu: "Vruddhavasta" },
+  "Digestive Disorders":    { hi: "पाचन रोग",           gu: "પાચન રોગ" },
+  "Respiratory Disorders":  { hi: "श्वास रोग",           gu: "શ્વાસ રોગ" },
+  "Metabolic Disorders":    { hi: "चयापचय रोग",          gu: "ચયાપચય રોગ" },
+  "Joint & Pain Disorders": { hi: "जोड़ व दर्द रोग",    gu: "સાંધા અને દર્દ" },
+  "Skin Disorders":         { hi: "त्वचा रोग",           gu: "ત્વચા રોગ" },
+  "Women's Health":         { hi: "महिला स्वास्थ्य",     gu: "મહિલા સ્વાસ્થ્ય" },
+  "Child Health":           { hi: "बाल स्वास्थ्य",       gu: "બાળ સ્વાસ્થ્ય" },
+  "Urinary Disorders":      { hi: "मूत्र रोग",           gu: "મૂત્ર રોગ" },
+  "ENT & Head Disorders":   { hi: "ENT व सिर रोग",       gu: "ENT અને માથા" },
+  "Liver & Metabolic":      { hi: "यकृत रोग",            gu: "યકૃત રોગ" },
+  "Thyroid & Hormonal":     { hi: "थायरॉइड",             gu: "થાઈરોઈડ" },
+  "Mental & Lifestyle":     { hi: "मानसिक स्वास्थ्य",   gu: "માનસિક સ્વાસ્થ્ય" },
+  "Sexual Health":          { hi: "प्रजनन स्वास्थ्य",   gu: "પ્રજનન સ્વાસ્થ્ય" },
+  "Eye Disorders":          { hi: "नेत्र रोग",           gu: "નેત્ર રોગ" },
+  "Panchakarma":            { hi: "पंचकर्म पथ्य",        gu: "પંચકર્મ પથ્ય" },
+  "Seasonal (Ritucharya)":  { hi: "ऋतुचर्या",            gu: "ઋતુચર્ય" },
+  "Geriatric":              { hi: "वृद्धावस्था",          gu: "વૃદ્ધ સ્વાસ્થ્ય" },
 };
 
-const catLabels: Record<string, { hi: string; gu: string }> = {
-  "Food":         { hi: "भोजन",           gu: "ભोजन" },
-  "Grains":       { hi: "अनाज",           gu: "ધान्य" },
-  "Vegetables":   { hi: "सब्जियां",        gu: "Shakbhaji" },
-  "Fruits":       { hi: "फल",             gu: "Fal" },
-  "Dairy":        { hi: "डेयरी",          gu: "Dairy" },
-  "Drinks":       { hi: "पेय",            gu: "Peyna" },
-  "Herbs":        { hi: "जड़ी-बूटी",      gu: "Oshad" },
-  "Spices":       { hi: "मसाले",          gu: "Masala" },
-  "Lifestyle":    { hi: "जीवनशैली",       gu: "Jeevanashaili" },
-  "Therapy":      { hi: "उपचार",          gu: "Upchar" },
-  "Habits":       { hi: "आदतें",          gu: "Tev" },
-  "Environment":  { hi: "वातावरण",        gu: "Vatavaran" },
-  "Digestives":   { hi: "पाचक",           gu: "Pachak" },
-  "Oils":         { hi: "तेल",            gu: "Tel" },
-};
+const GROUP_ORDER = [
+  "Digestive Disorders","Respiratory Disorders","Metabolic Disorders","Joint & Pain Disorders",
+  "Skin Disorders","Women's Health","Child Health","Urinary Disorders","ENT & Head Disorders",
+  "Liver & Metabolic","Thyroid & Hormonal","Mental & Lifestyle","Sexual Health",
+  "Eye Disorders","Panchakarma","Seasonal (Ritucharya)","Geriatric",
+];
 
 const diseases: Disease[] = [
-
-  // ══════════════════════════════════════════════════════
-  //  DIGESTIVE DISORDERS  (Phase 1)
-  // ══════════════════════════════════════════════════════
   {
     id:"amlapitta", group:"Digestive Disorders",
-    nameGu:"અમ્લпित्त", nameHi:"अम्लपित्त", nameEn:"Hyperacidity / Acid Reflux",
-    causesGu:["ખाटो-तीखो खोराक","Aniyamit bhajan","Cha / Coffee / Daaru","Tanav","Divasni Ughh"],
-    causesHi:["खट्टा-तीखा भोजन","अनियमित भोजन","चाय / कॉफी / शराब","तनाव","दिन में सोना"],
-    pathya:[
-      {category:"Grains",   itemsEn:["Old rice, Wheat, Barley","Moong dal"],                      itemsGu:["જૂना चोखा, घऊं, जव","Mग दाळ"],           itemsHi:["पुराने चावल, गेहूं, जौ","मूंग दाल"]},
-      {category:"Vegetables",itemsEn:["Bitter gourd, Parval, Tindora","Bottle gourd (Dudhi)"],   itemsGu:["કারेला, परवळ, तिंडोळा","Dudhi"],           itemsHi:["करेला, परवल, टिंडोरा","लौकी / दूधी"]},
-      {category:"Drinks",   itemsEn:["Coconut water","Fennel-Jeera water","Buttermilk"],          itemsGu:["નाળियेर पाणी","Variyali-Jeera paani","Chaash"],itemsHi:["नारियल पानी","सौंफ-जीरा पानी","छाछ"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Maida, Bakery food","Fried foods, Pickles"],               itemsGu:["Medo, Bakari khorak","Talelun, Achaan"],    itemsHi:["मैदा, बेकरी भोजन","तला भोजन, अचार"]},
-      {category:"Drinks",   itemsEn:["Tea, Coffee, Alcohol","Cold / fizzy beverages"],            itemsGu:["Cha, Coffee, Daaru","Thanda Peyna"],          itemsHi:["चाय, कॉफी, शराब","ठंडे / फिजी पेय"]},
-    ],
+    nameGu:"અમ્લપિત્ત", nameHi:"अम्लपित्त", nameEn:"Amlapitta",
+    causesGu:["ખાટો-તીખો ખોરાક","અનિયમિત ભોજન","વધુ ચા/કૉફી","તણાવ","મોડીરાત્રે જમવું"],
+    causesHi:["खट्टा-तीखा भोजन","अनियमित भोजन","अधिक चाय/कॉफी","तनाव","देर रात भोजन"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Bottle gourd","Coconut water","Buttermilk","Fennel water","Old rice","Early dinner"],
+      itemsGu:["દુધી","નાળિયેર પાણી","છાશ","વરિયાળીનું પાણી","જૂના ચોખા","વહેલું જમવું"],
+      itemsHi:["लौकी","नारियल पानी","छाछ","सौंफ पानी","पुराने चावल","जल्दी भोजन"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Tea / coffee excess","Fried foods","Pickles","Bakery food","Late night meals"],
+      itemsGu:["વધુ ચા / કોફી","તળેલું ખાવું","અથાણા","બેકરી વસ્તુઓ","મોડીરાત્રે જમવું"],
+      itemsHi:["अधिक चाय / कॉफी","तला भोजन","अचार","बेकरी पदार्थ","देर रात भोजन"],
+    }],
   },
   {
     id:"ajirna", group:"Digestive Disorders",
-    nameGu:"અجीर्ण / Apach", nameHi:"अजीर्ण / अपच", nameEn:"Indigestion / Dyspepsia",
-    causesGu:["Zadpathi khavun","Vadhu khavun","Aniyamit bhajan","Tanav"],
-    causesHi:["जल्दी खाना","ज्यादा खाना","अनियमित भोजन","तनाव"],
-    pathya:[
-      {category:"Food",     itemsEn:["Light moong-rice khichdi","Moong soup"],                   itemsGu:["Halki Mag-Chaval khichdi","Magnu Soup"],      itemsHi:["हल्की मूंग-चावल खिचड़ी","मूंग सूप"]},
-      {category:"Digestives",itemsEn:["Ginger (Adrak)","Warm water","Jeera water"],              itemsGu:["Adun","Garam paani","Jeera paani"],            itemsHi:["अदरक","गर्म पानी","जीरा पानी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Heavy meals","Fried food, Maida"],                         itemsGu:["Bhaare Bhajan","Talelun, Medo"],               itemsHi:["भारी भोजन","तला भोजन, मैदा"]},
-      {category:"Habits",   itemsEn:["Cold drinks with food","Day sleep after meals"],            itemsGu:["Jamta Thanda Peyna","Jamya bad Divasni Ughh"], itemsHi:["खाने के साथ ठंडे पेय","खाने के बाद दिन में सोना"]},
-    ],
+    nameGu:"અજીર્ણ", nameHi:"अजीर्ण", nameEn:"Ajirna",
+    causesGu:["વધુ ખાવું","ઝડપથી ખાવું","અનિયમિત ભોજન","જંક ફૂડ"],
+    causesHi:["ज्यादा खाना","जल्दी खाना","अनियमित भोजन","जंक फूड"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Light food","Ginger","Warm water","Moong soup"],
+      itemsGu:["હલકો ખોરાક","આદુ","ગરમ પાણી","મગનું સૂપ"],
+      itemsHi:["हल्का भोजन","अदरक","गर्म पानी","मूंग सूप"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Heavy meals","Cold drinks","Day sleep","Junk food"],
+      itemsGu:["ભારે ભોજન","ઠંડા પીણાં","દિવસની ઊંઘ","જંક ફૂડ"],
+      itemsHi:["भारी भोजन","ठंडे पेय","दिन में सोना","जंक फूड"],
+    }],
   },
   {
     id:"vibandha", group:"Digestive Disorders",
-    nameGu:"Vibandh / Kabaj", nameHi:"विबन्ध / कब्ज", nameEn:"Constipation",
-    causesGu:["Ochun paani","Ochi fiber","Kasrat nathi","Icchha rokavi"],
-    causesHi:["कम पानी","कम फाइबर","व्यायाम नहीं","वेग दबाना"],
-    pathya:[
-      {category:"Grains",   itemsEn:["Wheat roti with bran","Barley (Jav)"],                    itemsGu:["Chokar vaali rotli","Jav"],                   itemsHi:["चोकर वाली रोटी","जौ"]},
-      {category:"Food",     itemsEn:["Papaya","Soaked fig (Anjeer)","Ghee in warm milk at night"],itemsGu:["Papaiyu","Palala Anjeer","Raatre garam dudhma Ghee"],itemsHi:["पपीता","भीगे अंजीर","रात में गर्म दूध में घी"]},
-      {category:"Drinks",   itemsEn:["Warm water on empty stomach","Plenty of fluids"],          itemsGu:["Khali pet garam paani","Purtu paani pivun"],   itemsHi:["खाली पेट गर्म पानी","पर्याप्त पानी पीना"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Maida, Bakery food","Fried / heavy food","Dry food"],      itemsGu:["Medo, Bakari khorak","Talelun / Bhaaru bhajan","Sukun khavun"],itemsHi:["मैदा, बेकरी भोजन","तला / भारी भोजन","सूखा भोजन"]},
-    ],
+    nameGu:"કબજિયાત", nameHi:"कब्ज", nameEn:"Vibandha",
+    causesGu:["ઓછું પાણી","સૂકો ખોરાક","બેકરી વધુ","કસરત નહીં"],
+    causesHi:["कम पानी","सूखा भोजन","बेकरी अधिक","व्यायाम नहीं"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Warm water","Ghee","Papaya","Green vegetables"],
+      itemsGu:["ગરમ પાણી","ઘી","પપૈયું","લીલા શાક"],
+      itemsHi:["गर्म पानी","घी","पपीता","हरी सब्जियां"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Dry food","Bakery food","Suppressing urges"],
+      itemsGu:["સુકું ખાવું","બેકરી ખોરાક","વેગ રોકવો"],
+      itemsHi:["सूखा भोजन","बेकरी भोजन","वेग रोकना"],
+    }],
   },
   {
     id:"atisara", group:"Digestive Disorders",
-    nameGu:"Atisaar / Zaada", nameHi:"अतिसार / दस्त", nameEn:"Diarrhea",
-    causesGu:["Dushit khorak","Feriya khorak","Bacteria no chep","Tanav"],
-    causesHi:["दूषित भोजन","बाहर का खाना","बैक्टीरिया संक्रमण","तनाव"],
-    pathya:[
-      {category:"Food",     itemsEn:["Rice water (Maad)","Moong khichdi","Pomegranate"],         itemsGu:["Chaval no Maad","Mag Khichdi","Dadam"],        itemsHi:["चावल का माड़","मूंग खिचड़ी","अनार"]},
-      {category:"Drinks",   itemsEn:["ORS solution","Coconut water","Thin buttermilk"],          itemsGu:["ORS Ghol","Naaliyer paani","Patli Chaash"],    itemsHi:["ORS घोल","नारियल पानी","पतली छाछ"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Oily food","Milk excess in acute phase","Street food"],    itemsGu:["Teliyu khorak","Tivra tabaqqama vadhu dudh","Feriya khorak"],itemsHi:["तेलयुक्त भोजन","तीव्र अवस्था में दूध","बाहर का खाना"]},
-    ],
+    nameGu:"અતિસાર", nameHi:"अतिसार", nameEn:"Atisara",
+    causesGu:["દૂષિત ખોરાક","બહારનું ખાવું","તેલિયું ખોરાક"],
+    causesHi:["दूषित भोजन","बाहर का खाना","तेलयुक्त भोजन"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Rice water","Pomegranate","Moong khichdi","ORS"],
+      itemsGu:["ચોખાનું પાણી","દાડમ","મગની ખીચડી","ઓઆરએસ"],
+      itemsHi:["चावल का पानी","अनार","मूंग खिचड़ी","ओआरएस"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Oily food","Milk excess","Street food"],
+      itemsGu:["તેલિયું ખાવું","વધુ દૂધ","બહારનું ખાવું"],
+      itemsHi:["तेलयुक्त भोजन","अधिक दूध","बाहर का भोजन"],
+    }],
   },
   {
     id:"grahani", group:"Digestive Disorders",
-    nameGu:"ગ્રhani", nameHi:"ग्रहणी", nameEn:"IBS / Malabsorption",
-    causesGu:["Aniyamit bhajan","Vadhu tel-masala","Dushit paani","Tanav"],
-    causesHi:["अनियमित भोजन","अधिक तेल-मसाले","दूषित पानी","तनाव"],
-    pathya:[
-      {category:"Food",     itemsEn:["Old rice (Juna Chaval)","Thin moong dal","Ripe banana","Apple"],itemsGu:["Juna Chokhaa","Patli Mag Dal","Pakun Kelun","Safarzam"],itemsHi:["पुराने चावल","पतली मूंग दाल","पका केला","सेब"]},
-      {category:"Drinks",   itemsEn:["Thin buttermilk (Chaas)","Jeera water","Coconut water"],   itemsGu:["Patli Chaash","Jeera paani","Naaliyer paani"], itemsHi:["पतली छाछ","जीरा पानी","नारियल पानी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Fried / heavy food","Excess milk and curd","Excess spicy"], itemsGu:["Talelun / Bhaaru","Vadhu dudh ne dahi","Vadhu Tikhu"],itemsHi:["तला / भारी भोजन","अधिक दूध और दही","अधिक मसालेदार"]},
-    ],
+    nameGu:"ગ્રહણી", nameHi:"ग्रहणी", nameEn:"Grahani",
+    causesGu:["અનિયમિત ભોજન","વધુ તીખું","તણાવ"],
+    causesHi:["अनियमित भोजन","अधिक तीखा","तनाव"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Buttermilk","Light meals","Jeera water","Old rice"],
+      itemsGu:["છાશ","હલકો ખોરાક","જીરું પાણી","જૂના ચોખા"],
+      itemsHi:["छाछ","हल्का भोजन","जीरा पानी","पुराने चावल"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Irregular meals","Fried foods","Excess spicy food"],
+      itemsGu:["અનિયમિત ભોજન","તળેલું ખાવું","વધુ તીખું"],
+      itemsHi:["अनियमित भोजन","तला भोजन","अधिक तीखा"],
+    }],
   },
   {
     id:"adhmana", group:"Digestive Disorders",
-    nameGu:"Udhar Rog / Gas", nameHi:"उदर रोग / गैस", nameEn:"Bloating / Abdominal Gas",
-    causesGu:["Gas kare eva khorak","Aniyamit khavun","Thanda peyna","Tanav"],
-    causesHi:["गैस बनाने वाला भोजन","अनियमित खाना","ठंडे पेय","तनाव"],
-    pathya:[
-      {category:"Spices",   itemsEn:["Carom seeds (Ajwain)","Asafoetida (Hing)","Cumin (Jeera)"],itemsGu:["Ajmo","Hing","Jeeru"],                        itemsHi:["अजवाइन","हींग","जीरा"]},
-      {category:"Drinks",   itemsEn:["Warm water throughout day","Ajwain boiled water"],         itemsGu:["Aakho divas Garam paani","Ajmanu ukaalu paani"],itemsHi:["दिनभर गर्म पानी","अजवाइन का उबला पानी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Rajma, Chhole, Urad dal excess","Cauliflower, Sweet potato"],itemsGu:["Rajma, Chhola, Udad vadhu","Fulgobi, Shakkaria"],itemsHi:["राजमा, छोले, उड़द अधिक","फूलगोभी, शकरकंद"]},
-      {category:"Drinks",   itemsEn:["Cold / fizzy beverages","Excess milk"],                    itemsGu:["Thanda / gas vaala Peyna","Vadhu Dudh"],       itemsHi:["ठंडे / फिजी पेय","अधिक दूध"]},
-    ],
+    nameGu:"ગેસ / અફરો", nameHi:"गैस / अफारा", nameEn:"Adhmana",
+    causesGu:["ગેસ કરતો ખોરાક","ઠંડા પીણાં","ફાસ્ટ ફૂડ"],
+    causesHi:["गैस बनाने वाला भोजन","ठंडे पेय","फास्ट फूड"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Ajwain","Hing","Warm water","Light meals"],
+      itemsGu:["અજમો","હિંગ","ગરમ પાણી","હલકો ખોરાક"],
+      itemsHi:["अजवाइन","हींग","गर्म पानी","हल्का भोजन"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Beans excess","Cold drinks","Fast food"],
+      itemsGu:["વધુ વટાણા","ઠંડા પીણાં","ફાસ્ટ ફૂડ"],
+      itemsHi:["अधिक दालें","ठंडे पेय","फास्ट फूड"],
+    }],
   },
   {
     id:"arsha", group:"Digestive Disorders",
-    nameGu:"Arsh / Haras", nameHi:"अर्श / बवासीर", nameEn:"Piles / Hemorrhoids",
-    causesGu:["Kabajiyat","Tikho khorak","Ochun paani","Lambo samy besthaa"],
-    causesHi:["कब्ज","तीखा भोजन","कम पानी","लंबे समय बैठना"],
-    pathya:[
-      {category:"Food",     itemsEn:["Fibre-rich food","Papaya","Soaked fig (Anjeer)"],           itemsGu:["Fiber yukt khorak","Papaiyu","Palala Anjeer"],  itemsHi:["फाइबर युक्त आहार","पपीता","भीगे अंजीर"]},
-      {category:"Drinks",   itemsEn:["Buttermilk (Chaas)","Warm water","2-3 litres daily"],      itemsGu:["Chaash","Garam paani","Roj 2-3 litre paani"],  itemsHi:["छाछ","गर्म पानी","रोज 2-3 लीटर पानी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Spicy / chilli food","Fried / oily food"],                 itemsGu:["Tikho / marcha vaalo khorak","Talelun / Teliyu"],itemsHi:["तीखा / मिर्च वाला भोजन","तला / तेलयुक्त भोजन"]},
-      {category:"Habits",   itemsEn:["Prolonged sitting","Suppressing urges"],                    itemsGu:["Lambo samay bethun rehevun","Icchha rokavi"],   itemsHi:["लंबे समय बैठना","वेग रोकना"]},
-    ],
+    nameGu:"અર્શ / બાવાશીર", nameHi:"बवासीर", nameEn:"Arsha",
+    causesGu:["કબજિયાત","તીખો ખોરાક","લાંબો સમય બેસવું","ઓછું પાણી"],
+    causesHi:["कब्ज","तीखा भोजन","लंबे समय बैठना","कम पानी"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Fiber-rich diet","Buttermilk","Warm water","Papaya"],
+      itemsGu:["ફાઈબરવાળો ખોરાક","છાશ","ગરમ પાણી","પપૈયું"],
+      itemsHi:["रेशेदार भोजन","छाछ","गर्म पानी","पपीता"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Constipation","Spicy foods","Sitting long hours"],
+      itemsGu:["કબજિયાત","તીખું ખાવું","લાંબા સમય બેસવું"],
+      itemsHi:["कब्ज","तीखा भोजन","लंबे समय बैठना"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  RESPIRATORY DISORDERS  (Phase 1)
-  // ══════════════════════════════════════════════════════
   {
     id:"kasa", group:"Respiratory Disorders",
-    nameGu:"Kaas / Udhras", nameHi:"कास / खांसी", nameEn:"Cough (Kasa)",
-    causesGu:["Thandi","Dhul / Dhumaado","Gala no chep","Suki hawa"],
-    causesHi:["ठंड","धूल / धुआं","गले का संक्रमण","सूखी हवा"],
-    pathya:[
-      {category:"Food",     itemsEn:["Ginger (Adrak)","Honey (Madhu)","Turmeric milk","Warm water"],itemsGu:["Adun","Madh","Haldar-Dudh","Garam paani"],  itemsHi:["अदरक","शहद","हल्दी-दूध","गर्म पानी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Ice cream","Cold drinks","Curd at night"],                 itemsGu:["Aais krim","Thanda peyna","Raatre Dahi"],     itemsHi:["आइसक्रीम","ठंडे पेय","रात में दही"]},
-      {category:"Environment",itemsEn:["Dust exposure","Cold air / AC","Smoking"],               itemsGu:["Dhul no sampark","Thandi hawa / AC","Dhumrpan"],itemsHi:["धूल का संपर्क","ठंडी हवा / AC","धूम्रपान"]},
-    ],
+    nameGu:"ઉધરસ", nameHi:"खांसी", nameEn:"Kasa",
+    causesGu:["ઠંડી","ધૂળ/ધુમાડો","ગળાનો ચેપ"],
+    causesHi:["ठंड","धूल/धुआं","गले का संक्रमण"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Ginger","Honey","Turmeric milk","Warm water"],
+      itemsGu:["આદુ","મધ","હળદર દૂધ","ગરમ પાણી"],
+      itemsHi:["अदरक","शहद","हल्दी दूध","गर्म पानी"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Ice cream","Cold drinks","Dust exposure"],
+      itemsGu:["આઈસક્રીમ","ઠંડા પીણાં","ધૂળ"],
+      itemsHi:["आइसक्रीम","ठंडे पेय","धूल"],
+    }],
   },
   {
     id:"pratishyaya", group:"Respiratory Disorders",
-    nameGu:"Pratishyaya / Shardi", nameHi:"प्रतिश्याय / जुकाम", nameEn:"Cold / Rhinitis",
-    causesGu:["Thandi","Ritu-fer","Dhul-allergy","Raatre jagvun"],
-    causesHi:["ठंड","मौसम परिवर्तन","धूल-एलर्जी","रात जागना"],
-    pathya:[
-      {category:"Herbs & Drinks",itemsEn:["Tulsi tea","Steam inhalation","Warm water","Ginger-honey tea"],itemsGu:["Tulsi Chai","Varal","Garam paani","Adun-Madh Chai"],itemsHi:["तुलसी चाय","भाप","गर्म पानी","अदरक-शहद चाय"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Cold foods","Ice cream","Cold drinks"],                    itemsGu:["Thando khorak","Aais krim","Thanda peyna"],   itemsHi:["ठंडा भोजन","आइसक्रीम","ठंडे पेय"]},
-      {category:"Habits",   itemsEn:["Night awakening","Cold water bath","Dust exposure"],       itemsGu:["Raatre jagvun","Thundu snan","Dhul no sampark"],itemsHi:["रात जागना","ठंडा स्नान","धूल का संपर्क"]},
-    ],
+    nameGu:"શરદી", nameHi:"जुकाम", nameEn:"Pratishyaya",
+    causesGu:["ઠંડી","ઋતુ-ફેર","આઈસક્રીમ વધુ"],
+    causesHi:["ठंड","मौसम परिवर्तन","आइसक्रीम अधिक"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Tulsi tea","Steam inhalation","Warm water"],
+      itemsGu:["તુલસી ચા","વરાળ","ગરમ પાણી"],
+      itemsHi:["तुलसी चाय","भाप","गर्म पानी"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Cold foods","Ice cream","Night awakening"],
+      itemsGu:["ઠંડું ખાવું","આઈસક્રીમ","મોડે સુધી જાગવું"],
+      itemsHi:["ठंडा भोजन","आइसक्रीम","देर रात जागना"],
+    }],
   },
   {
     id:"shwasa", group:"Respiratory Disorders",
-    nameGu:"Shwas / Dam", nameHi:"श्वास / अस्थमा", nameEn:"Asthma (Shwasa)",
-    causesGu:["Dhul","Allergen","Thando khorak","Dhumrpan","Tanav"],
-    causesHi:["धूल","एलर्जन","ठंडा भोजन","धूम्रपान","तनाव"],
-    pathya:[
-      {category:"Food",     itemsEn:["Warm water","Ginger (Adrak)","Honey (Madhu)","Light meals"],itemsGu:["Garam paani","Adun","Madh","Halku Bhajan"],   itemsHi:["गर्म पानी","अदरक","शहद","हल्का भोजन"]},
-      {category:"Lifestyle",itemsEn:["Breathing exercises (Pranayama)","Warm environment"],       itemsGu:["Pranayam","Garam vatavaran"],                  itemsHi:["प्राणायाम","गर्म वातावरण"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Cold foods","Curd","Fried food","Excess salt"],            itemsGu:["Thando khorak","Dahi","Talelun","Vadhu Mithu"],itemsHi:["ठंडा भोजन","दही","तला भोजन","अधिक नमक"]},
-      {category:"Environment",itemsEn:["Dust","Smoking","Cold air","Strong fragrance"],           itemsGu:["Dhul","Dhumrpan","Thandi hawa","Tivra sugandh"],itemsHi:["धूल","धूम्रपान","ठंडी हवा","तेज खुशबू"]},
-    ],
+    nameGu:"શ્વાસ / દમ", nameHi:"दमा", nameEn:"Shwasa",
+    causesGu:["ધૂળ","ઠંડો ખોરાક","ધૂમ્રપાન","એલર્જન"],
+    causesHi:["धूल","ठंडा भोजन","धूम्रपान","एलर्जन"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Warm water","Ginger","Light meals","Breathing exercises"],
+      itemsGu:["ગરમ પાણી","આદુ","હલકો ખોરાક","પ્રાણાયામ"],
+      itemsHi:["गर्म पानी","अदरक","हल्का भोजन","प्राणायाम"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Dust","Cold foods","Smoking"],
+      itemsGu:["ધૂળ","ઠંડું ખાવું","ધૂમ્રપાન"],
+      itemsHi:["धूल","ठंडा भोजन","धूम्रपान"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  METABOLIC DISORDERS  (Phase 1)
-  // ══════════════════════════════════════════════════════
   {
     id:"madhumeha", group:"Metabolic Disorders",
-    nameGu:"મधुमेह", nameHi:"मधुमेह", nameEn:"Diabetes / Madhumeha",
-    causesGu:["Vadhu Khund","Kasrat nathi","Varsagat","Tanav","Sthulataa"],
-    causesHi:["अधिक चीनी","व्यायाम नहीं","वंशानुगत","तनाव","मोटापा"],
-    pathya:[
-      {category:"Grains",   itemsEn:["Barley (Jav)","Bajra","Ragi","Moong dal"],                 itemsGu:["Jav","Bajro","Naglo","Mag Dal"],               itemsHi:["जौ","बाजरा","रागी","मूंग दाल"]},
-      {category:"Vegetables",itemsEn:["Bitter gourd (Karela)","Fenugreek (Methi)","Spinach"],    itemsGu:["Karelaa","Methi","Palak"],                     itemsHi:["करेला","मेथी","पालक"]},
-      {category:"Lifestyle",itemsEn:["Walking daily","Soaked Methi seeds on empty stomach"],     itemsGu:["Roj chalavun","Khali pet palala Methi na danna"],itemsHi:["रोज चलना","खाली पेट भीगी मेथी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Sugar, Sweets / Mithai","Potato, Rice in excess"],         itemsGu:["Khund, Mithai","Batata, Vadhu Chokhaa"],       itemsHi:["चीनी, मिठाई","आलू, अधिक चावल"]},
-      {category:"Fruits",   itemsEn:["Mango, Banana, Grapes","Chiku"],                           itemsGu:["Keri, Kelun, Drakh","Chiku"],                  itemsHi:["आम, केला, अंगूर","चीकू"]},
-      {category:"Habits",   itemsEn:["Day sleep","Sedentary lifestyle"],                         itemsGu:["Divasni Ughh","Kasrat vigarna Jevan"],          itemsHi:["दिन में सोना","व्यायाम न करना"]},
-    ],
+    nameGu:"મધુમેહ", nameHi:"मधुमेह", nameEn:"Madhumeha",
+    causesGu:["વધુ ખાંડ","કસરત નહીં","દિવસ ઊંઘ","વારસાગત"],
+    causesHi:["अधिक चीनी","व्यायाम नहीं","दिन में सोना","वंशानुगत"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Barley","Fenugreek","Bitter gourd","Walking"],
+      itemsGu:["જવ","મેથી","કારેલા","ચાલવું"],
+      itemsHi:["जौ","मेथी","करेला","चलना"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Sugar","Sweets","Cold drinks","Day sleep"],
+      itemsGu:["ખાંડ","મીઠાઈ","કોલ્ડ ડ્રિન્ક્સ","દિવસની ઊંઘ"],
+      itemsHi:["चीनी","मिठाई","कोल्ड ड्रिंक्स","दिन में सोना"],
+    }],
   },
   {
     id:"sthoulya", group:"Metabolic Disorders",
-    nameGu:"Sthoulay / Jadaapan", nameHi:"स्थौल्य / मोटापा", nameEn:"Obesity (Sthoulya)",
-    causesGu:["Vadhu khavun","Talelun-mithai vadhu","Kasrat nathi","Divasni Ughh"],
-    causesHi:["अधिक खाना","तला-मीठा अधिक","व्यायाम नहीं","दिन में सोना"],
-    pathya:[
-      {category:"Food",     itemsEn:["Barley (Jav)","Green vegetables","Honey water (morning)"], itemsGu:["Jav","Lila Shak","Madh-paani (savare)"],       itemsHi:["जौ","हरी सब्जियां","शहद-पानी (सुबह)"]},
-      {category:"Lifestyle",itemsEn:["Regular exercise","Walking daily","Early dinner"],          itemsGu:["Niyamit Kasrat","Roj chalavun","Vahelu jamvun"],itemsHi:["नियमित व्यायाम","रोज चलना","जल्दी रात का खाना"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Fried foods","Sweets / Mithai","Excess oil"],              itemsGu:["Talelun","Mithai","Vadhu Tel"],                itemsHi:["तला भोजन","मिठाई","अधिक तेल"]},
-      {category:"Habits",   itemsEn:["Day sleep","Sedentary lifestyle","Overeating"],             itemsGu:["Divasni Ughh","Kasrat vigarna","Vadhu khavun"],itemsHi:["दिन में सोना","व्यायाम न करना","अधिक खाना"]},
-    ],
+    nameGu:"સ્થૌલ્ય / મોટાપો", nameHi:"मोटापा", nameEn:"Sthoulya",
+    causesGu:["તળેલું-મીઠાઈ વધુ","કસરત નહીં","દિવસ ઊંઘ","વધુ ખાવું"],
+    causesHi:["तला-मिठाई अधिक","व्यायाम नहीं","दिन में सोना","अधिक खाना"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Barley","Honey water","Exercise","Green vegetables"],
+      itemsGu:["જવ","મધ પાણી","કસરત","લીલા શાક"],
+      itemsHi:["जौ","शहद पानी","व्यायाम","हरी सब्जियां"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Fried foods","Sweets","Day sleep"],
+      itemsGu:["તળેલું ખાવું","મીઠાઈ","દિવસની ઊંઘ"],
+      itemsHi:["तला भोजन","मिठाई","दिन में सोना"],
+    }],
   },
   {
     id:"hypertension", group:"Metabolic Disorders",
-    nameGu:"Uchch Raktachap", nameHi:"उच्च रक्तचाप", nameEn:"Hypertension / High B.P.",
-    causesGu:["Vadhu Mithu","Talelun khorak","Tanav","Sthulataa","Dhumrpan"],
-    causesHi:["अधिक नमक","तला भोजन","तनाव","मोटापा","धूम्रपान"],
-    pathya:[
-      {category:"Food",     itemsEn:["Barley, Oats","Garlic (Lasun)","Beetroot, Spinach","Fruits"],itemsGu:["Jav, Oats","Lasan","Bit, Palak","Falo"],     itemsHi:["जौ, ओट्स","लहसुन","चुकंदर, पालक","फल"]},
-      {category:"Drinks",   itemsEn:["Coconut water","Pomegranate juice"],                        itemsGu:["Naaliyer paani","Dadam no ras"],               itemsHi:["नारियल पानी","अनार का रस"]},
-      {category:"Lifestyle",itemsEn:["Low salt diet","Meditation (Dhyan)","Walking daily"],       itemsGu:["Ochun Mithu","Dhyan","Roj chalavun"],          itemsHi:["कम नमक","ध्यान","रोज चलना"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Excess salt","Pickles, Papad","Fried / oily food"],         itemsGu:["Vadhu Mithu","Achaan, Papad","Talelun / Teliyu"],itemsHi:["अधिक नमक","अचार, पापड","तला / तेलयुक्त भोजन"]},
-      {category:"Habits",   itemsEn:["Stress","Smoking","Alcohol, excess Tea-Coffee"],            itemsGu:["Tanav","Dhumrpan","Daaru, Vadhu Cha-Coffee"], itemsHi:["तनाव","धूम्रपान","शराब, अधिक चाय-कॉफी"]},
-    ],
-  },
-
-  // ══════════════════════════════════════════════════════
-  //  JOINT & PAIN  (Phase 1)
-  // ══════════════════════════════════════════════════════
-  {
-    id:"sandhivata", group:"Joint & Pain",
-    nameGu:"Sandhivat", nameHi:"संधिवात", nameEn:"Osteoarthritis / Joint Pain",
-    causesGu:["Thanda khorak","Udad vadhu","Ummar","Ija"],
-    causesHi:["ठंडे खाद्य","उड़द अधिक","उम्र","चोट"],
-    pathya:[
-      {category:"Food",     itemsEn:["Sesame (Til)","Fenugreek seeds","Warm food","Ghee"],        itemsGu:["Tal","Methina danna","Garam khorak","Ghee"],   itemsHi:["तिल","मेथी दाने","गर्म भोजन","घी"]},
-      {category:"Therapy",  itemsEn:["Sesame oil massage (Abhyanga)","Warm compress"],             itemsGu:["Tal tel ni malish","Garam shek"],              itemsHi:["तिल तेल की मालिश","गर्म सिकाई"]},
-      {category:"Lifestyle",itemsEn:["Gentle exercise","Warm environment"],                        itemsGu:["Halki kasrat","Garam vatavaran"],               itemsHi:["हल्का व्यायाम","गर्म वातावरण"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Cold water","Curd at night","Urad dal, Rajma"],             itemsGu:["Thundu paani","Raatre Dahi","Udad, Rajma"],    itemsHi:["ठंडा पानी","रात में दही","उड़द, राजमा"]},
-      {category:"Habits",   itemsEn:["Cold water bath","Excess walking in acute phase"],           itemsGu:["Thundu snan","Tivra dard vakhte vadhu chalvun"],itemsHi:["ठंडा स्नान","तीव्र दर्द में अधिक चलना"]},
-    ],
+    nameGu:"હાઈ બ્લડ પ્રેશર", nameHi:"उच्च रक्तचाप", nameEn:"Hypertension",
+    causesGu:["વધુ મીઠું","તણાવ","ધૂમ્રપાન","તળેલો ખોરાક"],
+    causesHi:["अधिक नमक","तनाव","धूम्रपान","तला भोजन"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Low salt diet","Meditation","Walking","Fruits"],
+      itemsGu:["ઓછું મીઠું","ધ્યાન","ચાલવું","ફળ"],
+      itemsHi:["कम नमक","ध्यान","चलना","फल"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Stress","Excess salt","Smoking"],
+      itemsGu:["તણાવ","વધુ મીઠું","ધૂમ્રપાન"],
+      itemsHi:["तनाव","अधिक नमक","धूम्रपान"],
+    }],
   },
   {
-    id:"amavata", group:"Joint & Pain",
-    nameGu:"Amavat (RA)", nameHi:"आमवात (RA)", nameEn:"Rheumatoid Arthritis",
-    causesGu:["Aam bhego thavo","Dahi / khatu vadhu","Thundu-bhejavalu","Aniyamit bhajan"],
-    causesHi:["आम का संचय","दही / खट्टा अधिक","ठंडी-नम जगह","अनियमित भोजन"],
-    pathya:[
-      {category:"Food",     itemsEn:["Dry ginger (Sunthi)","Warm water","Light meals","Methi"],  itemsGu:["Sunth","Garam paani","Halku bhajan","Methi"],  itemsHi:["सोंठ","गर्म पानी","हल्का भोजन","मेथी"]},
-      {category:"Therapy",  itemsEn:["Castor oil (under supervision)","Warm oil massage"],         itemsGu:["Erand Tel (Doctor suchana)","Garam Tel malish"],itemsHi:["अरंडी तेल (चिकित्सक निर्देश)","गर्म तेल मालिश"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Curd (Dahi)","Heavy meals","Urad dal","Fried food"],        itemsGu:["Dahi","Bhaaru Bhajan","Udad","Talelun"],       itemsHi:["दही","भारी भोजन","उड़द","तला भोजन"]},
-      {category:"Habits",   itemsEn:["Day sleep","Cold water exposure"],                           itemsGu:["Divasni Ughh","Thanda pani no sampark"],       itemsHi:["दिन में सोना","ठंडे पानी का संपर्क"]},
-    ],
+    id:"sandhivata", group:"Joint & Pain Disorders",
+    nameGu:"સાંધિવાત", nameHi:"संधिवात", nameEn:"Sandhivata",
+    causesGu:["ઠંડી","ઠંડું પાણી","ઉંમર","વાત અસંતુલન"],
+    causesHi:["ठंड","ठंडा पानी","उम्र","वात असंतुलन"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Sesame oil massage","Warm food","Methi","Gentle exercise"],
+      itemsGu:["તિલ તેલ મસાજ","ગરમ ખોરાક","મેથી","હળવી કસરત"],
+      itemsHi:["तिल तेल मालिश","गर्म भोजन","मेथी","हल्का व्यायाम"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Cold water","Curd at night","Excess walking"],
+      itemsGu:["ઠંડું પાણી","રાત્રે દહીં","વધુ ચાલવું"],
+      itemsHi:["ठंडा पानी","रात में दही","अधिक चलना"],
+    }],
   },
   {
-    id:"katishoola", group:"Joint & Pain",
-    nameGu:"Katishul (Back Pain)", nameHi:"कटिशूल / कमर दर्द", nameEn:"Low Back Pain",
-    causesGu:["Bhari uthavni","Lambo besthaa","Thandi","Khoti rit bethavun"],
-    causesHi:["भारी उठाना","लंबे समय बैठना","ठंड","गलत मुद्रा"],
-    pathya:[
-      {category:"Food",     itemsEn:["Warm food","Ghee","Sesame (Til)"],                          itemsGu:["Garam khorak","Ghee","Tal"],                   itemsHi:["गर्म भोजन","घी","तिल"]},
-      {category:"Therapy",  itemsEn:["Oil massage (Abhyanga)","Warm compress"],                   itemsGu:["Tel malish","Garam shek"],                     itemsHi:["तेल मालिश","गर्म सिकाई"]},
-      {category:"Lifestyle",itemsEn:["Yoga","Proper rest"],                                        itemsGu:["Yog","Yogya Aaram"],                           itemsHi:["योग","उचित आराम"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Cold / refrigerated food","Excess dry food"],                itemsGu:["Thundu / fridge nu khorak","Vadhu sukhu khavun"],itemsHi:["ठंडा / फ्रिज का खाना","अधिक सूखा भोजन"]},
-      {category:"Habits",   itemsEn:["Heavy lifting","Long sitting","Cold water bath"],            itemsGu:["Bhari uthavni","Lambo besthaa","Thundu snan"], itemsHi:["भारी उठाना","लंबे समय बैठना","ठंडा स्नान"]},
-    ],
+    id:"amavata", group:"Joint & Pain Disorders",
+    nameGu:"આમવાત", nameHi:"आमवात", nameEn:"Amavata",
+    causesGu:["વધુ દહીં","ભારે ભોજન","દિવસ ઊંઘ","ઠંડું-ભેજ"],
+    causesHi:["अधिक दही","भारी भोजन","दिन में सोना","ठंडी-नमी"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Dry ginger","Warm water","Light meals","Castor oil (under supervision)"],
+      itemsGu:["સૂંઠ","ગરમ પાણી","હલકો ખોરાક","એરંડ તેલ"],
+      itemsHi:["सोंठ","गर्म पानी","हल्का भोजन","एरंड तेल"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Curd","Heavy meals","Day sleep"],
+      itemsGu:["દહીં","ભારે ભોજન","દિવસની ઊંઘ"],
+      itemsHi:["दही","भारी भोजन","दिन में सोना"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  SKIN DISORDERS  (Phase 2)
-  // ══════════════════════════════════════════════════════
+  {
+    id:"katishoola", group:"Joint & Pain Disorders",
+    nameGu:"કમર દુખાવો", nameHi:"कमर दर्द", nameEn:"Katishoola",
+    causesGu:["ભારે વજન","લાંબો સમય બેસવું","ઠંડી","ખોટી મુદ્રા"],
+    causesHi:["भारी वजन","लंबे समय बैठना","ठंड","गलत मुद्रा"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Oil massage","Proper rest","Yoga","Warm food"],
+      itemsGu:["તેલ મસાજ","આરામ","યોગ","ગરમ ખોરાક"],
+      itemsHi:["तेल मालिश","आराम","योग","गर्म भोजन"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Heavy lifting","Cold exposure","Long sitting"],
+      itemsGu:["ભારે વજન","ઠંડી","લાંબો સમય બેસવું"],
+      itemsHi:["भारी वजन","ठंड","लंबे समय बैठना"],
+    }],
+  },
   {
     id:"dadru", group:"Skin Disorders",
-    nameGu:"દાદ", nameHi:"दाद", nameEn:"Dadru / Fungal Infection",
-    causesGu:["Vadhu pasevo","Bhejavalu vatavaran","Ochi rog pratikarak shakti","Synthetic kapda"],
-    causesHi:["अधिक पसीना","नमी वाला वातावरण","कम प्रतिरोधक क्षमता","सिंथेटिक कपड़े"],
-    pathya:[
-      {category:"Food",     itemsEn:["Neem","Turmeric (Haldi)","Light diet"],                    itemsGu:["લીmडो","હળdar","Halko Khorak"],               itemsHi:["नीम","हल्दी","हल्का भोजन"]},
-      {category:"Lifestyle",itemsEn:["Keep skin dry","Cotton clothes","Personal hygiene"],        itemsGu:["ત્vcha Suki Rakhavi","Suti kapda","Svacchhata"],itemsHi:["त्वचा सूखी रखें","सूती कपड़े","स्वच्छता"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Excess sweets","Oily food"],                               itemsGu:["વwadhu Mithai","Teliyu Khavun"],               itemsHi:["अधिक मिठाई","तेलयुक्त भोजन"]},
-      {category:"Habits",   itemsEn:["Sweating without cleaning","Synthetic clothing"],           itemsGu:["Parsevo Rahi Javo","Synthetic Kapda"],        itemsHi:["पसीना साफ न करना","सिंथेटिक कपड़े"]},
-    ],
+    nameGu:"દાદ", nameHi:"दाद", nameEn:"Dadru",
+    causesGu:["વધુ પસેવો","ભેજવાળું વાતાવરણ","તળેલો ખોરાક","ઓછી રોગ-પ્રતિકારક શક્તિ"],
+    causesHi:["अधिक पसीना","नमी वाला वातावरण","तेलयुक्त भोजन","कम रोग प्रतिरोधक क्षमता"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Neem","Turmeric","Light diet","Keep skin dry"],
+      itemsGu:["લીમડો","હળદર","હલકો ખોરાક","ત્વચા સુકી રાખવી"],
+      itemsHi:["नीम","हल्दी","हल्का भोजन","त्वचा सूखी रखें"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Excess sweets","Oily food","Sweating without cleaning"],
+      itemsGu:["વધુ મીઠાઈ","તેલિયું ખાવું","પરસેવો રહી જવો"],
+      itemsHi:["अधिक मिठाई","तेलयुक्त भोजन","पसीना साफ ન करना"],
+    }],
   },
   {
     id:"vicharchika", group:"Skin Disorders",
-    nameGu:"વicharchika", nameHi:"विचर्चिका", nameEn:"Vicharchika / Eczema",
-    causesGu:["Allergy","Tanav","Machhli + Dudh","Chemical Saboo"],
-    causesHi:["एलर्जी","तनाव","मछली + दूध","रासायनिक डिटर्जेंट"],
-    pathya:[
-      {category:"Food",     itemsEn:["Bitter vegetables","Neem","Old grains","Adequate hydration"],itemsGu:["તtikha Shak","Limdo","Juna Anaj","Purtu Paani"],itemsHi:["कड़वी सब्जियां","नीम","पुराने अनाज","पर्याप्त पानी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Curd","Fish with milk","Junk food"],                       itemsGu:["dahi","Dudh Sathe Machhali","Jank Food"],      itemsHi:["दही","दूध के साथ मछली","जंक फूड"]},
-    ],
+    nameGu:"વિચર્ચિકા", nameHi:"विचर्चिका", nameEn:"Vicharchika",
+    causesGu:["વધુ દહીં","દૂધ સાથે માછલી","તણાવ","કેમિકલ સાબુ"],
+    causesHi:["अधिक दही","दूध के साथ मछली","तनाव","रासायनिक साबुन"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Bitter vegetables","Neem","Old grains","Adequate hydration"],
+      itemsGu:["તીખા શાક","લીમડો","જૂના અનાજ","પૂરતું પાણી"],
+      itemsHi:["कड़वी सब्जियां","नीम","पुराने अनाज","पर्याप्त पानी"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Curd","Fish with milk","Junk food"],
+      itemsGu:["દહીં","દૂધ સાથે માછલી","જંક ફૂડ"],
+      itemsHi:["दही","दूध के साथ मछली","जंक फूड"],
+    }],
   },
   {
     id:"kitibha", group:"Skin Disorders",
-    nameGu:"સorayasis", nameHi:"सोरायसिस", nameEn:"Kitibha / Psoriasis",
-    causesGu:["Tanav","Daaru","Khoti khorak jodi","Varsagat"],
+    nameGu:"સોરાયસિસ", nameHi:"सोरायसिस", nameEn:"Kitibha",
+    causesGu:["તણાવ","દારૂ","ખોટી ખોરાક જોડ","વારસાગત"],
     causesHi:["तनाव","शराब","गलत भोजन संयोग","वंशानुगत"],
-    pathya:[
-      {category:"Food",     itemsEn:["Neem","Bitter gourd (Karela)","Triphala","Meditation"],    itemsGu:["Limdo","Karelaa","Triphala","Dhyan"],          itemsHi:["नीम","करेला","त्रिफला","ध्यान"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Non-veg excess","Alcohol","Junk food"],                    itemsGu:["Vadhu Maansahar","Daaru","Jank Food"],         itemsHi:["अधिक मांसाहार","शराब","जंक फूड"]},
-      {category:"Habits",   itemsEn:["Stress","Smoking"],                                         itemsGu:["Tanav","Dhumrpan"],                            itemsHi:["तनाव","धूम्रपान"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Neem","Bitter gourd","Triphala","Meditation"],
+      itemsGu:["લીમડો","કારેલા","ત્રિફળા","ધ્યાન"],
+      itemsHi:["नीम","करेला","त्रिफला","ध्यान"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Non-veg excess","Alcohol","Stress"],
+      itemsGu:["વધુ માંસાહાર","દારૂ","તણાવ"],
+      itemsHi:["अधिक मांसाहार","शराब","तनाव"],
+    }],
   },
   {
     id:"yauvana-pidika", group:"Skin Disorders",
-    nameGu:"ખil", nameHi:"मुंहासे", nameEn:"Yauvana Pidika / Acne",
-    causesGu:["Hormon asantulan","Teliyu khorak","Mode jaagvun","Kabajiyat"],
+    nameGu:"ખીલ", nameHi:"मुंहासे", nameEn:"Yauvana Pidika",
+    causesGu:["હૉર્મોન અસંતુલન","તળેલો ખોરાક","મોડે જાગવું","કબજિયાત"],
     causesHi:["हार्मोन असंतुलन","तेलयुक्त भोजन","देर से सोना","कब्ज"],
-    pathya:[
-      {category:"Food",     itemsEn:["Fruits","Green vegetables","Neem","Adequate sleep"],        itemsGu:["Fal","Lila Shak","Limdo","Purti Ughh"],        itemsHi:["फल","हरी सब्जियां","नीम","पर्याप्त नींद"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Fried foods","Chocolate excess","Late nights"],             itemsGu:["Talelun","Vadhu Chocolate","Mode Sudhi Jaagvun"],itemsHi:["तला भोजन","अधिक चॉकलेट","देर रात जागना"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Fruits","Green vegetables","Neem","Adequate sleep"],
+      itemsGu:["ફળ","લીલા શાક","લીમડો","પૂરતી ઊંઘ"],
+      itemsHi:["फल","हरी सब्जियां","नीम","पर्याप्त नींद"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Fried foods","Chocolate excess","Late nights"],
+      itemsGu:["તળેલું","વધુ ચોકલેટ","મોડે સુધી જાગવું"],
+      itemsHi:["तला भोजन","अधिक चॉकलेट","देर रात जागना"],
+    }],
   },
   {
     id:"sheetapitta", group:"Skin Disorders",
-    nameGu:"Sheetapitta", nameHi:"शीतपित्त", nameEn:"Sheetapitta / Urticaria",
-    causesGu:["Allergy khorak","Vadhu Tikhu","Thandi","Samudri khorak"],
+    nameGu:"શીતપિત્ત", nameHi:"शीतपित्त", nameEn:"Sheetapitta",
+    causesGu:["એલર્જી ખોરાક","વધુ તીખું","ઠંડી","સમુદ્રી ખોરાક"],
     causesHi:["एलर्जिक भोजन","अधिक तीखा","ठंड","समुद्री भोजन"],
-    pathya:[
-      {category:"Food",     itemsEn:["Coriander water","Ghee","Cooling diet"],                   itemsGu:["Dhana Paani","Ghee","Thandakvaalo Khorak"],   itemsHi:["धनिया पानी","घी","शीतल आहार"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Seafood","Fermented food","Excess spicy food"],             itemsGu:["Samudri Khorak","Khaatu Khavun","Vadhu Tikhu"],itemsHi:["समुद्री भोजन","खट्टा भोजन","अधिक तीखा"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Coriander water","Ghee","Cooling diet"],
+      itemsGu:["ધાણા પાણી","ઘી","ઠંડકવાળો ખોરાક"],
+      itemsHi:["धनिया पानी","घी","शीतल आहार"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Seafood","Fermented food","Excess spicy food"],
+      itemsGu:["સમુદ્રી ખોરાક","ખાટું ખાવું","વધુ તીખું"],
+      itemsHi:["समुद्री भोजन","खट्टा भोजन","अधिक तीखा"],
+    }],
   },
   {
     id:"khalitya", group:"Skin Disorders",
-    nameGu:"Vaal Kharva", nameHi:"बाल झड़ना", nameEn:"Khalitya / Hair Fall",
-    causesGu:["Tanav","Poshan ni khami","Jank Food","Ochi Ughh"],
-    causesHi:["तनाव","पोषण की कमी","जंक फूड","नींद की कमी"],
-    pathya:[
-      {category:"Food",     itemsEn:["Amla","Sesame (Til)","Milk (Dudh)","Stress reduction"],    itemsGu:["Aamla","Tal","Dudh","Tanav Ocho"],             itemsHi:["आंवला","तिल","दूध","तनाव कम"]},
-      {category:"Therapy",  itemsEn:["Scalp oil massage"],                                         itemsGu:["Mathama Tel Malish"],                          itemsHi:["सिर में तेल मालिश"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Junk food","Excess salt / spice"],                         itemsGu:["Jank Food","Vadhu Mithu / Tikhu"],             itemsHi:["जंक फूड","अधिक नमक / मसाला"]},
-      {category:"Habits",   itemsEn:["Stress","Sleep deprivation","Chemical hair products"],      itemsGu:["Tanav","Ochi Ughh","Chemical Hair Products"],  itemsHi:["तनाव","कम नींद","रासायनिक बाल उत्पाद"]},
-    ],
+    nameGu:"વાળ ખરવા", nameHi:"बाल झड़ना", nameEn:"Khalitya",
+    causesGu:["તણાવ","પોષણ ખામી","જંક ફૂડ","ઓછી ઊંઘ"],
+    causesHi:["तनाव","पोषण की कमी","जंक फूड","कम नींद"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Amla","Sesame","Milk","Stress reduction"],
+      itemsGu:["આમળા","તલ","દૂધ","તણાવ ઓછો"],
+      itemsHi:["आंवला","तिल","दूध","तनाव कम"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Stress","Junk food","Sleep deprivation"],
+      itemsGu:["તણાવ","જંક ફૂડ","ઓછી ઊંઘ"],
+      itemsHi:["तनाव","जंक फूड","कम नींद"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  WOMEN'S HEALTH  (Phase 2)
-  // ══════════════════════════════════════════════════════
   {
     id:"kashtartava", group:"Women's Health",
-    nameGu:"Masik Dukhavo", nameHi:"मासिक दर्द", nameEn:"Kashtartava / Painful Menses",
-    causesGu:["Vaat asantulan","Thando khorak vadhu","Tanav","Kasrat nathi"],
+    nameGu:"માસિક દુખાવો", nameHi:"मासिक दर्द", nameEn:"Kashtartava",
+    causesGu:["વાત અસંતુલન","ઠંડો ખોરાક","તણાવ","કસરત નહીં"],
     causesHi:["वात असंतुलन","ठंडा भोजन अधिक","तनाव","व्यायाम नहीं"],
-    pathya:[
-      {category:"Food",     itemsEn:["Warm water","Ajwain","Rest","Light food"],                  itemsGu:["ગrm Paani","Ajmo","Aaram","Halko Khorak"],    itemsHi:["गर्म पानी","अजवाइन","आराम","हल्का भोजन"]},
-      {category:"Therapy",  itemsEn:["Heat compress on lower abdomen"],                            itemsGu:["Pet par Garam Shek"],                          itemsHi:["पेट पर गर्म सिकाई"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Cold foods","Excess exercise"],                             itemsGu:["Thundu Khavun","Vadhu Kasrat"],                itemsHi:["ठंडा भोजन","अधिक व्यायाम"]},
-      {category:"Habits",   itemsEn:["Stress","Cold water bath during periods"],                   itemsGu:["Tanav","Masik Darmiyan Thundu Snan"],          itemsHi:["तनाव","मासिक के दौरान ठंडा स्नान"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Warm water","Ajwain","Rest","Light food"],
+      itemsGu:["ગરમ પાણી","અજમો","આરામ","હલકો ખોરાક"],
+      itemsHi:["गर्म पानी","अजवाइन","आराम","हल्का भोजन"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Cold foods","Stress","Excess exercise"],
+      itemsGu:["ઠંડું ખાવું","તણાવ","વધુ કસરત"],
+      itemsHi:["ठंडा भोजन","तनाव","अधिक व्यायाम"],
+    }],
   },
   {
     id:"pcod", group:"Women's Health",
-    nameGu:"Pecodi", nameHi:"पीसीओडी", nameEn:"PCOD / PCOS",
-    causesGu:["Hormon asantulan","Jank Food","Kasrat nathi","Insulin Resistance"],
-    causesHi:["हार्मोन असंतुलन","जंक फूड","व्यायाम नहीं","इंसुलिन प्रतिरोध"],
-    pathya:[
-      {category:"Food",     itemsEn:["Weight control","Exercise","Barley","Green vegetables"],    itemsGu:["Vajan Niyantran","Kasrat","Jav","Lila Shak"],  itemsHi:["वजन नियंत्रण","व्यायाम","जौ","हरी सब्जियां"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Junk food","Sugar excess","Fried food"],                   itemsGu:["Jank Food","Vadhu Khund","Talelun"],           itemsHi:["जंक फूड","अधिक चीनी","तला भोजन"]},
-      {category:"Habits",   itemsEn:["Sedentary lifestyle","Irregular sleep"],                    itemsGu:["Kasrat no Abhav","Aniyamit Ughh"],             itemsHi:["व्यायाम की कमी","अनियमित नींद"]},
-    ],
+    nameGu:"પીસીઓડી", nameHi:"पीसीओडी", nameEn:"Pcod / Pcos",
+    causesGu:["હૉર્મોન અસંતુલન","જંક ફૂડ","કસરત નહીં","તણાવ"],
+    causesHi:["हार्मोन असंतुलन","जंक फूड","व्यायाम नहीं","तनाव"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Weight control","Exercise","Barley","Green vegetables"],
+      itemsGu:["વજન નિયંત્રણ","કસરત","જવ","લીલા શાક"],
+      itemsHi:["वजन नियंत्रण","व्यायाम","जौ","हरी सब्जियां"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Junk food","Sugar excess","Sedentary lifestyle"],
+      itemsGu:["જંક ફૂડ","વધુ ખાંડ","કસરતનો અભાવ"],
+      itemsHi:["जंक फूड","अधिक चीनी","व्यायाम की कमी"],
+    }],
   },
   {
     id:"shweta-pradara", group:"Women's Health",
-    nameGu:"Safed Paani", nameHi:"श्वेत प्रदर", nameEn:"Shweta Pradara / Leucorrhea",
-    causesGu:["Asvachchhata","Vadhu Tikhu","Hormon asantulan","Kamjori"],
-    causesHi:["अस्वच्छता","अधिक तीखा","हार्मोन असंतुलन","कमजोरी"],
-    pathya:[
-      {category:"Food",     itemsEn:["Pomegranate","Rice","Buttermilk","Proper hygiene"],         itemsGu:["Dadam","Chokhaa","Chaash","Svacchhata"],       itemsHi:["अनार","चावल","छाछ","स्वच्छता"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Excess spicy food","Poor hygiene"],                        itemsGu:["Vadhu Tikhu","Asvachchhata"],                  itemsHi:["अधिक तीखा","अस्वच्छता"]},
-    ],
+    nameGu:"સફેદ પાણી", nameHi:"श्वेत प्रदर", nameEn:"Shweta Pradara",
+    causesGu:["અસ્વચ્છતા","વધુ તીખું","હૉર્મોન અસંતુલન"],
+    causesHi:["अस्वच्छता","अधिक तीखा","हार्मोन असंतुलन"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Pomegranate","Rice","Buttermilk","Proper hygiene"],
+      itemsGu:["દાડમ","ચોખા","છાશ","સ્વચ્છતા"],
+      itemsHi:["अनार","चावल","छाछ","स्वच्छता"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Excess spicy food","Poor hygiene"],
+      itemsGu:["વધુ તીખું","અસ્વચ્છતા"],
+      itemsHi:["अधिक तीखा","अस्वच्छता"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  CHILD HEALTH  (Phase 2)
-  // ══════════════════════════════════════════════════════
   {
     id:"bal-shardi", group:"Child Health",
-    nameGu:"Balkoma Varanvar Shardi", nameHi:"बच्चों में बार-बार जुकाम", nameEn:"Recurrent Cold in Children",
-    causesGu:["Ochi rog pratikarak shakti","Vadhu thanda peyna","Dhul no sampark","Kamjor poshan"],
-    causesHi:["कम रोग प्रतिरोध","ठंडे पेय अधिक","धूल का संपर्क","कमजोर पोषण"],
-    pathya:[
-      {category:"Food",     itemsEn:["Suvarnaprashan","Warm water","Tulsi","Nutritious food"],    itemsGu:["Suvarnaprashn","Garam Paani","Tulsi","Paushtik Aahar"],itemsHi:["सुवर्णप्राशन","गर्म पानी","तुलसी","पौष्टिक आहार"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Ice cream","Cold drinks","Dust exposure"],                  itemsGu:["Aais Krim","Thanda Peyna","Dhul"],             itemsHi:["आइसक्रीम","ठंडे पेय","धूल"]},
-    ],
+    nameGu:"બાળકોમાં વારંવાર શરદી", nameHi:"बच्चों में बार-बार जुकाम", nameEn:"Recurrent Cold In Children",
+    causesGu:["ઓછી રોગ-પ્રતિકારક શક્તિ","ઠંડા પીણાં વધુ","ધૂળ"],
+    causesHi:["कम रोग प्रतिरोध","ठंडे पेय अधिक","धूल"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Suvarnaprashan","Warm water","Tulsi","Nutritious food"],
+      itemsGu:["સુવર્ણપ્રાશન","ગરમ પાણી","તુલસી","પૌષ્ટિક આહાર"],
+      itemsHi:["सुवर्णप्राशन","गर्म पानी","तुलसी","पौष्टिक आहार"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Ice cream","Cold drinks","Dust exposure"],
+      itemsGu:["આઈસક્રીમ","ઠંડા પીણાં","ધૂળ"],
+      itemsHi:["आइसक्रीम","ठंडे पेय","धूल"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  URINARY DISORDERS  (Phase 2)
-  // ══════════════════════════════════════════════════════
   {
     id:"mutrakriccha", group:"Urinary Disorders",
-    nameGu:"Mutra ma Daazh", nameHi:"पेशाब में जलन", nameEn:"Mutrakriccha / Burning Urination",
-    causesGu:["Ochun Paani","Vadhu Tikhu","Mutra Chep","Pitta asantulan"],
-    causesHi:["कम पानी","अधिक तीखा","मूत्र संक्रमण","पित्त असंतुलन"],
-    pathya:[
-      {category:"Drinks",   itemsEn:["Coconut water","Coriander water","Plenty of fluids"],       itemsGu:["Naaliyer Paani","Dhana Paani","Purtu Paani"],  itemsHi:["नारियल पानी","धनिया पानी","पर्याप्त पानी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Spicy food","Dehydration"],                                 itemsGu:["Tikhu Khavun","Paani Ochu Pivun"],             itemsHi:["तीखा भोजन","कम पानी"]},
-    ],
+    nameGu:"મૂત્રમાં દાઝ", nameHi:"पेशाब में जलन", nameEn:"Mutrakriccha",
+    causesGu:["ઓછું પાણી","વધુ તીખું","મૂત્ર ચેપ"],
+    causesHi:["कम पानी","अधिक तीखा","मूत्र संक्रमण"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Coconut water","Coriander water","Plenty of fluids"],
+      itemsGu:["નાળિયેર પાણી","ધાણા પાણી","પૂરતું પાણી"],
+      itemsHi:["नारियल पानी","धनिया पानी","पर्याप्त पानी"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Spicy food","Dehydration"],
+      itemsGu:["તીખું ખાવું","પાણી ઓછું પીવું"],
+      itemsHi:["तीखा भोजन","कम पानी"],
+    }],
   },
   {
     id:"ashmari", group:"Urinary Disorders",
-    nameGu:"Pathari", nameHi:"पथरी", nameEn:"Ashmari / Kidney Stones",
-    causesGu:["Ochun Paani","Vadhu Mithu","Oxalate vaalo khorak","Jank Food"],
-    causesHi:["कम पानी","अधिक नमक","ऑक्सलेट युक्त भोजन","जंक फूड"],
-    pathya:[
-      {category:"Drinks",   itemsEn:["Coconut water","Barley water","Lemon water","3-4 litres daily"],itemsGu:["Naaliyer Paani","Javnu Paani","Limbu Paani","Roj 3-4 litre Paani"],itemsHi:["नारियल पानी","जौ पानी","नींबू पानी","रोज 3-4 लीटर पानी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Dehydration","Excess salt","Junk food"],                    itemsGu:["Paani Ochu Pivun","Vadhu Mithu","Jank Food"],  itemsHi:["कम पानी पीना","अधिक नमक","जंक फूड"]},
-    ],
+    nameGu:"પથરી", nameHi:"पथरी", nameEn:"Ashmari",
+    causesGu:["ઓછું પાણી","વધુ મીઠું","ઑક્સલેટ ખોરાક"],
+    causesHi:["कम पानी","अधिक नमक","ऑक्सलेट युक्त भोजन"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Coconut water","Barley water","Lemon water"],
+      itemsGu:["નાળિયેર પાણી","જવનું પાણી","લીંબુ પાણી"],
+      itemsHi:["नारियल पानी","जौ पानी","नींबू पानी"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Dehydration","Excess salt","Junk food"],
+      itemsGu:["પાણી ઓછું પીવું","વધુ મીઠું","જંક ફૂડ"],
+      itemsHi:["कम पानी","अधिक नमक","जंक फूड"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  ENT & HEAD  (Phase 2)
-  // ══════════════════════════════════════════════════════
   {
-    id:"migraine", group:"ENT & Head",
-    nameGu:"Aadhashishi", nameHi:"माइग्रेन", nameEn:"Migraine / Ardhavabhedaka",
-    causesGu:["Tanav","Upvas","Vadhu Mobile","Aniyamit Ughh"],
+    id:"migraine", group:"ENT & Head Disorders",
+    nameGu:"આધાશીશી", nameHi:"माइग्रेन", nameEn:"Migraine",
+    causesGu:["તણાવ","ઉપવાસ","વધુ મોબાઈલ","અનિયમિત ઊંઘ"],
     causesHi:["तनाव","उपवास","अधिक मोबाइल","अनियमित नींद"],
-    pathya:[
-      {category:"Food",     itemsEn:["Adequate sleep","Meditation","Cow ghee","Stress reduction"],itemsGu:["Purti Ughh","Dhyan","Gay nu Ghee","Tanav Ocho"],itemsHi:["पर्याप्त नींद","ध्यान","गाय का घी","तनाव कम"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Stress","Fasting","Excess screen time"],                    itemsGu:["Tanav","Upvas","Vadhu Mobile"],                itemsHi:["तनाव","उपवास","अधिक मोबाइल"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Adequate sleep","Meditation","Cow ghee","Stress reduction"],
+      itemsGu:["પૂરતી ઊંઘ","ધ્યાન","ગાયનું ઘી","તણાવ ઓછો"],
+      itemsHi:["पर्याप्त नींद","ध्यान","गाय का घी","तनाव कम"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Stress","Fasting","Excess screen time"],
+      itemsGu:["તણાવ","ઉપવાસ","વધુ મોબાઈલ"],
+      itemsHi:["तनाव","उपवास","अधिक मोबाइल"],
+    }],
   },
   {
-    id:"mukha-paka", group:"ENT & Head",
-    nameGu:"Modhana Chhala", nameHi:"मुंह के छाले", nameEn:"Mouth Ulcers / Mukhapaka",
-    causesGu:["Vadhu Tikhu","Vitamin ni khami","Tanav","Tamaku"],
+    id:"mukha-paka", group:"ENT & Head Disorders",
+    nameGu:"મોઢાના છાલા", nameHi:"मुंह के छाले", nameEn:"Mouth Ulcers",
+    causesGu:["વધુ તીખું","વિટામિન ખામી","તણાવ","તમાકુ"],
     causesHi:["अधिक तीखा","विटामिन की कमी","तनाव","तंबाकू"],
-    pathya:[
-      {category:"Food",     itemsEn:["Ghee","Coconut water","Soft food"],                         itemsGu:["Ghee","Naaliyer Paani","Naram Khorak"],        itemsHi:["घी","नारियल पानी","नरम भोजन"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Spicy food","Hot food","Tobacco"],                          itemsGu:["Tikhu Khavun","Garam Khorak","Tamaku"],        itemsHi:["तीखा भोजन","गरम भोजन","तंबाकू"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Ghee","Coconut water","Soft food"],
+      itemsGu:["ઘી","નાળિયેર પાણી","નરમ ખોરાક"],
+      itemsHi:["घी","नारियल पानी","नरम भोजन"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Spicy food","Tobacco","Hot food"],
+      itemsGu:["તીખું ખાવું","તમાકુ","ગરમ ખોરાક"],
+      itemsHi:["तीखा भोजन","तंबाकू","गरम भोजन"],
+    }],
   },
   {
-    id:"sinusitis", group:"ENT & Head",
-    nameGu:"Saainus", nameHi:"साइनस", nameEn:"Sinusitis",
-    causesGu:["Thandi","Dhul Allergy","Pradushan","Kaph asantulan"],
+    id:"sinusitis", group:"ENT & Head Disorders",
+    nameGu:"સાઈનસ", nameHi:"साइनस", nameEn:"Sinusitis",
+    causesGu:["ઠંડી","ધૂળ એલર્જી","પ્રદૂષણ","કફ અસંતુલન"],
     causesHi:["ठंड","धूल एलर्जी","प्रदूषण","कफ असंतुलन"],
-    pathya:[
-      {category:"Therapy",  itemsEn:["Steam inhalation","Nasya (Nasal oil drops)","Warm water"],  itemsGu:["Varal","Nasya","Garam Paani"],                 itemsHi:["भाप","नस्य","गर्म पानी"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Ice cream","Cold foods","Curd"],                            itemsGu:["Aais Krim","Thando Khorak","Dahi"],            itemsHi:["आइसक्रीम","ठंडा भोजन","दही"]},
-      {category:"Environment",itemsEn:["Dust","Cold exposure","AC excess"],                        itemsGu:["Dhul","Thandi","Vadhu AC"],                    itemsHi:["धूल","ठंड","अधिक AC"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Steam inhalation","Warm water","Nasya"],
+      itemsGu:["વરાળ","ગરમ પાણી","નસ્ય"],
+      itemsHi:["भाप","गर्म पानी","नस्य"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Cold exposure","Ice cream","Dust"],
+      itemsGu:["ઠંડી","આઈસક્રીમ","ધૂળ"],
+      itemsHi:["ठंड","आइसक्रीम","धूल"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  LIVER & METABOLIC  (Phase 3)
-  // ══════════════════════════════════════════════════════
   {
     id:"fatty-liver", group:"Liver & Metabolic",
-    nameGu:"ফeटी Liver", nameHi:"फैटी लिवर", nameEn:"Fatty Liver",
-    causesGu:["Daaru","Talelun-Khund vadhu","Sthulataa","Kasrat nathi"],
+    nameGu:"ફેટી લીવર", nameHi:"फैटी लिवर", nameEn:"Fatty Liver",
+    causesGu:["દારૂ","તળેલું-ખાંડ વધુ","સ્થૂળતા","કસરત નહીં"],
     causesHi:["शराब","तला-चीनी अधिक","मोटापा","व्यायाम नहीं"],
-    pathya:[
-      {category:"Food",     itemsEn:["Barley","Green vegetables","Bitter gourd","Warm water","Walking"],itemsGu:["Jav","Lila Shak","Karelaa","Garam Paani","Chalavun"],itemsHi:["जौ","हरी सब्जियां","करेला","गर्म पानी","चलना"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Alcohol","Fried foods","Sugar excess"],                    itemsGu:["Daaru","Talelun Khavun","Vadhu Khund"],        itemsHi:["शराब","तला भोजन","अधिक चीनी"]},
-      {category:"Habits",   itemsEn:["Day sleep","Sedentary lifestyle"],                          itemsGu:["Divasni Ughh","Kasrat no Abhav"],              itemsHi:["दिन में सोना","व्यायाम की कमी"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Barley","Green vegetables","Bitter gourd","Walking","Warm water"],
+      itemsGu:["જવ","લીલા શાક","કારેલા","ચાલવું","ગરમ પાણી"],
+      itemsHi:["जौ","हरी सब्जियां","करेला","चलना","गर्म पानी"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Alcohol","Fried foods","Sugar excess","Day sleep"],
+      itemsGu:["દારૂ","તળેલું ખાવું","વધુ ખાંડ","દિવસની ઊંઘ"],
+      itemsHi:["शराब","तला भोजन","अधिक चीनी","दिन में सोना"],
+    }],
   },
   {
     id:"kamala", group:"Liver & Metabolic",
-    nameGu:"Kamlo", nameHi:"पीलिया", nameEn:"Kamala / Jaundice",
-    causesGu:["Yakrut Chep","Dushit Paani","Daaru","Bhaare Bhajan"],
+    nameGu:"કામળો", nameHi:"पीलिया", nameEn:"Kamala",
+    causesGu:["યકૃત ચેપ","દૂષિત પાણી","દારૂ","ભારે ભોજન"],
     causesHi:["यकृत संक्रमण","दूषित पानी","शराब","भारी भोजन"],
-    pathya:[
-      {category:"Drinks",   itemsEn:["Sugarcane juice","Coconut water","Moong soup","Rest"],      itemsGu:["Shedrano Ras","Naaliyer Paani","Magnu Sup","Aaram"],itemsHi:["गन्ने का रस","नारियल पानी","मूंग सूप","आराम"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Oily food","Alcohol","Heavy meals"],                        itemsGu:["Teliyu Khavun","Daaru","Bhaare Bhajan"],       itemsHi:["तेलयुक्त भोजन","शराब","भारी भोजन"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Sugarcane juice","Coconut water","Moong soup","Rest"],
+      itemsGu:["શેરડીનો રસ","નાળિયેર પાણી","મગનું સૂપ","આરામ"],
+      itemsHi:["गन्ने का रस","नारियल पानी","मूंग सूप","आराम"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Oily food","Alcohol","Heavy meals"],
+      itemsGu:["તેલિયું ખાવું","દારૂ","ભારે ભોજન"],
+      itemsHi:["तेलयुक्त भोजन","शराब","भारी भोजन"],
+    }],
   },
   {
     id:"pandu", group:"Liver & Metabolic",
-    nameGu:"Pandu / Lohini Unap", nameHi:"पांडु / खून की कमी", nameEn:"Pandu / Anemia",
-    causesGu:["Iron ni khami","Vadhu Upvas","Jank Food","Apcho"],
+    nameGu:"પાંડુ / લોહીની ઉણપ", nameHi:"पांडु / खून की कमी", nameEn:"Pandu",
+    causesGu:["આયર્ન ખામી","વધુ ઉપવાસ","જંક ફૂડ","અપચો"],
     causesHi:["आयरन की कमी","अधिक उपवास","जंक फूड","कुअवशोषण"],
-    pathya:[
-      {category:"Food",     itemsEn:["Pomegranate","Dates","Beetroot","Amla"],                    itemsGu:["Dadam","Khajur","Bit","Aamla"],                itemsHi:["अनार","खजूर","चुकंदर","आंवला"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Junk food","Excess fasting"],                              itemsGu:["Jank Food","Vadhu Upvas"],                     itemsHi:["जंक फूड","अधिक उपवास"]},
-      {category:"Habits",   itemsEn:["Tea with meals (reduces iron absorption)"],                 itemsGu:["Jamta Cha Pivi (loh avshosan ghatade)"],       itemsHi:["भोजन के साथ चाय (आयरन अवशोषण घटाती है)"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Pomegranate","Dates","Beetroot","Amla"],
+      itemsGu:["દાડમ","ખજૂર","બીટ","આમળા"],
+      itemsHi:["अनार","खजूर","चुकंदर","आंवला"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Junk food","Excess fasting"],
+      itemsGu:["જંક ફૂડ","વધુ ઉપવાસ"],
+      itemsHi:["जंक फूड","अधिक उपवास"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  THYROID & HORMONAL  (Phase 3)
-  // ══════════════════════════════════════════════════════
   {
     id:"hypothyroidism", group:"Thyroid & Hormonal",
-    nameGu:"Thyroid Ochu Karya", nameHi:"हाइपोथायरॉइड", nameEn:"Hypothyroidism",
-    causesGu:["Kaph asantulan","Kasrat nathi","Iodine ni khami","Tanav"],
+    nameGu:"થાયરોઇડ ઓછું કાર્ય", nameHi:"हाइपोथायरॉइड", nameEn:"Hypothyroidism",
+    causesGu:["કફ અસંતુલન","કસરત નહીં","આયોડિન ખામી","તણાવ"],
     causesHi:["कफ असंतुलन","व्यायाम न करना","आयोडीन की कमी","तनाव"],
-    pathya:[
-      {category:"Food",     itemsEn:["Exercise","Warm water","Light meals","Millets"],            itemsGu:["Kasrat","Garam Paani","Halko Khorak","Millets"],itemsHi:["व्यायाम","गर्म पानी","हल्का भोजन","मिलेट्स"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Heavy meals","Excess soy products"],                        itemsGu:["Bhaare Bhajan","Soya vadhu"],                  itemsHi:["भारी भोजन","अधिक सोया उत्पाद"]},
-      {category:"Habits",   itemsEn:["Day sleep","Sedentary lifestyle"],                          itemsGu:["Divasni Ughh","Kasrat no Abhav"],              itemsHi:["दिन में सोना","व्यायाम की कमी"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Exercise","Warm water","Light meals","Millets"],
+      itemsGu:["કસરત","ગરમ પાણી","હલકો ખોરાક","મિલેટ્સ"],
+      itemsHi:["व्यायाम","गर्म पानी","हल्का भोजन","मिलेट्स"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Day sleep","Heavy meals","Sedentary lifestyle"],
+      itemsGu:["દિવસની ઊંઘ","ભારે ભોજન","કસરતનો અભાવ"],
+      itemsHi:["दिन में सोना","भारी भोजन","व्यायाम की कमी"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  MENTAL & LIFESTYLE  (Phase 3)
-  // ══════════════════════════════════════════════════════
   {
     id:"nidranasha", group:"Mental & Lifestyle",
-    nameGu:"Nidranash", nameHi:"अनिद्रा", nameEn:"Nidranasha / Insomnia",
-    causesGu:["Tanav","Vadhu Mobile","Raatre Cha-Coffee","Vaat asantulan"],
+    nameGu:"નિંદ્રાનાશ", nameHi:"अनिद्रा", nameEn:"Nidranasha",
+    causesGu:["તણાવ","વધુ મોબાઈલ","રાત્રે ચા-કૉફી","વાત અસંતુલન"],
     causesHi:["तनाव","अधिक मोबाइल","रात में चाय-कॉफी","वात असंतुलन"],
-    pathya:[
-      {category:"Food",     itemsEn:["Warm milk","Meditation","Oil massage","Early sleep"],       itemsGu:["Garam Dudh","Dhyan","Tel Masaj","Vaheli Ughh"],itemsHi:["गर्म दूध","ध्यान","तेल मालिश","जल्दी सोना"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Excess mobile use","Tea-coffee at night","Stress"],         itemsGu:["Vadhu Mobile","Raatre Cha-Coffee","Tanav"],    itemsHi:["अधिक मोबाइल","रात में चाय-कॉफी","तनाव"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Warm milk","Meditation","Oil massage","Early sleep"],
+      itemsGu:["ગરમ દૂધ","ધ્યાન","તેલ મસાજ","વહેલી ઊંઘ"],
+      itemsHi:["गर्म दूध","ध्यान","तेल मालिश","जल्दी सोना"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Excess mobile use","Tea-coffee at night","Stress"],
+      itemsGu:["વધુ મોબાઈલ","રાત્રે ચા-કોફી","તણાવ"],
+      itemsHi:["अधिक मोबाइल","रात में चाय-कॉफी","तनाव"],
+    }],
   },
   {
     id:"chinta", group:"Mental & Lifestyle",
-    nameGu:"Chinta", nameHi:"चिंता", nameEn:"Chinta / Anxiety",
-    causesGu:["Vadhu Vichar","Ochi Ughh","Tanav","Vaat asantulan"],
-    causesHi:["अधिक सोचना","कम नींद","तनाव","वात असंतुलन"],
-    pathya:[
-      {category:"Food",     itemsEn:["Meditation","Brahmi","Pranayama","Proper sleep"],          itemsGu:["Dhyan","Brahmi","Pranayam","Purti Ughh"],      itemsHi:["ध्यान","ब्राह्मी","प्राणायाम","पर्याप्त नींद"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Overthinking","Sleep deprivation","Stress"],               itemsGu:["Vadhu Vichar","Ochi Ughh","Tanav"],            itemsHi:["अधिक सोचना","कम नींद","तनाव"]},
-    ],
+    nameGu:"ચિંતા", nameHi:"चिंता", nameEn:"Chinta",
+    causesGu:["વધુ વિચાર","ઓછી ઊંઘ","તણાવ"],
+    causesHi:["अधिक सोचना","कम नींद","तनाव"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Meditation","Brahmi","Pranayama","Proper sleep"],
+      itemsGu:["ધ્યાન","બ્રાહ્મી","પ્રાણાયામ","પૂરતી ઊંઘ"],
+      itemsHi:["ध्यान","ब्राह्मी","प्राणायाम","पर्याप्त नींद"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Overthinking","Sleep deprivation","Stress"],
+      itemsGu:["વધુ વિચાર","ઓછી ઊંઘ","તણાવ"],
+      itemsHi:["अधिक सोचना","कम नींद","तनाव"],
+    }],
   },
   {
     id:"depression", group:"Mental & Lifestyle",
-    nameGu:"Udasinata", nameHi:"अवसाद", nameEn:"Depression Supportive Care",
-    causesGu:["Ekalata","Aniyamit Dincharya","Daaru","Dukh / Aaghat"],
-    causesHi:["अकेलापन","अनियमित दिनचर्या","शराब","दुःख / आघात"],
-    pathya:[
-      {category:"Food",     itemsEn:["Counseling","Yoga","Meditation","Nutritious food"],         itemsGu:["Counseling","Yog","Dhyan","Paushtik Aahar"],  itemsHi:["काउंसलिंग","योग","ध्यान","पौष्टिक आहार"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Isolation","Alcohol","Irregular routine"],                  itemsGu:["Ekalata","Daaru","Aniyamit Jeevanashaili"],    itemsHi:["अकेलापन","शराब","अनियमित दिनचर्या"]},
-    ],
-  },
-
-  // ══════════════════════════════════════════════════════
-  //  SEXUAL & REPRODUCTIVE  (Phase 3)
-  // ══════════════════════════════════════════════════════
-  {
-    id:"shukra-kshaya", group:"Sexual & Reproductive",
-    nameGu:"Shukra Kshay", nameHi:"शुक्र क्षय", nameEn:"Shukra Kshaya / Low Vitality",
-    causesGu:["Tanav","Vadhu Sambhog","Raatre Jaagvun","Jank Food"],
-    causesHi:["तनाव","अधिक संभोग","रात जागना","जंक फूड"],
-    pathya:[
-      {category:"Food",     itemsEn:["Milk","Ghee","Almonds","Ashwagandha"],                     itemsGu:["Dudh","Ghee","Badam","Ashwagandha"],           itemsHi:["दूध","घी","बादाम","अश्वगंधा"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Stress","Excess sexual activity","Night awakening"],        itemsGu:["Tanav","Vadhu Sambhog","Mode Sudhi Jaagvun"],  itemsHi:["तनाव","अधिक संभोग","देर रात जागना"]},
-    ],
+    nameGu:"ઉદાસીનતા", nameHi:"अवसाद", nameEn:"Depression Supportive Care",
+    causesGu:["એકલતા","દારૂ","અનિયમિત દિનચર્યા","દુઃખ"],
+    causesHi:["अकेलापन","शराब","अनियमित दिनचर्या","दुःख"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Counseling","Yoga","Meditation","Nutritious food"],
+      itemsGu:["કાઉન્સેલિંગ","યોગ","ધ્યાન","પૌષ્ટિક આહાર"],
+      itemsHi:["काउंसलिंग","योग","ध्यान","पौष्टिक आहार"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Isolation","Alcohol","Irregular routine"],
+      itemsGu:["એકલતા","દારૂ","અનિયમિત જીવનશૈલી"],
+      itemsHi:["अकेलापन","शराब","अनियमित दिनचर्या"],
+    }],
   },
   {
-    id:"erectile-dysfunction", group:"Sexual & Reproductive",
-    nameGu:"Napunsakata", nameHi:"नपुंसकता", nameEn:"Erectile Dysfunction",
-    causesGu:["Tanav","Daaru","Dhumrpan","Madhumeh","Vaat asantulan"],
-    causesHi:["तनाव","शराब","धूम्रपान","मधुमेह","वात असंतुलन"],
-    pathya:[
-      {category:"Food",     itemsEn:["Ashwagandha","Milk","Ghee","Healthy sleep"],               itemsGu:["Ashwagandha","Dudh","Ghee","Saari Ughh"],      itemsHi:["अश्वगंधा","दूध","घी","अच्छी नींद"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Smoking","Alcohol","Stress"],                               itemsGu:["Dhumrpan","Daaru","Tanav"],                    itemsHi:["धूम्रपान","शराब","तनाव"]},
-    ],
+    id:"shukra-kshaya", group:"Sexual Health",
+    nameGu:"શુક્ર ક્ષય", nameHi:"शुक्र क्षय", nameEn:"Shukra Kshaya",
+    causesGu:["તણાવ","વધુ સંભોગ","મોડે સુધી જાગવું"],
+    causesHi:["तनाव","अधिक संभोग","देर रात जागना"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Milk","Ghee","Almonds","Ashwagandha"],
+      itemsGu:["દૂધ","ઘી","બદામ","અશ્વગંધા"],
+      itemsHi:["दूध","घी","बादाम","अश्वगंधा"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Stress","Excess sexual activity","Night awakening"],
+      itemsGu:["તણાવ","વધુ સંભોગ","મોડે સુધી જાગવું"],
+      itemsHi:["तनाव","अधिक संभोग","देर रात जागना"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  EYE DISORDERS  (Phase 3)
-  // ══════════════════════════════════════════════════════
+  {
+    id:"erectile-dysfunction", group:"Sexual Health",
+    nameGu:"નપુંસકતા", nameHi:"नपुंसकता", nameEn:"Erectile Dysfunction",
+    causesGu:["તણાવ","દારૂ","ધૂમ્રપાન","મધુમેહ"],
+    causesHi:["तनाव","शराब","धूम्रपान","मधुमेह"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Ashwagandha","Milk","Ghee","Healthy sleep"],
+      itemsGu:["અશ્વગંધા","દૂધ","ઘી","સારી ઊંઘ"],
+      itemsHi:["अश्वगंधा","दूध","घी","अच्छी नींद"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Smoking","Alcohol","Stress"],
+      itemsGu:["ધૂમ્રપાન","દારૂ","તણાવ"],
+      itemsHi:["धूम्रपान","शराब","तनाव"],
+    }],
+  },
   {
     id:"eye-strain", group:"Eye Disorders",
-    nameGu:"Aankh no Thak", nameHi:"आंखों की थकान", nameEn:"Eye Strain",
-    causesGu:["Vadhu Mobile","Raatre Jaagvun","Pitta asantulan","Vitamin A ni khami"],
-    causesHi:["अधिक मोबाइल","रात जागना","पित्त असंतुलन","विटामिन A की कमी"],
-    pathya:[
-      {category:"Therapy",  itemsEn:["Triphala eye wash","Eye exercises","Proper sleep"],        itemsGu:["Triphala Dhovan","Aankh Kasrat","Purti Ughh"], itemsHi:["त्रिफला धुलाई","आंख व्यायाम","पर्याप्त नींद"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Excess screen time","Night awakening"],                    itemsGu:["Vadhu Mobile","Modiraatre Jaagvun"],           itemsHi:["अधिक मोबाइल","देर रात जागना"]},
-    ],
+    nameGu:"આંખનો થાક", nameHi:"आंखों की थकान", nameEn:"Eye Strain",
+    causesGu:["વધુ મોબાઈલ/સ્ક્રીન","રાત્રે જાગવું","વિટામિન A ખામી"],
+    causesHi:["अधिक मोबाइल/स्क्रीन","रात जागना","विटामिन A की कमी"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Triphala wash","Proper sleep","Eye exercises"],
+      itemsGu:["ત્રિફળા ધોવાણ","પૂરતી ઊંઘ","આંખ કસરત"],
+      itemsHi:["त्रिफला धुलाई","पर्याप्त नींद","आंख व्यायाम"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Excess screen time","Night awakening"],
+      itemsGu:["વધુ મોબાઈલ","મોડીરાત્રે જાગવું"],
+      itemsHi:["अधिक मोबाइल","देर रात जागना"],
+    }],
   },
   {
     id:"conjunctivitis", group:"Eye Disorders",
-    nameGu:"Aankh Aavvi", nameHi:"आंख आना", nameEn:"Conjunctivitis",
-    causesGu:["Aankh Chep","Dhul no sampark","Aankh Ghasvun","Ganda haat"],
-    causesHi:["आंख संक्रमण","धूल का संपर्क","आंख रगड़ना","गंदे हाथ"],
-    pathya:[
-      {category:"Therapy",  itemsEn:["Eye hygiene","Cold compress","Rest"],                       itemsGu:["Aankh Svacchhata","Thandi Patti","Aaram"],     itemsHi:["आंख की सफाई","ठंडी पट्टी","आराम"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Dust exposure","Eye rubbing","Sharing eye drops"],          itemsGu:["Dhul","Aankh Ghasvun","Aankh Drops Vahechva"],itemsHi:["धूल","आंख मलना","आई-ड्रॉप साझा करना"]},
-    ],
+    nameGu:"આંખ આવવી", nameHi:"आंख आना", nameEn:"Conjunctivitis",
+    causesGu:["આંખ ચેપ","ધૂળ","આંખ ઘસવી"],
+    causesHi:["आंख संक्रमण","धूल","आंख रगड़ना"],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Eye hygiene","Cold compress","Rest"],
+      itemsGu:["આંખ સ્વચ્છતા","ઠંડી પટ્ટી","આરામ"],
+      itemsHi:["आंख की सफाई","ठंडी पट्टी","आराम"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Dust exposure","Eye rubbing"],
+      itemsGu:["ધૂળ","આંખ ઘસવી"],
+      itemsHi:["धूल","आंख मलना"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  PANCHAKARMA  (Phase 3)
-  // ══════════════════════════════════════════════════════
   {
     id:"vamana-pathya", group:"Panchakarma",
-    nameGu:"Vaman Pashchat Pathya", nameHi:"वमन पथ्य", nameEn:"Vamana Pathya (Post-Vamana Diet)",
-    causesGu:["Panchakarma baad","Kaph Detox"],
+    nameGu:"", nameHi:"", nameEn:"Vamana Pathya",
+    causesGu:["પંચકર્મ બાદ","કફ ડિટૉક્સ"],
     causesHi:["पंचकर्म के बाद","कफ डेटॉक्स"],
-    pathya:[
-      {category:"Food",     itemsEn:["Thin rice gruel","Moong soup","Light diet"],                itemsGu:["Patli Khichdi","Magnu Sup","Halko Khorak"],   itemsHi:["पतली खिचड़ी","मूंग सूप","हल्का भोजन"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Heavy food","Fried food","Cold water"],                     itemsGu:["Bhaare Bhajan","Talelun","Thundu Paani"],      itemsHi:["भारी भोजन","तला भोजन","ठंडा पानी"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:[],
+      itemsGu:[],
+      itemsHi:[],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Heavy food","Fried food","Cold water"],
+      itemsGu:["ભારે ભોજન","તળેલું","ઠંડું પાણી"],
+      itemsHi:["भारी भोजन","तला भोजन","ठंडा पानी"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  SEASONAL (RITUCHARYA)  (Phase 3)
-  // ══════════════════════════════════════════════════════
   {
     id:"summer-ritucharya", group:"Seasonal (Ritucharya)",
-    nameGu:"Unalu Ritucharya", nameHi:"ग्रीष्म ऋतुचर्या", nameEn:"Summer Ritucharya Diet",
-    causesGu:["Unalama Pitta vadhe","Dehydration","Vadhu Tadako"],
+    nameGu:"ઉનાળુ ઋતુચર્ય", nameHi:"ग्रीष्म ऋतुचर्या", nameEn:"Summer Ritucharya",
+    causesGu:["ઉનાળામાં પિત્ત વધે","ડિહાઇડ્રેશન","વધુ તડકો"],
     causesHi:["गर्मी में पित्त वृद्धि","निर्जलीकरण","अधिक धूप"],
-    pathya:[
-      {category:"Drinks",   itemsEn:["Coconut water","Buttermilk (Chaas)","Rose water"],         itemsGu:["Naaliyer Paani","Chaash","Gulab Jal"],         itemsHi:["नारियल पानी","छाछ","गुलाब जल"]},
-      {category:"Food",     itemsEn:["Watermelon","Light food"],                                   itemsGu:["Tarbuch","Halko Khorak"],                      itemsHi:["तरबूज","हल्का भोजन"]},
-    ],
-    apathya:[
-      {category:"Food",     itemsEn:["Spicy foods","Fried food","Less water intake"],              itemsGu:["Tikhu Khavun","Talelun","Paani Ochu Pivun"],  itemsHi:["तीखा भोजन","तला भोजन","कम पानी"]},
-      {category:"Habits",   itemsEn:["Excess sun exposure"],                                       itemsGu:["Vadhu Tadako"],                                itemsHi:["अधिक धूप"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Coconut water","Buttermilk","Watermelon","Light food"],
+      itemsGu:["નાળિયેર પાણી","છાશ","તરબૂચ","હલકો ખોરાક"],
+      itemsHi:["नारियल पानी","छाछ","तरबूज","हल्का भोजन"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Excess sunlight","Spicy foods","Dehydration"],
+      itemsGu:["વધુ તડકો","તીખું ખાવું","પાણી ઓછું પીવું"],
+      itemsHi:["अधिक धूप","तीखा भोजन","कम पानी"],
+    }],
   },
   {
     id:"winter-ritucharya", group:"Seasonal (Ritucharya)",
-    nameGu:"Shiyalu Ritucharya", nameHi:"शीत ऋतुचर्या", nameEn:"Winter Ritucharya Diet",
-    causesGu:["Shiyalamaa Vaat vadhe","Suki Thandi Hawa","Pachan Shakti ghate"],
+    nameGu:"શિયાળુ ઋતુચર્ય", nameHi:"शीत ऋतुचर्या", nameEn:"Winter Ritucharya",
+    causesGu:["શિયાળામાં વાત વધે","સૂકી ઠંડી હવા","પાચન ઘટે"],
     causesHi:["सर्दी में वात वृद्धि","सूखी ठंडी हवा","पाचन शक्ति कम"],
-    pathya:[
-      {category:"Food",     itemsEn:["Ghee","Sesame (Til)","Warm food","Exercise"],               itemsGu:["Ghee","Tal","Garam Khorak","Kasrat"],          itemsHi:["घी","तिल","गर्म भोजन","व्यायाम"]},
-      {category:"Therapy",  itemsEn:["Oil massage (Abhyanga)","Warm bath"],                       itemsGu:["Tel Malish","Garam Snan"],                     itemsHi:["तेल मालिश","गर्म स्नान"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Cold exposure","Excess fasting"],                           itemsGu:["Thandi","Vadhu Upvas"],                        itemsHi:["ठंड","अधिक उपवास"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Ghee","Sesame","Warm food","Exercise"],
+      itemsGu:["ઘી","તલ","ગરમ ખોરાક","કસરત"],
+      itemsHi:["घी","तिल","गर्म भोजन","व्यायाम"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Cold exposure","Fasting excess"],
+      itemsGu:["ઠંડી","વધુ ઉપવાસ"],
+      itemsHi:["ठंड","अधिक उपवास"],
+    }],
   },
-
-  // ══════════════════════════════════════════════════════
-  //  GERIATRIC  (Phase 3)
-  // ══════════════════════════════════════════════════════
   {
     id:"memory-weakness", group:"Geriatric",
-    nameGu:"Yaadshakti Ochi", nameHi:"याददाश्त कमजोर", nameEn:"Memory Weakness",
-    causesGu:["Tanav","Ochi Ughh","Vadhu Mobile","Vaat asantulan"],
+    nameGu:"યાદશક્તિ ઓછી", nameHi:"याददाश्त कमजोर", nameEn:"Memory Weakness",
+    causesGu:["તણાવ","ઓછી ઊંઘ","વધુ મોબાઈલ","વાત અસંતુલન"],
     causesHi:["तनाव","कम नींद","अधिक मोबाइल","वात असंतुलन"],
-    pathya:[
-      {category:"Food",     itemsEn:["Brahmi","Almonds (Badam)","Meditation","Proper sleep"],     itemsGu:["Brahmi","Badam","Dhyan","Purti Ughh"],         itemsHi:["ब्राह्मी","बादाम","ध्यान","पर्याप्त नींद"]},
-    ],
-    apathya:[
-      {category:"Habits",   itemsEn:["Stress","Sleep deprivation","Excess screen time"],          itemsGu:["Tanav","Ochi Ughh","Vadhu Mobile"],            itemsHi:["तनाव","कम नींद","अधिक मोबाइल"]},
-    ],
+    pathya:[{
+      category:"Food",
+      itemsEn:["Brahmi","Almonds","Meditation","Proper sleep"],
+      itemsGu:["બ્રાહ્મી","બદામ","ધ્યાન","પૂરતી ઊંઘ"],
+      itemsHi:["ब्राह्मी","बादाम","ध्यान","पर्याप्त नींद"],
+    }],
+    apathya:[{
+      category:"Food",
+      itemsEn:["Stress","Sleep deprivation","Excess screen time"],
+      itemsGu:["તણાવ","ઓછી ઊંઘ","વધુ મોબાઈલ"],
+      itemsHi:["तनाव","कम नींद","अधिक मोबाइल"],
+    }],
   },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function printPathya() {
   const el = document.getElementById("print-pathya");
   if (!el) return;
@@ -742,40 +890,31 @@ function printPathya() {
   el.style.display = "none";
 }
 
-const GROUP_ORDER = [
-  "Digestive Disorders","Respiratory Disorders","Metabolic Disorders","Joint & Pain",
-  "Skin Disorders","Women's Health","Child Health","Urinary Disorders","ENT & Head",
-  "Liver & Metabolic","Thyroid & Hormonal","Mental & Lifestyle","Sexual & Reproductive",
-  "Eye Disorders","Panchakarma","Seasonal (Ritucharya)","Geriatric",
-];
-
 export default function PathyaApathya() {
-  const [lang, setLang]           = useState<Lang>("hi");
+  const [lang, setLang]               = useState<Lang>("hi");
   const [patientName, setPatientName] = useState("");
-  const [search, setSearch]       = useState("");
-  const [selected, setSelected]   = useState<Disease>(diseases[0]);
-  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["Digestive Disorders"]));
+  const [search, setSearch]           = useState("");
+  const [selected, setSelected]       = useState<Disease>(diseases[0]);
+  const [openGroups, setOpenGroups]   = useState<Set<string>>(new Set(["Digestive Disorders"]));
 
   const toggleGroup = (g: string) => setOpenGroups(prev => {
     const n = new Set(prev); n.has(g) ? n.delete(g) : n.add(g); return n;
   });
-
   const selectDisease = (d: Disease) => {
     setSelected(d);
     setOpenGroups(prev => new Set([...prev, d.group]));
   };
 
-  const gl   = (g: string) => lang === "gu" ? (groupLabels[g]?.gu || g) : (groupLabels[g]?.hi || g);
-  const cl   = (c: string) => lang === "gu" ? (catLabels[c]?.gu  || c) : (catLabels[c]?.hi  || c);
+  const gl = (g: string) => lang === "gu" ? (groupLabels[g]?.gu || g) : (groupLabels[g]?.hi || g);
   const getItems = (sec: DiseaseSection) =>
     lang === "gu" ? sec.itemsGu : lang === "hi" ? sec.itemsHi : sec.itemsEn;
   const getCauses = () => lang === "gu" ? selected.causesGu : selected.causesHi;
   const diseaseName = lang === "gu" ? selected.nameGu : selected.nameHi;
   const today = format(new Date(), "dd/MM/yyyy");
 
-  const pathyaTitle  = lang === "gu" ? "Pathya — Shu Khavun" : "पथ्य — क्या खाएं";
-  const apathyaTitle = lang === "gu" ? "Apathya — Shu Na Khavun" : "अपथ्य — क्या न खाएं";
-  const causesTitle  = lang === "gu" ? "Karan (Nidana)" : "कारण (Nidana)";
+  const pathyaTitle  = lang === "gu" ? "પથ્ય — શું ખાવું" : "पथ्य — क्या खाएं";
+  const apathyaTitle = lang === "gu" ? "અપથ્ય — શું ન ખાવું" : "अपथ्य — क्या न खाएं";
+  const causesTitle  = lang === "gu" ? "કારણ (Nidana)" : "कारण (Nidana)";
 
   const filtered = search.length > 0
     ? diseases.filter(d =>
@@ -821,15 +960,15 @@ export default function PathyaApathya() {
         </div>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
           <thead><tr>
-            <th style={{ background:"#d1fae5", padding:"8px", border:"1px solid #a7f3d0", width:"50%" }}>✅ Pathya</th>
-            <th style={{ background:"#fee2e2", padding:"8px", border:"1px solid #fca5a5", width:"50%" }}>❌ Apathya</th>
+            <th style={{ background:"#d1fae5", padding:"8px", border:"1px solid #a7f3d0", width:"50%" }}>✅ {pathyaTitle}</th>
+            <th style={{ background:"#fee2e2", padding:"8px", border:"1px solid #fca5a5", width:"50%" }}>❌ {apathyaTitle}</th>
           </tr></thead>
           <tbody><tr>
             <td style={{ verticalAlign:"top", padding:"10px", border:"1px solid #d1fae5" }}>
-              {selected.pathya.map((s,i) => <div key={i} style={{ marginBottom:"8px" }}><div style={{ fontWeight:"bold", fontSize:"11px", color:"#065f46" }}>{cl(s.category)}</div>{getItems(s).map((item,j) => <div key={j} style={{ fontSize:"12px" }}>• {item}</div>)}</div>)}
+              {selected.pathya.map((s,i) => <div key={i} style={{ marginBottom:"8px" }}>{getItems(s).map((item,j) => <div key={j} style={{ fontSize:"12px" }}>• {item}</div>)}</div>)}
             </td>
             <td style={{ verticalAlign:"top", padding:"10px", border:"1px solid #fee2e2" }}>
-              {selected.apathya.map((s,i) => <div key={i} style={{ marginBottom:"8px" }}><div style={{ fontWeight:"bold", fontSize:"11px", color:"#991b1b" }}>{cl(s.category)}</div>{getItems(s).map((item,j) => <div key={j} style={{ fontSize:"12px" }}>• {item}</div>)}</div>)}
+              {selected.apathya.map((s,i) => <div key={i} style={{ marginBottom:"8px" }}>{getItems(s).map((item,j) => <div key={j} style={{ fontSize:"12px" }}>• {item}</div>)}</div>)}
             </td>
           </tr></tbody>
         </table>
@@ -843,8 +982,12 @@ export default function PathyaApathya() {
           <div className="medical-card p-4 space-y-3">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Language</p>
             <div className="flex gap-2">
-              <button onClick={() => setLang("hi")} className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${lang==="hi" ? "bg-amber-600 text-white shadow-md" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>हि — Hindi</button>
-              <button onClick={() => setLang("gu")} className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${lang==="gu" ? "bg-amber-600 text-white shadow-md" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>ગu — Gujarati</button>
+              <button onClick={() => setLang("hi")} className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${lang==="hi" ? "bg-amber-600 text-white shadow-md" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                हि — Hindi
+              </button>
+              <button onClick={() => setLang("gu")} className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${lang==="gu" ? "bg-amber-600 text-white shadow-md" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                ગુ — Gujarati
+              </button>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 block mb-1">Patient Name (Optional)</label>
@@ -856,7 +999,7 @@ export default function PathyaApathya() {
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder={lang === "hi" ? "बीमारी खोजें..." : "Rog Shodho..."}
+              placeholder={lang === "hi" ? "बीमारी खोजें..." : "રોગ શોધો..."}
               className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-amber-400 text-slate-700 text-sm shadow-sm" />
           </div>
 
@@ -868,7 +1011,9 @@ export default function PathyaApathya() {
                   {filtered.map(d => (
                     <button key={d.id} onClick={() => selectDisease(d)}
                       className={`w-full text-left px-4 py-2.5 hover:bg-amber-50 transition-colors ${selected.id===d.id ? "bg-amber-50 border-l-4 border-amber-500" : ""}`}>
-                      <p className={`text-sm font-bold leading-tight ${selected.id===d.id ? "text-amber-700" : "text-slate-800"}`}>{lang==="gu" ? d.nameGu : d.nameHi}</p>
+                      <p className={`text-sm font-bold leading-tight ${selected.id===d.id ? "text-amber-700" : "text-slate-800"}`}>
+                        {lang==="gu" ? d.nameGu : d.nameHi}
+                      </p>
                       <p className="text-xs text-slate-400">{d.nameEn}</p>
                     </button>
                   ))}
@@ -881,14 +1026,18 @@ export default function PathyaApathya() {
                     <button onClick={() => toggleGroup(group)}
                       className="w-full flex items-center justify-between px-4 py-2.5 bg-amber-50 hover:bg-amber-100 transition-colors border-b border-amber-200">
                       <span className="text-xs font-bold text-amber-700 uppercase tracking-wide">{gl(group)}</span>
-                      {openGroups.has(group) ? <ChevronDown className="w-3.5 h-3.5 text-amber-500"/> : <ChevronRight className="w-3.5 h-3.5 text-amber-500"/>}
+                      {openGroups.has(group)
+                        ? <ChevronDown className="w-3.5 h-3.5 text-amber-500"/>
+                        : <ChevronRight className="w-3.5 h-3.5 text-amber-500"/>}
                     </button>
                     {openGroups.has(group) && (
                       <div className="divide-y divide-slate-50">
                         {list.map(d => (
                           <button key={d.id} onClick={() => selectDisease(d)}
                             className={`w-full text-left px-5 py-2.5 hover:bg-amber-50/60 transition-colors ${selected.id===d.id ? "bg-amber-50 border-l-4 border-amber-500" : ""}`}>
-                            <p className={`text-sm font-semibold leading-tight ${selected.id===d.id ? "text-amber-700" : "text-slate-800"}`}>{lang==="gu" ? d.nameGu : d.nameHi}</p>
+                            <p className={`text-sm font-semibold leading-tight ${selected.id===d.id ? "text-amber-700" : "text-slate-800"}`}>
+                              {lang==="gu" ? d.nameGu : d.nameHi}
+                            </p>
                             <p className="text-[11px] text-slate-400">{d.nameEn}</p>
                           </button>
                         ))}
@@ -925,7 +1074,9 @@ export default function PathyaApathya() {
             <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">{causesTitle}</p>
               <div className="flex flex-wrap gap-2">
-                {getCauses().map((c,i) => <span key={i} className="text-xs px-2.5 py-1 bg-amber-200 text-amber-800 rounded-full font-medium">{c}</span>)}
+                {getCauses().map((c,i) => (
+                  <span key={i} className="text-xs px-2.5 py-1 bg-amber-200 text-amber-800 rounded-full font-medium">{c}</span>
+                ))}
               </div>
             </div>
 
@@ -935,23 +1086,18 @@ export default function PathyaApathya() {
                   <span className="text-lg">✅</span>
                   <div>
                     <h3 className="font-bold text-slate-800">{pathyaTitle}</h3>
-                    <p className="text-xs text-slate-400">{lang==="hi" ? "क्या खाएं और अपनाएं" : "Shu Khavun ane Apnavun"}</p>
+                    <p className="text-xs text-slate-400">{lang==="hi" ? "क्या खाएं और अपनाएं" : "શું ખાવું અને અપનાવવું"}</p>
                   </div>
                 </div>
-                <div className="space-y-4">
-                  {selected.pathya.map((sec,i) => (
-                    <div key={i}>
-                      <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1.5">{cl(sec.category)}</p>
-                      <ul className="space-y-1">
-                        {getItems(sec).map((item,j) => (
-                          <li key={j} className="text-sm text-slate-700 flex items-start gap-1.5">
-                            <span className="text-emerald-400 mt-0.5 shrink-0">•</span>{item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
+                <ul className="space-y-2">
+                  {selected.pathya.flatMap((sec) =>
+                    getItems(sec).map((item, j) => (
+                      <li key={j} className="text-sm text-slate-700 flex items-start gap-2">
+                        <span className="text-emerald-500 mt-0.5 shrink-0 font-bold">•</span>{item}
+                      </li>
+                    ))
+                  )}
+                </ul>
               </div>
 
               <div className="p-5 bg-red-50/30">
@@ -959,23 +1105,18 @@ export default function PathyaApathya() {
                   <span className="text-lg">❌</span>
                   <div>
                     <h3 className="font-bold text-slate-800">{apathyaTitle}</h3>
-                    <p className="text-xs text-slate-400">{lang==="hi" ? "क्या न खाएं" : "Shu Na Khavun"}</p>
+                    <p className="text-xs text-slate-400">{lang==="hi" ? "क्या न खाएं" : "શું ન ખાવું"}</p>
                   </div>
                 </div>
-                <div className="space-y-4">
-                  {selected.apathya.map((sec,i) => (
-                    <div key={i}>
-                      <p className="text-xs font-bold text-red-600 uppercase tracking-wider mb-1.5">{cl(sec.category)}</p>
-                      <ul className="space-y-1">
-                        {getItems(sec).map((item,j) => (
-                          <li key={j} className="text-sm text-slate-700 flex items-start gap-1.5">
-                            <span className="text-red-400 mt-0.5 shrink-0">•</span>{item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
+                <ul className="space-y-2">
+                  {selected.apathya.flatMap((sec) =>
+                    getItems(sec).map((item, j) => (
+                      <li key={j} className="text-sm text-slate-700 flex items-start gap-2">
+                        <span className="text-red-400 mt-0.5 shrink-0 font-bold">•</span>{item}
+                      </li>
+                    ))
+                  )}
+                </ul>
               </div>
             </div>
           </div>
