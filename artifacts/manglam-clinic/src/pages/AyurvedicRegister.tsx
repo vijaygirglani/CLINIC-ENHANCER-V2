@@ -9,16 +9,7 @@ import {
 import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Bell, X, Clock, AlertTriangle,
-  Hourglass, CheckCircle2, WalletCards,
 } from "lucide-react";
-
-// ── Pending Fees helpers ──────────────────────────────────────────────
-const PENDING_KEY = "manglam_pending_fees";
-interface PendingEntry { patientId: number; name: string; mobile: string; fees: number; date: string; markedAt: string; }
-function getPendingFees(): PendingEntry[] { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch { return []; } }
-function addPendingFee(entry: PendingEntry) { const list = getPendingFees().filter(e => e.patientId !== entry.patientId); list.push(entry); localStorage.setItem(PENDING_KEY, JSON.stringify(list)); }
-function removePendingFee(patientId: number) { const list = getPendingFees().filter(e => e.patientId !== patientId); localStorage.setItem(PENDING_KEY, JSON.stringify(list)); }
-function isPending(patientId: number): boolean { return getPendingFees().some(e => e.patientId === patientId); }
 import { exportToExcel } from "@/lib/export";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -52,11 +43,7 @@ export default function AyurvedicRegister() {
   const [printPatient, setPrintPatient] = useState<Patient | null>(null);
   const [reminders, setReminders] = useState<FollowUpReminder[]>([]);
   const [showReminders, setShowReminders] = useState(true);
-  const [pendingFees, setPendingFees] = useState<PendingEntry[]>([]);
-  const [showPending, setShowPending] = useState(true);
   const { toast } = useToast();
-
-  const refreshPending = () => setPendingFees(getPendingFees());
 
   const refresh = useCallback(() => {
     setStats(getAyurvedicDailyStats(selectedDate));
@@ -64,7 +51,7 @@ export default function AyurvedicRegister() {
     setReminders(getFollowUpReminders());
   }, [selectedDate]);
 
-  useEffect(() => { refresh(); refreshPending(); }, [refresh]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   const editForm = useForm({ resolver: zodResolver(editSchema), values: editingPatient || {} });
 
@@ -103,17 +90,6 @@ export default function AyurvedicRegister() {
     deletePatient(id);
     toast({ title: "Deleted", description: "Patient record deleted." });
     refresh();
-  };
-
-  const handleTogglePending = (p: Patient) => {
-    if (isPending(p.id)) {
-      removePendingFee(p.id);
-      toast({ title: "Marked as Paid", description: `${p.name}'s fees cleared from pending.` });
-    } else {
-      addPendingFee({ patientId: p.id, name: p.name, mobile: p.mobile, fees: p.fees || 0, date: p.visitDate, markedAt: new Date().toISOString() });
-      toast({ title: "Marked as Pending", description: `₹${p.fees || 0} pending for ${p.name}.` });
-    }
-    refreshPending();
   };
 
   const overdueReminders = reminders.filter(r => r.daysOverdue > 0);
@@ -185,7 +161,6 @@ export default function AyurvedicRegister() {
                   <th className="px-4 py-3 font-semibold text-slate-600">Complaint</th>
                   <th className="px-4 py-3 font-semibold text-slate-600">Treatment</th>
                   <th className="px-4 py-3 font-semibold text-slate-600 text-right">Fees</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600 text-center">Pending</th>
                   <th className="px-4 py-3 font-semibold text-slate-600 text-center">Actions</th>
                 </tr>
               </thead>
@@ -209,28 +184,7 @@ export default function AyurvedicRegister() {
                         {p.complaint || "-"}
                       </td>
                       <td className="px-4 py-3 max-w-[160px] truncate text-slate-600">{p.treatment || "-"}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`font-bold ${isPending(p.id) ? "text-amber-500" : "text-slate-900"}`}>
-                          {p.fees ? `₹${p.fees}` : "-"}
-                        </span>
-                        {isPending(p.id) && (
-                          <span className="ml-1 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">PENDING</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => handleTogglePending(p)}
-                          title={isPending(p.id) ? "Mark as Paid" : "Mark as Pending"}
-                          className={`p-1.5 rounded-lg transition-colors ${
-                            isPending(p.id)
-                              ? "bg-amber-100 text-amber-600 hover:bg-green-100 hover:text-green-600"
-                              : "text-slate-300 hover:bg-amber-50 hover:text-amber-500"
-                          }`}>
-                          {isPending(p.id)
-                            ? <Hourglass className="w-4 h-4" />
-                            : <Hourglass className="w-4 h-4" />}
-                        </button>
-                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-900">{p.fees ? `₹${p.fees}` : "-"}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => { setPrintPatient(p); setTimeout(() => printPatientPrescription(p), 50); }}
@@ -251,7 +205,7 @@ export default function AyurvedicRegister() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="px-6 py-16 text-center">
+                    <td colSpan={7} className="px-6 py-16 text-center">
                       <div className="flex flex-col items-center justify-center text-slate-400">
                         <FileText className="w-12 h-12 mb-3 text-slate-300" />
                         <p className="text-base font-medium">No Ayurvedic patients for this date</p>
@@ -263,80 +217,6 @@ export default function AyurvedicRegister() {
               </tbody>
             </table>
           </div>
-        </div>
-
-        {/* ── PENDING FEES PANEL ── */}
-        <div className="medical-card overflow-hidden">
-          <button onClick={() => setShowPending(v => !v)}
-            className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-amber-50/40 transition-colors">
-            <div className="flex items-center gap-2">
-              <WalletCards className="w-5 h-5 text-amber-500" />
-              <span className="font-semibold text-slate-800">Pending Fees</span>
-              {pendingFees.length > 0 && (
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{pendingFees.length}</span>
-              )}
-              {pendingFees.length > 0 && (
-                <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
-                  Total: ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
-                </span>
-              )}
-            </div>
-            {showPending ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-          </button>
-          {showPending && (
-            <div className="border-t border-amber-100">
-              {pendingFees.length === 0 ? (
-                <div className="px-6 py-10 text-center text-slate-400">
-                  <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-300" />
-                  <p className="text-sm font-medium">No pending fees</p>
-                  <p className="text-xs mt-1">Use the ⏳ button in the table to mark fees as pending</p>
-                </div>
-              ) : (
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-amber-50">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold text-slate-500">#</th>
-                      <th className="px-4 py-3 font-semibold text-slate-500">Patient</th>
-                      <th className="px-4 py-3 font-semibold text-slate-500">Visit Date</th>
-                      <th className="px-4 py-3 font-semibold text-slate-500 text-right">Pending Amount</th>
-                      <th className="px-4 py-3 font-semibold text-slate-500 text-center">Mark Paid</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-amber-50">
-                    {pendingFees.map((e, i) => (
-                      <tr key={e.patientId} className="hover:bg-amber-50/40 transition-colors">
-                        <td className="px-4 py-3 text-slate-400 font-medium">{i + 1}</td>
-                        <td className="px-4 py-3">
-                          <p className="font-bold text-slate-900">{e.name}</p>
-                          <p className="text-xs font-mono text-slate-400">{e.mobile}</p>
-                        </td>
-                        <td className="px-4 py-3 text-slate-600 text-xs">
-                          {format(new Date(e.date + "T00:00:00"), "dd MMM yyyy")}
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold text-amber-600 text-base">₹{e.fees}</td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => { removePendingFee(e.patientId); refreshPending(); toast({ title: "Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
-                            className="flex items-center gap-1.5 mx-auto px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 font-semibold text-xs hover:bg-emerald-200 transition-colors border border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Paid
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-amber-50 border-t border-amber-200">
-                    <tr>
-                      <td colSpan={3} className="px-4 py-3 font-bold text-slate-700">Total Pending</td>
-                      <td className="px-4 py-3 text-right font-bold text-amber-600 text-base">
-                        ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
-                      </td>
-                      <td />
-                    </tr>
-                  </tfoot>
-                </table>
-              )}
-            </div>
-          )}
         </div>
 
         {/* ── FOLLOW-UP REMINDERS (moved below patient table) ── */}
