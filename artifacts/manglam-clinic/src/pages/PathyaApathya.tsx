@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { Printer, Search, BookOpen, ChevronDown, ChevronRight, Share2 } from "lucide-react";
+import { Printer, Search, BookOpen, ChevronDown, ChevronRight, Share2, User, X } from "lucide-react";
 import { format } from "date-fns";
 
 type Lang = "gu" | "hi";
@@ -50,6 +50,101 @@ const GROUP_ORDER = [
   "Liver & Metabolic","Thyroid & Hormonal","Mental & Lifestyle","Sexual Health",
   "Eye Disorders","Panchakarma","Seasonal (Ritucharya)","Geriatric",
 ];
+
+// ── Complaint → Disease ID mapping ──────────────────────────────────────────
+const COMPLAINT_MAP: { keywords: string[]; id: string }[] = [
+  { keywords: ["amlapitta","acid","hyperacidity","reflux","acidity"],        id: "amlapitta" },
+  { keywords: ["ajirna","indigestion","apach","dyspepsia"],                   id: "ajirna" },
+  { keywords: ["vibandha","constipation","kabaj","kabajiyat"],                id: "vibandha" },
+  { keywords: ["atisara","diarrhea","dast","loose motion","zaada"],           id: "atisara" },
+  { keywords: ["grahani","ibs","malabsorption"],                              id: "grahani" },
+  { keywords: ["adhmana","gas","bloating","afro","flatulence"],               id: "adhmana" },
+  { keywords: ["arsha","piles","bawasir","hemorrhoid"],                       id: "arsha" },
+  { keywords: ["kasa","cough","khansi","uchras"],                             id: "kasa" },
+  { keywords: ["pratishyaya","cold","rhinitis","shardi","nasal"],             id: "pratishyaya" },
+  { keywords: ["shwasa","asthma","dam","breathin","wheezing"],                id: "shwasa" },
+  { keywords: ["madhumeha","diabetes","sugar","diabetic"],                    id: "madhumeha" },
+  { keywords: ["sthoulya","obesity","weight","motapa","fat"],                 id: "sthoulya" },
+  { keywords: ["hypertension","high bp","blood pressure","bp high"],          id: "hypertension" },
+  { keywords: ["sandhivata","osteoarthritis","joint pain","sandi"],           id: "sandhivata" },
+  { keywords: ["amavata","rheumatoid","ra ","amavat"],                        id: "amavata" },
+  { keywords: ["katishoola","back pain","kamar","lower back","kati"],         id: "katishoola" },
+  { keywords: ["dadru","tinea","fungal","ringworm","dad"],                    id: "dadru" },
+  { keywords: ["vicharchika","eczema","dermatitis","vichar"],                 id: "vicharchika" },
+  { keywords: ["kitibha","psoriasis","soraya","kitib"],                       id: "kitibha" },
+  { keywords: ["acne","pimple","khil","yauvana","muhase"],                    id: "yauvana-pidika" },
+  { keywords: ["sheetapitta","urticaria","hives","pitta","allergy rash"],     id: "sheetapitta" },
+  { keywords: ["khalitya","hair fall","hair loss","vaal","bald"],             id: "khalitya" },
+  { keywords: ["scabies","khaj","khaaj","itch"],                              id: "vicharchika" },
+  { keywords: ["boil","furuncle","abscess","phoda"],                          id: "dadru" },
+  { keywords: ["kashtartava","dysmenorrhea","masik","painful period"],        id: "kashtartava" },
+  { keywords: ["pcod","pcos","polycystic"],                                   id: "pcod" },
+  { keywords: ["shweta pradara","leucorrhea","white discharge","safed"],      id: "shweta-pradara" },
+  { keywords: ["child cold","recurrent cold","bal shardi","worm"],            id: "bal-shardi" },
+  { keywords: ["mutrakriccha","burning urin","urine burn","mutra"],           id: "mutrakriccha" },
+  { keywords: ["ashmari","kidney stone","stone","pathri","calculi"],          id: "ashmari" },
+  { keywords: ["migraine","ardhavabhedaka","headache","aadhashishi"],         id: "migraine" },
+  { keywords: ["mouth ulcer","mukhapaka","ulcer","chhala","aphthous"],        id: "mukha-paka" },
+  { keywords: ["sinusitis","sinus","dushta pratishyaya"],                     id: "sinusitis" },
+  { keywords: ["tonsil","throat","tonsillitis"],                              id: "pratishyaya" },
+  { keywords: ["fatty liver","liver","yakrit"],                               id: "fatty-liver" },
+  { keywords: ["kamala","jaundice","pilyia","yellow"],                        id: "kamala" },
+  { keywords: ["pandu","anemia","anaemia","lohini unap","blood deficiency"],  id: "pandu" },
+  { keywords: ["hypothyroid","thyroid","thyro"],                              id: "hypothyroidism" },
+  { keywords: ["nidranasha","insomnia","sleep","nidra"],                      id: "nidranasha" },
+  { keywords: ["chinta","anxiety","stress","tension","tanav"],                id: "chinta" },
+  { keywords: ["depression","depresion","udas"],                              id: "depression" },
+  { keywords: ["shukra","semen","sexual weakness","napuns"],                  id: "shukra-kshaya" },
+  { keywords: ["erectile","ed ","impotence","napunsak"],                      id: "erectile-dysfunction" },
+  { keywords: ["eye strain","aankh","netra","vision"],                        id: "eye-strain" },
+  { keywords: ["conjunctivitis","pink eye","aankh aavi"],                     id: "conjunctivitis" },
+];
+
+function detectDiseaseFromComplaint(complaint: string): string | null {
+  if (!complaint) return null;
+  const c = complaint.toLowerCase();
+  for (const entry of COMPLAINT_MAP) {
+    if (entry.keywords.some(k => c.includes(k))) return entry.id;
+  }
+  return null;
+}
+
+interface PatientRecord {
+  id: number;
+  name: string;
+  mobile: string;
+  complaint?: string;
+  complaintCode?: string;
+  treatment?: string;
+  visitDate: string;
+  age?: number;
+  address?: string;
+}
+
+function getPatientRecords(): PatientRecord[] {
+  try { return JSON.parse(localStorage.getItem("mc_patients") || "[]"); }
+  catch { return []; }
+}
+
+function searchPatients(query: string): PatientRecord[] {
+  if (!query || query.length < 2) return [];
+  const q = query.toLowerCase();
+  const all = getPatientRecords();
+  // Deduplicate by mobile — keep most recent visit per patient
+  const byMobile = new Map<string, PatientRecord>();
+  for (const p of all) {
+    const existing = byMobile.get(p.mobile);
+    if (!existing || p.visitDate > existing.visitDate) byMobile.set(p.mobile, p);
+  }
+  return Array.from(byMobile.values())
+    .filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.mobile.toLowerCase().includes(q) ||
+      (p.complaint || "").toLowerCase().includes(q)
+    )
+    .sort((a, b) => b.visitDate.localeCompare(a.visitDate))
+    .slice(0, 8);
+}
 
 const diseases: Disease[] = [
   {
@@ -897,6 +992,55 @@ export default function PathyaApathya() {
   const [selected, setSelected]       = useState<Disease>(diseases[0]);
   const [openGroups, setOpenGroups]   = useState<Set<string>>(new Set(["Digestive Disorders"]));
 
+  // ── Patient search states ──────────────────────────────────────────────────
+  const [ptQuery, setPtQuery]           = useState("");
+  const [ptResults, setPtResults]       = useState<PatientRecord[]>([]);
+  const [showPtDrop, setShowPtDrop]     = useState(false);
+  const [loadedPatient, setLoadedPatient] = useState<PatientRecord | null>(null);
+  const ptRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ptRef.current && !ptRef.current.contains(e.target as Node)) setShowPtDrop(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const handlePtSearch = (q: string) => {
+    setPtQuery(q);
+    if (q.length >= 2) {
+      const results = searchPatients(q);
+      setPtResults(results);
+      setShowPtDrop(results.length > 0);
+    } else {
+      setPtResults([]);
+      setShowPtDrop(false);
+    }
+  };
+
+  const handleSelectPatient = (p: PatientRecord) => {
+    setPatientName(p.name);
+    setLoadedPatient(p);
+    setPtQuery(p.name);
+    setShowPtDrop(false);
+    // Auto-detect disease from complaint
+    const combined = `${p.complaint || ""} ${p.complaintCode || ""}`;
+    const detectedId = detectDiseaseFromComplaint(combined);
+    if (detectedId) {
+      const match = diseases.find(d => d.id === detectedId);
+      if (match) {
+        setSelected(match);
+        setOpenGroups(prev => new Set([...prev, match.group]));
+      }
+    }
+  };
+
+  const clearPatient = () => {
+    setPtQuery(""); setPatientName(""); setLoadedPatient(null);
+    setPtResults([]); setShowPtDrop(false);
+  };
+
   const toggleGroup = (g: string) => setOpenGroups(prev => {
     const n = new Set(prev); n.has(g) ? n.delete(g) : n.add(g); return n;
   });
@@ -1021,10 +1165,97 @@ export default function PathyaApathya() {
                 ગુ — Gujarati
               </button>
             </div>
+
+            {/* ── Patient Smart Search ── */}
             <div>
-              <label className="text-xs font-semibold text-slate-500 block mb-1">Patient Name (Optional)</label>
-              <input value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="e.g. Rajesh Shah"
-                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-amber-400 text-slate-800 text-sm" />
+              <label className="text-xs font-semibold text-slate-600 block mb-1.5 flex items-center gap-1.5">
+                <User className="w-3 h-3"/> {lang === "gu" ? "દર્દી શોધો (નામ / Mobile)" : "दर्दी खोजें (नाम / Mobile)"}
+              </label>
+              <div ref={ptRef} className="relative">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                  <input
+                    value={ptQuery}
+                    onChange={e => handlePtSearch(e.target.value)}
+                    onFocus={() => ptQuery.length >= 2 && setShowPtDrop(ptResults.length > 0)}
+                    placeholder={lang === "gu" ? "નામ અથવા Mobile..." : "नाम या Mobile नंबर..."}
+                    className="w-full pl-8 pr-8 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-slate-800 text-sm transition-all"
+                  />
+                  {ptQuery && (
+                    <button onClick={clearPatient} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <X className="w-3.5 h-3.5"/>
+                    </button>
+                  )}
+                </div>
+
+                {/* Loaded patient badge */}
+                {loadedPatient && (
+                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                        <User className="w-3.5 h-3.5 text-blue-600"/>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-blue-900 truncate">{loadedPatient.name}</p>
+                        <p className="text-[11px] text-blue-600 truncate">{loadedPatient.mobile}
+                          {loadedPatient.age ? ` · ${loadedPatient.age}y` : ""}
+                          {loadedPatient.address ? ` · ${loadedPatient.address}` : ""}
+                        </p>
+                        {loadedPatient.complaint && (
+                          <p className="text-[10px] text-blue-500 truncate mt-0.5">
+                            🏥 {loadedPatient.complaint.slice(0, 40)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Dropdown results */}
+                {showPtDrop && ptResults.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-y-auto z-[999]" style={{ maxHeight: "260px" }}>
+                    <div className="px-3 py-1.5 border-b border-slate-100 bg-slate-50">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                        {ptResults.length} {lang === "gu" ? "દર્દી મળ્યા" : "दर्दी मिले"} — Daily Register
+                      </span>
+                    </div>
+                    {ptResults.map((p, i) => {
+                      const detectedId = detectDiseaseFromComplaint(`${p.complaint || ""} ${p.complaintCode || ""}`);
+                      const matchedDisease = detectedId ? diseases.find(d => d.id === detectedId) : null;
+                      return (
+                        <button
+                          key={i}
+                          onMouseDown={e => { e.preventDefault(); handleSelectPatient(p); }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-50 last:border-0"
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                              <User className="w-3 h-3 text-primary"/>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 font-mono">{p.mobile}{p.age ? ` · ${p.age}y` : ""}</p>
+                              {p.complaint && (
+                                <p className="text-[10px] text-slate-400 truncate">
+                                  {p.visitDate} · {p.complaint.slice(0, 35)}
+                                </p>
+                              )}
+                              {matchedDisease && (
+                                <p className="text-[10px] font-semibold text-blue-600 mt-0.5">
+                                  🎯 {lang === "gu" ? matchedDisease.nameGu : matchedDisease.nameHi}
+                                </p>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-primary font-bold shrink-0 mt-1">Auto →</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
