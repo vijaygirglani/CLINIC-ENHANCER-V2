@@ -9,7 +9,115 @@ import {
 import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Bell, X, Clock, AlertTriangle,
+  Hourglass, CheckCircle2, WalletCards, MessageCircle, Send,
 } from "lucide-react";
+
+// ── WhatsApp Message Templates ────────────────────────────────────────
+const WA_TEMPLATES = [
+  {
+    id: "followup",
+    title: "Follow-up Reminder",
+    emoji: "🔔",
+    body: (name: string) =>
+`નમસ્તે ${name} 🙏
+આપની સારવારનું ફોલોઅપ ચેકઅપ બાકી છે. કૃપા કરીને સમયસર મુલાકાત લઈ સારવાર ચાલુ રાખશો.
+
+📍 મંગલમ હોસ્પિટલ
+Opp. Krishna Hotel, Pipaliya Char Rasta, Morbi`,
+  },
+  {
+    id: "medicine",
+    title: "Medicine Reminder",
+    emoji: "💊",
+    body: (name: string) =>
+`નમસ્તે ${name} 🙏
+આપની દવા નિયમિત ચાલુ રાખશો. દવા વચ્ચે બંધ ન કરશો જેથી સારવારનો સંપૂર્ણ લાભ મળી રહે.
+
+📍 મંગલમ હોસ્પિટલ, મોરબી`,
+  },
+  {
+    id: "appointment",
+    title: "Appointment Reminder",
+    emoji: "⏰",
+    body: (name: string) =>
+`નમસ્તે ${name} 🙏
+આપની મુલાકાતનો સમય આજે રાખવામાં આવ્યો છે. કૃપા કરીને સમયસર હાજર રહેશો.
+
+📍 મંગલમ હોસ્પિટલ, મોરબી`,
+  },
+  {
+    id: "suvarnaprashan",
+    title: "Suvarnaprashan Invitation",
+    emoji: "🌿",
+    body: (_name: string) =>
+`🌿 સુવર્ણપ્રાશન સંસ્કાર 🌿
+
+બાળકોની રોગપ્રતિકારક શક્તિ, બુદ્ધિ અને આરોગ્ય વિકાસ માટે વિશેષ આયુર્વેદિક સુવર્ણપ્રાશન કેમ્પ.
+
+📅 તારીખ: [તારીખ]
+⏰ સમય: [સમય]
+📍 મંગલમ હોસ્પિટલ, મોરબી`,
+  },
+  {
+    id: "freecamp",
+    title: "Free Checkup Camp",
+    emoji: "✅",
+    body: (_name: string) =>
+`નમસ્તે 🙏
+મંગલમ હોસ્પિટલ ખાતે નિઃશુલ્ક આયુર્વેદિક ચેકઅપ કેમ્પનું આયોજન કરવામાં આવ્યું છે.
+
+✅ નિઃશુલ્ક તપાસ
+✅ આયુર્વેદિક માર્ગદર્શન
+✅ આહાર-વિહાર સલાહ
+
+📍 મંગલમ હોસ્પિટલ, મોરબી`,
+  },
+  {
+    id: "seasonal",
+    title: "Seasonal Health Awareness",
+    emoji: "🌦️",
+    body: (_name: string) =>
+`🌿 ઋતુ બદલાતા શરદી, ઉધરસ, તાવ અને એલર્જીની સમસ્યાઓ વધી રહી છે.
+
+સમયસર સારવાર અને યોગ્ય આયુર્વેદિક માર્ગદર્શન માટે મુલાકાત લો.
+
+📍 મંગલમ હોસ્પિટલ, મોરબી`,
+  },
+  {
+    id: "diabetesbp",
+    title: "Diabetes / BP Follow-up",
+    emoji: "🩺",
+    body: (name: string) =>
+`નમસ્તે ${name} 🙏
+શુગર / બ્લડપ્રેશરની નિયમિત તપાસ અને દવા ચાલુ રાખવી જરૂરી છે.
+
+📍 મંગલમ હોસ્પિટલ, મોરબી`,
+  },
+  {
+    id: "thankyou",
+    title: "Thank You Message",
+    emoji: "🙏",
+    body: (name: string) =>
+`નમસ્તે ${name} 🙏
+મંગલમ હોસ્પિટલ પર વિશ્વાસ મુકવા બદલ આપનો ખૂબ આભાર.
+
+📍 મંગલમ હોસ્પિટલ, મોરબી`,
+  },
+  {
+    id: "custom",
+    title: "Custom Message",
+    emoji: "✏️",
+    body: (_name: string) => "",
+  },
+];
+
+// ── Pending Fees helpers ──────────────────────────────────────────────
+const PENDING_KEY = "manglam_pending_fees";
+interface PendingEntry { patientId: number; name: string; mobile: string; fees: number; date: string; markedAt: string; }
+function getPendingFees(): PendingEntry[] { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch { return []; } }
+function addPendingFee(entry: PendingEntry) { const list = getPendingFees().filter(e => e.patientId !== entry.patientId); list.push(entry); localStorage.setItem(PENDING_KEY, JSON.stringify(list)); }
+function removePendingFee(patientId: number) { const list = getPendingFees().filter(e => e.patientId !== patientId); localStorage.setItem(PENDING_KEY, JSON.stringify(list)); }
+function isPending(patientId: number): boolean { return getPendingFees().some(e => e.patientId === patientId); }
 import { exportToExcel } from "@/lib/export";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -43,7 +151,14 @@ export default function AyurvedicRegister() {
   const [printPatient, setPrintPatient] = useState<Patient | null>(null);
   const [reminders, setReminders] = useState<FollowUpReminder[]>([]);
   const [showReminders, setShowReminders] = useState(true);
+  const [pendingFees, setPendingFees] = useState<PendingEntry[]>([]);
+  const [showPending, setShowPending] = useState(true);
+  const [waPatient, setWaPatient] = useState<Patient | null>(null);
+  const [waTemplateId, setWaTemplateId] = useState("followup");
+  const [waCustomMsg, setWaCustomMsg] = useState("");
   const { toast } = useToast();
+
+  const refreshPending = () => setPendingFees(getPendingFees());
 
   const refresh = useCallback(() => {
     setStats(getAyurvedicDailyStats(selectedDate));
@@ -51,7 +166,7 @@ export default function AyurvedicRegister() {
     setReminders(getFollowUpReminders());
   }, [selectedDate]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refresh(); refreshPending(); }, [refresh]);
 
   const editForm = useForm({ resolver: zodResolver(editSchema), values: editingPatient || {} });
 
@@ -90,6 +205,43 @@ export default function AyurvedicRegister() {
     deletePatient(id);
     toast({ title: "Deleted", description: "Patient record deleted." });
     refresh();
+  };
+
+  const handleTogglePending = (p: Patient) => {
+    if (isPending(p.id)) {
+      removePendingFee(p.id);
+      toast({ title: "Marked as Paid", description: `${p.name}'s fees cleared from pending.` });
+    } else {
+      addPendingFee({ patientId: p.id, name: p.name, mobile: p.mobile, fees: p.fees || 0, date: p.visitDate, markedAt: new Date().toISOString() });
+      toast({ title: "Marked as Pending", description: `₹${p.fees || 0} pending for ${p.name}.` });
+    }
+    refreshPending();
+  };
+
+  const handleSendWhatsApp = () => {
+    if (!waPatient) return;
+    const template = WA_TEMPLATES.find(t => t.id === waTemplateId);
+    const msg = waTemplateId === "custom"
+      ? waCustomMsg
+      : template?.body(waPatient.name) || "";
+    if (!msg.trim()) {
+      toast({ title: "Empty message", description: "Please write a message before sending.", variant: "destructive" });
+      return;
+    }
+    // Clean mobile: remove leading zeros, spaces, dashes; add country code
+    let mobile = waPatient.mobile.replace(/\D/g, "");
+    if (mobile.startsWith("0")) mobile = mobile.slice(1);
+    if (mobile.length === 10) mobile = "91" + mobile;
+    const url = `https://wa.me/${mobile}?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
+    setWaPatient(null);
+    toast({ title: "Opening WhatsApp", description: `Message prepared for ${waPatient.name}` });
+  };
+
+  const waPreview = () => {
+    if (!waPatient) return "";
+    if (waTemplateId === "custom") return waCustomMsg;
+    return WA_TEMPLATES.find(t => t.id === waTemplateId)?.body(waPatient.name) || "";
   };
 
   const overdueReminders = reminders.filter(r => r.daysOverdue > 0);
@@ -161,6 +313,7 @@ export default function AyurvedicRegister() {
                   <th className="px-4 py-3 font-semibold text-slate-600">Complaint</th>
                   <th className="px-4 py-3 font-semibold text-slate-600">Treatment</th>
                   <th className="px-4 py-3 font-semibold text-slate-600 text-right">Fees</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600 text-center">Pending</th>
                   <th className="px-4 py-3 font-semibold text-slate-600 text-center">Actions</th>
                 </tr>
               </thead>
@@ -184,9 +337,35 @@ export default function AyurvedicRegister() {
                         {p.complaint || "-"}
                       </td>
                       <td className="px-4 py-3 max-w-[160px] truncate text-slate-600">{p.treatment || "-"}</td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-900">{p.fees ? `₹${p.fees}` : "-"}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`font-bold ${isPending(p.id) ? "text-amber-500" : "text-slate-900"}`}>
+                          {p.fees ? `₹${p.fees}` : "-"}
+                        </span>
+                        {isPending(p.id) && (
+                          <span className="ml-1 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">PENDING</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => handleTogglePending(p)}
+                          title={isPending(p.id) ? "Mark as Paid" : "Mark as Pending"}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            isPending(p.id)
+                              ? "bg-amber-100 text-amber-600 hover:bg-green-100 hover:text-green-600"
+                              : "text-slate-300 hover:bg-amber-50 hover:text-amber-500"
+                          }`}>
+                          {isPending(p.id)
+                            ? <Hourglass className="w-4 h-4" />
+                            : <Hourglass className="w-4 h-4" />}
+                        </button>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => { setWaPatient(p); setWaTemplateId("followup"); setWaCustomMsg(""); }}
+                            title="Send WhatsApp"
+                            className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors">
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
                           <button onClick={() => { setPrintPatient(p); setTimeout(() => printPatientPrescription(p), 50); }}
                             className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
                             <Printer className="w-4 h-4" />
@@ -205,7 +384,7 @@ export default function AyurvedicRegister() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="px-6 py-16 text-center">
+                    <td colSpan={8} className="px-6 py-16 text-center">
                       <div className="flex flex-col items-center justify-center text-slate-400">
                         <FileText className="w-12 h-12 mb-3 text-slate-300" />
                         <p className="text-base font-medium">No Ayurvedic patients for this date</p>
@@ -217,6 +396,80 @@ export default function AyurvedicRegister() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* ── PENDING FEES PANEL ── */}
+        <div className="medical-card overflow-hidden">
+          <button onClick={() => setShowPending(v => !v)}
+            className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-amber-50/40 transition-colors">
+            <div className="flex items-center gap-2">
+              <WalletCards className="w-5 h-5 text-amber-500" />
+              <span className="font-semibold text-slate-800">Pending Fees</span>
+              {pendingFees.length > 0 && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{pendingFees.length}</span>
+              )}
+              {pendingFees.length > 0 && (
+                <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                  Total: ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
+                </span>
+              )}
+            </div>
+            {showPending ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+          </button>
+          {showPending && (
+            <div className="border-t border-amber-100">
+              {pendingFees.length === 0 ? (
+                <div className="px-6 py-10 text-center text-slate-400">
+                  <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-300" />
+                  <p className="text-sm font-medium">No pending fees</p>
+                  <p className="text-xs mt-1">Use the ⏳ button in the table to mark fees as pending</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-amber-50">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold text-slate-500">#</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500">Patient</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500">Visit Date</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500 text-right">Pending Amount</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500 text-center">Mark Paid</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-amber-50">
+                    {pendingFees.map((e, i) => (
+                      <tr key={e.patientId} className="hover:bg-amber-50/40 transition-colors">
+                        <td className="px-4 py-3 text-slate-400 font-medium">{i + 1}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-900">{e.name}</p>
+                          <p className="text-xs font-mono text-slate-400">{e.mobile}</p>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 text-xs">
+                          {format(new Date(e.date + "T00:00:00"), "dd MMM yyyy")}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-amber-600 text-base">₹{e.fees}</td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => { removePendingFee(e.patientId); refreshPending(); toast({ title: "Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
+                            className="flex items-center gap-1.5 mx-auto px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 font-semibold text-xs hover:bg-emerald-200 transition-colors border border-emerald-200">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Paid
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-amber-50 border-t border-amber-200">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 font-bold text-slate-700">Total Pending</td>
+                      <td className="px-4 py-3 text-right font-bold text-amber-600 text-base">
+                        ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── FOLLOW-UP REMINDERS (moved below patient table) ── */}
@@ -330,6 +583,79 @@ export default function AyurvedicRegister() {
           )}
         </div>
       </div>
+
+      {/* ── WHATSAPP MESSAGE MODAL ── */}
+      {waPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-green-50 rounded-t-2xl">
+              <div className="w-9 h-9 rounded-xl bg-green-500 flex items-center justify-center shrink-0">
+                <MessageCircle className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-slate-900">Send WhatsApp</p>
+                <p className="text-xs text-slate-500 font-mono truncate">{waPatient.name} · {waPatient.mobile}</p>
+              </div>
+              <button onClick={() => setWaPatient(null)} className="text-slate-400 hover:text-slate-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+              {/* Template selector */}
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Select Message Template</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {WA_TEMPLATES.map(t => (
+                    <button key={t.id} onClick={() => { setWaTemplateId(t.id); setWaCustomMsg(""); }}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left text-sm font-medium transition-all ${
+                        waTemplateId === t.id
+                          ? "bg-green-50 border-green-400 text-green-800 shadow-sm"
+                          : "bg-white border-slate-200 text-slate-600 hover:border-green-300 hover:bg-green-50/40"
+                      }`}>
+                      <span className="text-base shrink-0">{t.emoji}</span>
+                      <span className="truncate text-xs">{t.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Message preview / custom editor */}
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  {waTemplateId === "custom" ? "Write Your Message" : "Message Preview"}
+                </p>
+                {waTemplateId === "custom" ? (
+                  <textarea
+                    value={waCustomMsg}
+                    onChange={e => setWaCustomMsg(e.target.value)}
+                    rows={8}
+                    placeholder="Type your custom message here..."
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-100 text-sm resize-none font-sans"
+                  />
+                ) : (
+                  <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
+                    {waPreview()}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
+              <button onClick={() => setWaPatient(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all text-sm">
+                Cancel
+              </button>
+              <button onClick={handleSendWhatsApp}
+                className="flex-1 py-2.5 rounded-xl bg-green-500 text-white font-bold hover:bg-green-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-500/25 text-sm">
+                <Send className="w-4 h-4" /> Send on WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── EDIT DIALOG ── */}
       <Dialog open={!!editingPatient} onOpenChange={open => !open && setEditingPatient(null)}>
