@@ -9,7 +9,16 @@ import {
 import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Bell, X, Clock, AlertTriangle,
+  Hourglass, CheckCircle2, WalletCards,
 } from "lucide-react";
+
+// ── Pending Fees helpers ──────────────────────────────────────────────
+const PENDING_KEY = "manglam_pending_fees";
+interface PendingEntry { patientId: number; name: string; mobile: string; fees: number; date: string; markedAt: string; }
+function getPendingFees(): PendingEntry[] { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch { return []; } }
+function addPendingFee(entry: PendingEntry) { const list = getPendingFees().filter(e => e.patientId !== entry.patientId); list.push(entry); localStorage.setItem(PENDING_KEY, JSON.stringify(list)); }
+function removePendingFee(patientId: number) { const list = getPendingFees().filter(e => e.patientId !== patientId); localStorage.setItem(PENDING_KEY, JSON.stringify(list)); }
+function isPending(patientId: number): boolean { return getPendingFees().some(e => e.patientId === patientId); }
 import { exportToExcel } from "@/lib/export";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -43,7 +52,11 @@ export default function AyurvedicRegister() {
   const [printPatient, setPrintPatient] = useState<Patient | null>(null);
   const [reminders, setReminders] = useState<FollowUpReminder[]>([]);
   const [showReminders, setShowReminders] = useState(true);
+  const [pendingFees, setPendingFees] = useState<PendingEntry[]>([]);
+  const [showPending, setShowPending] = useState(true);
   const { toast } = useToast();
+
+  const refreshPending = () => setPendingFees(getPendingFees());
 
   const refresh = useCallback(() => {
     setStats(getAyurvedicDailyStats(selectedDate));
@@ -51,7 +64,7 @@ export default function AyurvedicRegister() {
     setReminders(getFollowUpReminders());
   }, [selectedDate]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refresh(); refreshPending(); }, [refresh]);
 
   const editForm = useForm({ resolver: zodResolver(editSchema), values: editingPatient || {} });
 
@@ -92,6 +105,17 @@ export default function AyurvedicRegister() {
     refresh();
   };
 
+  const handleTogglePending = (p: Patient) => {
+    if (isPending(p.id)) {
+      removePendingFee(p.id);
+      toast({ title: "Marked as Paid", description: `${p.name}'s fees cleared from pending.` });
+    } else {
+      addPendingFee({ patientId: p.id, name: p.name, mobile: p.mobile, fees: p.fees || 0, date: p.visitDate, markedAt: new Date().toISOString() });
+      toast({ title: "Marked as Pending", description: `₹${p.fees || 0} pending for ${p.name}.` });
+    }
+    refreshPending();
+  };
+
   const overdueReminders = reminders.filter(r => r.daysOverdue > 0);
   const todayReminders = reminders.filter(r => r.daysOverdue === 0);
   const upcomingReminders = reminders.filter(r => r.daysOverdue < 0);
@@ -127,78 +151,6 @@ export default function AyurvedicRegister() {
           </div>
         </div>
 
-        {/* ── FOLLOW-UP REMINDERS ── */}
-        {showReminders && reminders.length > 0 && (
-          <div className="rounded-2xl border overflow-hidden">
-            <div className={`flex items-center justify-between px-4 py-3 ${
-              overdueReminders.length > 0 ? "bg-red-50 border-red-200" :
-              todayReminders.length > 0 ? "bg-amber-50 border-amber-200" :
-              "bg-blue-50 border-blue-200"
-            }`}>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Bell className={`w-4 h-4 ${overdueReminders.length > 0 ? "text-red-500" : todayReminders.length > 0 ? "text-amber-500" : "text-blue-500"}`} />
-                <span className="font-semibold text-sm text-slate-800">Follow-up Reminders</span>
-                {overdueReminders.length > 0 && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-500 text-white">{overdueReminders.length} overdue</span>
-                )}
-                {todayReminders.length > 0 && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{todayReminders.length} today</span>
-                )}
-                {upcomingReminders.length > 0 && (
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-400 text-white">{upcomingReminders.length} upcoming</span>
-                )}
-              </div>
-              <button onClick={() => setShowReminders(false)} className="p-1 text-slate-400 hover:text-slate-600 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="divide-y divide-slate-100 bg-white">
-              {reminders.map((r, i) => {
-                const isOverdue = r.daysOverdue > 0;
-                const isToday = r.daysOverdue === 0;
-                return (
-                  <div key={i} className="flex items-center gap-4 px-4 py-2.5 hover:bg-slate-50">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-                      isOverdue ? "bg-red-100" : isToday ? "bg-amber-100" : "bg-blue-100"
-                    }`}>
-                      {isOverdue
-                        ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-                        : isToday
-                          ? <Bell className="w-3.5 h-3.5 text-amber-500" />
-                          : <Clock className="w-3.5 h-3.5 text-blue-400" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-slate-900 truncate">{r.patient.name}</p>
-                      <p className="text-xs font-mono text-slate-400">{r.patient.mobile}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-xs font-bold ${isOverdue ? "text-red-600" : isToday ? "text-amber-600" : "text-blue-500"}`}>
-                        {isOverdue ? `${r.daysOverdue}d overdue` : isToday ? "Due today" : `In ${Math.abs(r.daysOverdue)}d`}
-                      </p>
-                      <p className="text-xs text-slate-400">{format(new Date(r.followUpDate + "T00:00:00"), "dd MMM")}</p>
-                    </div>
-                    <button
-                      onClick={() => setSelectedDate(r.patient.visitDate)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 font-semibold hover:bg-emerald-100 transition-colors shrink-0 border border-emerald-200">
-                      View
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Re-show reminders if dismissed */}
-        {!showReminders && reminders.length > 0 && (
-          <button onClick={() => setShowReminders(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-100 transition-colors">
-            <Bell className="w-4 h-4" />
-            {reminders.length} follow-up reminder{reminders.length > 1 ? "s" : ""} — tap to show
-          </button>
-        )}
-
         {/* ── STATS CARDS ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="medical-card p-5 flex items-center gap-4 bg-gradient-to-br from-white to-emerald-50/50">
@@ -233,6 +185,7 @@ export default function AyurvedicRegister() {
                   <th className="px-4 py-3 font-semibold text-slate-600">Complaint</th>
                   <th className="px-4 py-3 font-semibold text-slate-600">Treatment</th>
                   <th className="px-4 py-3 font-semibold text-slate-600 text-right">Fees</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600 text-center">Pending</th>
                   <th className="px-4 py-3 font-semibold text-slate-600 text-center">Actions</th>
                 </tr>
               </thead>
@@ -256,7 +209,28 @@ export default function AyurvedicRegister() {
                         {p.complaint || "-"}
                       </td>
                       <td className="px-4 py-3 max-w-[160px] truncate text-slate-600">{p.treatment || "-"}</td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-900">{p.fees ? `₹${p.fees}` : "-"}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`font-bold ${isPending(p.id) ? "text-amber-500" : "text-slate-900"}`}>
+                          {p.fees ? `₹${p.fees}` : "-"}
+                        </span>
+                        {isPending(p.id) && (
+                          <span className="ml-1 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">PENDING</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => handleTogglePending(p)}
+                          title={isPending(p.id) ? "Mark as Paid" : "Mark as Pending"}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            isPending(p.id)
+                              ? "bg-amber-100 text-amber-600 hover:bg-green-100 hover:text-green-600"
+                              : "text-slate-300 hover:bg-amber-50 hover:text-amber-500"
+                          }`}>
+                          {isPending(p.id)
+                            ? <Hourglass className="w-4 h-4" />
+                            : <Hourglass className="w-4 h-4" />}
+                        </button>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => { setPrintPatient(p); setTimeout(() => printPatientPrescription(p), 50); }}
@@ -277,7 +251,7 @@ export default function AyurvedicRegister() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="px-6 py-16 text-center">
+                    <td colSpan={8} className="px-6 py-16 text-center">
                       <div className="flex flex-col items-center justify-center text-slate-400">
                         <FileText className="w-12 h-12 mb-3 text-slate-300" />
                         <p className="text-base font-medium">No Ayurvedic patients for this date</p>
@@ -290,6 +264,146 @@ export default function AyurvedicRegister() {
             </table>
           </div>
         </div>
+
+        {/* ── PENDING FEES PANEL ── */}
+        <div className="medical-card overflow-hidden">
+          <button onClick={() => setShowPending(v => !v)}
+            className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-amber-50/40 transition-colors">
+            <div className="flex items-center gap-2">
+              <WalletCards className="w-5 h-5 text-amber-500" />
+              <span className="font-semibold text-slate-800">Pending Fees</span>
+              {pendingFees.length > 0 && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{pendingFees.length}</span>
+              )}
+              {pendingFees.length > 0 && (
+                <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                  Total: ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
+                </span>
+              )}
+            </div>
+            {showPending ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+          </button>
+          {showPending && (
+            <div className="border-t border-amber-100">
+              {pendingFees.length === 0 ? (
+                <div className="px-6 py-10 text-center text-slate-400">
+                  <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-300" />
+                  <p className="text-sm font-medium">No pending fees</p>
+                  <p className="text-xs mt-1">Use the ⏳ button in the table to mark fees as pending</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-amber-50">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold text-slate-500">#</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500">Patient</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500">Visit Date</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500 text-right">Pending Amount</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500 text-center">Mark Paid</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-amber-50">
+                    {pendingFees.map((e, i) => (
+                      <tr key={e.patientId} className="hover:bg-amber-50/40 transition-colors">
+                        <td className="px-4 py-3 text-slate-400 font-medium">{i + 1}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-900">{e.name}</p>
+                          <p className="text-xs font-mono text-slate-400">{e.mobile}</p>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 text-xs">
+                          {format(new Date(e.date + "T00:00:00"), "dd MMM yyyy")}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-amber-600 text-base">₹{e.fees}</td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => { removePendingFee(e.patientId); refreshPending(); toast({ title: "Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
+                            className="flex items-center gap-1.5 mx-auto px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 font-semibold text-xs hover:bg-emerald-200 transition-colors border border-emerald-200">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Paid
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-amber-50 border-t border-amber-200">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 font-bold text-slate-700">Total Pending</td>
+                      <td className="px-4 py-3 text-right font-bold text-amber-600 text-base">
+                        ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── FOLLOW-UP REMINDERS (moved below patient table) ── */}
+        {showReminders && reminders.length > 0 && (
+          <div className="rounded-2xl border overflow-hidden">
+            <div className={`flex items-center justify-between px-4 py-3 ${
+              overdueReminders.length > 0 ? "bg-red-50 border-red-200" :
+              todayReminders.length > 0 ? "bg-amber-50 border-amber-200" :
+              "bg-blue-50 border-blue-200"
+            }`}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Bell className={`w-4 h-4 ${overdueReminders.length > 0 ? "text-red-500" : todayReminders.length > 0 ? "text-amber-500" : "text-blue-500"}`} />
+                <span className="font-semibold text-sm text-slate-800">Follow-up Reminders</span>
+                {overdueReminders.length > 0 && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-500 text-white">{overdueReminders.length} overdue</span>
+                )}
+                {todayReminders.length > 0 && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{todayReminders.length} today</span>
+                )}
+                {upcomingReminders.length > 0 && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-400 text-white">{upcomingReminders.length} upcoming</span>
+                )}
+              </div>
+              <button onClick={() => setShowReminders(false)} className="p-1 text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="divide-y divide-slate-100 bg-white">
+              {reminders.map((r, i) => {
+                const isOverdue = r.daysOverdue > 0;
+                const isToday = r.daysOverdue === 0;
+                return (
+                  <div key={i} className="flex items-center gap-4 px-4 py-2.5 hover:bg-slate-50">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                      isOverdue ? "bg-red-100" : isToday ? "bg-amber-100" : "bg-blue-100"
+                    }`}>
+                      {isOverdue ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                        : isToday ? <Bell className="w-3.5 h-3.5 text-amber-500" />
+                        : <Clock className="w-3.5 h-3.5 text-blue-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-slate-900 truncate">{r.patient.name}</p>
+                      <p className="text-xs font-mono text-slate-400">{r.patient.mobile}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-xs font-bold ${isOverdue ? "text-red-600" : isToday ? "text-amber-600" : "text-blue-500"}`}>
+                        {isOverdue ? `${r.daysOverdue}d overdue` : isToday ? "Due today" : `In ${Math.abs(r.daysOverdue)}d`}
+                      </p>
+                      <p className="text-xs text-slate-400">{format(new Date(r.followUpDate + "T00:00:00"), "dd MMM")}</p>
+                    </div>
+                    <button onClick={() => setSelectedDate(r.patient.visitDate)}
+                      className="text-xs px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 font-semibold hover:bg-emerald-100 transition-colors shrink-0 border border-emerald-200">
+                      View
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {!showReminders && reminders.length > 0 && (
+          <button onClick={() => setShowReminders(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-100 transition-colors">
+            <Bell className="w-4 h-4" />
+            {reminders.length} follow-up reminder{reminders.length > 1 ? "s" : ""} — tap to show
+          </button>
+        )}
 
         {/* ── DAY-WISE SUMMARY ── */}
         <div className="medical-card overflow-hidden">
