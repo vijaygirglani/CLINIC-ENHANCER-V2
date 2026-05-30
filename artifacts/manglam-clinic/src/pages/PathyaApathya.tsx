@@ -898,14 +898,33 @@ export default function PathyaApathya() {
     }
   };
 
+  const extractJsonFromTxt = (text: string): string => {
+    // Extract all ```json ... ``` blocks from notepad/txt files
+    const blocks: any[] = [];
+    const regex = /```json\s*([\s\S]*?)```/g;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1].trim());
+        if (Array.isArray(parsed)) blocks.push(...parsed);
+        else blocks.push(parsed);
+      } catch { /* skip invalid blocks */ }
+    }
+    if (blocks.length > 0) return JSON.stringify(blocks);
+    // Fallback: try treating entire file as JSON
+    return text;
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      setImportJson(text);
-      handleImport(text);
+      const raw = ev.target?.result as string;
+      const isTxt = file.name.toLowerCase().endsWith(".txt") || file.type === "text/plain";
+      const jsonText = isTxt ? extractJsonFromTxt(raw) : raw;
+      setImportJson(jsonText);
+      handleImport(jsonText);
     };
     reader.readAsText(file);
     e.target.value = "";
@@ -1187,7 +1206,7 @@ export default function PathyaApathya() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
-                {lang==="gu" ? "JSON Import — નવો રોગ ઉમેરો" : "JSON Import — नया रोग जोड़ें"}
+                {lang==="gu" ? "Import — નવો રોગ ઉમેરો" : "Import — नया रोग जोड़ें"}
               </button>
               {importedDiseases.length > 0 && (
                 <p className="text-center text-[10px] text-blue-500 mt-1.5 font-semibold">
@@ -1205,11 +1224,11 @@ export default function PathyaApathya() {
               {/* Modal header */}
               <div className="flex items-center justify-between px-6 py-4 bg-blue-600 text-white">
                 <div>
-                  <h3 className="font-bold text-lg">📥 JSON Import — Disease Data</h3>
+                  <h3 className="font-bold text-lg">📥 Import — Disease Data</h3>
                   <p className="text-blue-200 text-xs mt-0.5">
                     {lang==="gu"
-                      ? "AI-generated JSON ફાઇલ upload કરો અને રોગ automatically add થશે"
-                      : "AI-generated JSON file upload करें और रोग automatically add होंगे"}
+                      ? "AI Notepad (.txt) અથવા JSON ફાઇલ upload કરો — રોગ automatically add થશે"
+                      : "AI Notepad (.txt) या JSON file upload करें — रोग automatically add होंगे"}
                   </p>
                 </div>
                 <button onClick={() => setShowImportPanel(false)} className="text-white/80 hover:text-white">
@@ -1222,13 +1241,13 @@ export default function PathyaApathya() {
                 {/* Step 1 — File Upload */}
                 <div className="border-2 border-dashed border-blue-200 rounded-2xl p-6 text-center bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer"
                   onClick={() => fileInputRef.current?.click()}>
-                  <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileUpload}/>
+                  <input ref={fileInputRef} type="file" accept=".json,.txt,application/json,text/plain" className="hidden" onChange={handleFileUpload}/>
                   <div className="text-4xl mb-2">📂</div>
                   <p className="font-bold text-blue-800 text-sm">
-                    {lang==="gu" ? "JSON ફાઇલ Select કરો" : "JSON File Select करें"}
+                    {lang==="gu" ? "Notepad (.txt) અથવા JSON ફાઇલ Select કરો" : "Notepad (.txt) या JSON File Select करें"}
                   </p>
                   <p className="text-blue-500 text-xs mt-1">
-                    {lang==="gu" ? "Click કરો અથવા JSON file drag કરો" : "Click करें या JSON file drag करें"}
+                    {lang==="gu" ? "Click કરો — .txt અથવા .json બંને support" : "Click करें — .txt और .json दोनों support"}
                   </p>
                 </div>
 
