@@ -857,6 +857,14 @@ function parseJsonDisease(raw: any): Disease | null {
 }
 const GROUP_LABEL = { hi: "रोग सूची", gu: "રોગ સૂચિ" };
 
+function loadHiddenDiseaseIds(): string[] {
+  try { return JSON.parse(localStorage.getItem("pa_hidden_diseases") || "[]"); }
+  catch { return []; }
+}
+function saveHiddenDiseaseIds(ids: string[]) {
+  localStorage.setItem("pa_hidden_diseases", JSON.stringify(ids));
+}
+
 function formatMobile(m: string): string {
   const d = m.replace(/\D/g, "");
   if (d.length === 10) return `91${d}`;
@@ -886,7 +894,12 @@ export default function PathyaApathya() {
   const [importMsg, setImportMsg]               = useState<{ type: "ok"|"err"; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const allDiseases = [...diseases, ...importedDiseases];
+  // ─── Delete mode ──────────────────────────────────────────────────────────
+  const [deleteMode, setDeleteMode]             = useState(false);
+  const [hiddenIds, setHiddenIds]               = useState<string[]>(() => loadHiddenDiseaseIds());
+  const [confirmDelete, setConfirmDelete]       = useState<Disease | null>(null);
+
+  const allDiseases = [...diseases, ...importedDiseases].filter(d => !hiddenIds.includes(d.id));
 
   const handleImport = (jsonText: string) => {
     setImportMsg(null);
@@ -983,6 +996,29 @@ export default function PathyaApathya() {
     setImportedDiseases(newList);
     saveImportedDiseases(newList);
     if (selected.id === id) setSelected(diseases[0]);
+  };
+
+  const deleteDisease = (disease: Disease) => {
+    const isImported = importedDiseases.find(x => x.id === disease.id);
+    if (isImported) {
+      removeImported(disease.id);
+    } else {
+      const newHidden = [...hiddenIds, disease.id];
+      setHiddenIds(newHidden);
+      saveHiddenDiseaseIds(newHidden);
+    }
+    if (selected.id === disease.id) {
+      const remaining = [...diseases, ...importedDiseases].filter(
+        d => d.id !== disease.id && ![...hiddenIds, disease.id].includes(d.id)
+      );
+      if (remaining.length > 0) setSelected(remaining[0]);
+    }
+    setConfirmDelete(null);
+  };
+
+  const restoreAllDiseases = () => {
+    setHiddenIds([]);
+    saveHiddenDiseaseIds([]);
   };
 
   // Patient search states
@@ -1217,27 +1253,54 @@ export default function PathyaApathya() {
               <span className="text-xs font-bold text-amber-700 uppercase tracking-wide">
                 {lang==="gu" ? GROUP_LABEL.gu : GROUP_LABEL.hi}
               </span>
-              <span className="text-xs text-amber-600 font-semibold">{filtered.length} {lang==="gu" ? "રોગ" : "रोग"}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-amber-600 font-semibold">{filtered.length} {lang==="gu" ? "રોગ" : "रोग"}</span>
+                <button
+                  onClick={() => setDeleteMode(v => !v)}
+                  title={deleteMode ? "Exit delete mode" : "Delete diseases"}
+                  className={`text-xs px-2 py-0.5 rounded-lg font-bold transition-colors ${deleteMode ? "bg-red-500 text-white" : "bg-amber-100 text-amber-600 hover:bg-red-100 hover:text-red-500"}`}>
+                  {deleteMode ? (lang==="gu" ? "✕ બહાર" : "✕ बाहर") : "🗑"}
+                </button>
+              </div>
             </div>
+            {deleteMode && (
+              <div className="px-4 py-2 bg-red-50 border-b border-red-100 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-red-600 font-semibold">
+                  {lang==="gu" ? "🗑 Delete Mode — રોગ પર × દબાવો" : "🗑 Delete Mode — रोग पर × दबाएं"}
+                </p>
+                {hiddenIds.length > 0 && (
+                  <button onClick={restoreAllDiseases} className="text-[10px] text-blue-500 hover:text-blue-700 font-bold underline whitespace-nowrap">
+                    {lang==="gu" ? "બધા Restore" : "सब Restore"}
+                  </button>
+                )}
+              </div>
+            )}
             <div className="divide-y divide-slate-50 max-h-[520px] overflow-y-auto">
               {filtered.map(d => (
-                <button key={d.id} onClick={() => setSelected(d)}
-                  className={`w-full text-left px-4 py-2.5 hover:bg-amber-50/60 transition-colors ${selected.id===d.id ? "bg-amber-50 border-l-4 border-amber-500" : ""}`}>
+                <button key={d.id} onClick={() => { if (!deleteMode) setSelected(d); }}
+                  className={`w-full text-left px-4 py-2.5 transition-colors ${deleteMode ? "hover:bg-red-50/60 cursor-default" : "hover:bg-amber-50/60"} ${selected.id===d.id && !deleteMode ? "bg-amber-50 border-l-4 border-amber-500" : ""}`}>
                   <div className="flex items-center justify-between gap-1">
                     <div className="min-w-0">
-                      <p className={`text-sm font-semibold leading-tight ${selected.id===d.id ? "text-amber-700" : "text-slate-800"}`}>
+                      <p className={`text-sm font-semibold leading-tight ${selected.id===d.id && !deleteMode ? "text-amber-700" : "text-slate-800"}`}>
                         {lang==="gu" ? d.nameGu : d.nameHi}
                       </p>
                       <p className="text-[11px] text-slate-400">{d.nameEn}</p>
                     </div>
-                    {importedDiseases.find(x => x.id === d.id) && (
+                    {deleteMode ? (
+                      <button
+                        onClick={e => { e.stopPropagation(); setConfirmDelete(d); }}
+                        title="Delete this disease"
+                        className="shrink-0 text-red-400 hover:text-red-600 hover:bg-red-100 rounded p-0.5 transition-colors ml-1">
+                        <X className="w-4 h-4"/>
+                      </button>
+                    ) : importedDiseases.find(x => x.id === d.id) ? (
                       <button
                         onClick={e => { e.stopPropagation(); removeImported(d.id); }}
                         title="Remove imported disease"
                         className="shrink-0 text-slate-300 hover:text-red-400 transition-colors ml-1">
                         <X className="w-3.5 h-3.5"/>
                       </button>
-                    )}
+                    ) : null}
                   </div>
                   {importedDiseases.find(x => x.id === d.id) && (
                     <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">IMPORTED</span>
@@ -1399,6 +1462,38 @@ export default function PathyaApathya() {
                     {lang==="gu" ? "Import કરો" : "Import करें"}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Confirm Delete Modal ── */}
+        {confirmDelete && (
+          <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+              <div className="text-center mb-4">
+                <div className="text-4xl mb-3">🗑️</div>
+                <h3 className="font-bold text-slate-800 text-lg">
+                  {lang==="gu" ? "રોગ Delete કરો?" : "रोग Delete करें?"}
+                </h3>
+                <p className="text-sm text-slate-500 mt-1 font-semibold">{confirmDelete.nameEn}</p>
+                <p className="text-xs text-slate-400 mt-2">
+                  {importedDiseases.find(x => x.id === confirmDelete.id)
+                    ? (lang==="gu" ? "આ imported રોગ કાયમ માટે remove થશે." : "यह imported रोग हमेशा के लिए remove होगा।")
+                    : (lang==="gu" ? "આ built-in રોગ hide થશે. ૨ ઉપર 'બધા Restore' થી પાછો આવશે." : "यह built-in रोग hide होगा। ऊपर 'सब Restore' से वापस आएगा।")}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">
+                  {lang==="gu" ? "રદ કરો" : "रद्द करें"}
+                </button>
+                <button
+                  onClick={() => deleteDisease(confirmDelete)}
+                  className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm transition-colors">
+                  {lang==="gu" ? "Delete કરો" : "Delete करें"}
+                </button>
               </div>
             </div>
           </div>
