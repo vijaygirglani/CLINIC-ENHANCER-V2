@@ -14,7 +14,7 @@ import {
   Loader2, User, Phone, MapPin, Activity, Save, RefreshCw,
   FileText, Printer, Paperclip, X, Leaf, Weight, Calendar,
   Zap, Search, SlidersHorizontal, Sheet, Link, ClipboardPaste,
-  Hourglass, CheckCircle2, WalletCards,
+  Hourglass, CheckCircle2, WalletCards, MessageSquare, ChevronDown, Stethoscope,
 } from "lucide-react";
 
 // ── Pending Fees helpers ──────────────────────────────────────────────
@@ -26,6 +26,102 @@ function removePendingFee(id: number) { localStorage.setItem(PENDING_KEY, JSON.s
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
+
+// ── Pathya-Apathya Disease helpers ───────────────────────────────────────────
+const PA_STORAGE_KEY = "mc_imported_diseases";
+interface PADisease {
+  id: string; group: string;
+  nameEn: string; nameHi: string; nameGu: string;
+  causesEn: string[]; causesHi: string[]; causesGu: string[];
+  pathyaEn: string[]; pathyaHi: string[]; pathyaGu: string[];
+  apathyaEn: string[]; apathyaHi: string[]; apathyaGu: string[];
+}
+// Static built-in diseases list (name + keywords for matching)
+const BUILTIN_DISEASE_KEYWORDS: { id: string; nameEn: string; nameHi: string; nameGu: string; keywords: string[] }[] = [
+  { id: "amlapitta",       nameEn: "Amlapitta (Hyperacidity)",      nameHi: "अम्लपित्त",        nameGu: "અમ્લપિત્ત",     keywords: ["acid", "acidity", "hyperacidity", "reflux", "amlapitta", "heartburn", "burning", "chest"] },
+  { id: "agnimandya",      nameEn: "Agnimandya (Weak Digestion)",   nameHi: "अग्निमांद्य",      nameGu: "અગ્નિમાંદ્ય",  keywords: ["digestion", "digestive", "appetite", "agnimandya", "weak stomach", "indigestion"] },
+  { id: "ajirna",          nameEn: "Ajirna (Indigestion)",          nameHi: "अजीर्ण",           nameGu: "અજીર્ણ",        keywords: ["indigestion", "ajirna", "bloat", "gas", "abdomen", "stomach"] },
+  { id: "atisara",         nameEn: "Atisara (Diarrhea)",            nameHi: "अतिसार",           nameGu: "અતિસાર",        keywords: ["diarrhea", "diarrhoea", "loose stool", "loose motion", "atisara"] },
+  { id: "grahani",         nameEn: "Grahani (IBS)",                 nameHi: "ग्रहणी",           nameGu: "ગ્રહણી",        keywords: ["ibs", "grahani", "irritable bowel", "alternating", "colon"] },
+  { id: "arsha",           nameEn: "Arsha (Piles/Hemorrhoids)",     nameHi: "अर्श (बवासीर)",   nameGu: "અર્શ (પાઈલ્સ)", keywords: ["piles", "hemorrhoid", "arsha", "bleeding", "rectal", "bavaseer"] },
+  { id: "vibandha",        nameEn: "Vibandha (Constipation)",       nameHi: "विबन्ध",           nameGu: "વિબન્ધ",        keywords: ["constipation", "vibandha", "hard stool", "irregular bowel"] },
+  { id: "adhmana",         nameEn: "Adhmana (Bloating/Gas)",        nameHi: "आध्मान",           nameGu: "આધ્માન",        keywords: ["bloating", "gas", "adhmana", "flatulence", "distension", "wind"] },
+  { id: "chhardi",         nameEn: "Chhardi (Vomiting)",            nameHi: "छर्दि",             nameGu: "છર્દિ",          keywords: ["vomiting", "nausea", "chhardi", "vomit"] },
+  { id: "krimi",           nameEn: "Krimi (Worm Infestation)",      nameHi: "कृमि",              nameGu: "કૃમિ",           keywords: ["worm", "krimi", "parasite", "stomach worm"] },
+  { id: "udarashoola",     nameEn: "Udarashoola (Abdominal Pain)",  nameHi: "उदरशूल",           nameGu: "ઉદ્રરશૂળ",     keywords: ["abdominal pain", "stomach ache", "udarashoola", "colic", "cramp"] },
+  { id: "yakrit-vikara",   nameEn: "Yakrit Vikara (Liver Disorder)",nameHi: "यकृत विकार",       nameGu: "યકૃત વિકાર",   keywords: ["liver", "yakrit", "hepatitis", "fatty liver", "jaundice", "sgpt"] },
+  { id: "pandu",           nameEn: "Pandu (Anemia)",                nameHi: "पांडु",             nameGu: "પાંડુ",          keywords: ["anemia", "pandu", "weakness", "pallor", "hemoglobin", "hb low"] },
+  { id: "mutrakriccha",    nameEn: "Mutrakriccha (Burning Urination)",nameHi: "मूत्रकृच्छ",    nameGu: "મૂત્રકૃચ્છ",  keywords: ["burning urination", "dysuria", "urinary burning", "urine pain", "mutrakriccha"] },
+  { id: "uti",             nameEn: "UTI (Urinary Tract Infection)",  nameHi: "मूत्रमार्ग संक्रमण", nameGu: "UTI",       keywords: ["uti", "urinary infection", "urinary tract", "urine infection", "frequent urination"] },
+  { id: "ashmari",         nameEn: "Ashmari (Kidney Stones)",       nameHi: "अश्मरी",           nameGu: "અશ્મરી",        keywords: ["kidney stone", "ashmari", "renal stone", "calculus", "gravel", "urine stone"] },
+  { id: "prostate-vruddhi",nameEn: "Prostate Enlargement",          nameHi: "प्रोस्टेट वृद्धि", nameGu: "પ્રોસ્ટેટ",   keywords: ["prostate", "bph", "enlarged prostate", "urine flow", "prostate vruddhi"] },
+  { id: "atimutra",        nameEn: "Atimutra (Frequent Urination)",  nameHi: "अतिमूत्र",        nameGu: "અતિમૂત્ર",     keywords: ["frequent urination", "polyuria", "atimutra", "diabetes urine", "night urination"] },
+];
+
+function getAllDiseases(): PADisease[] {
+  try {
+    const imported: PADisease[] = JSON.parse(localStorage.getItem(PA_STORAGE_KEY) || "[]");
+    return imported;
+  } catch { return []; }
+}
+
+function formatMobileWA(m: string): string {
+  const d = m.replace(/\D/g, "");
+  if (d.length === 10) return `91${d}`;
+  if (d.startsWith("91") && d.length === 12) return d;
+  return d;
+}
+
+function buildWhatsAppMsg(disease: PADisease, patientName: string): string {
+  const today = format(new Date(), "dd/MM/yyyy");
+  const causes  = disease.causesEn.map(c => `  • ${c}`).join("\n");
+  const pathya  = disease.pathyaEn.map(p => `  • ${p}`).join("\n");
+  const apathya = disease.apathyaEn.map(a => `  • ${a}`).join("\n");
+  const ptLine  = patientName ? `\n👤 *Patient:* ${patientName}` : "";
+  return [
+    `🏥 *Manglam Skin Care Clinic*`,
+    `Dr. Vijay Girglani | B.A.M.S., C.S.D. | Reg. GBI 17318`,
+    ptLine,
+    `📅 *Date:* ${today}`,
+    ``,
+    `🔖 *${disease.nameEn}*`,
+    ``,
+    `⚠️ *Causes (Nidana):*`,
+    causes || "  (See doctor for details)",
+    ``,
+    `✅ *Pathya — What to Eat:*`,
+    pathya || "  (See doctor for details)",
+    ``,
+    `❌ *Apathya — What to Avoid:*`,
+    apathya || "  (See doctor for details)",
+    ``,
+    `_Manglam Skin Care Clinic, Tankara — Ayurvedic Guidance_`,
+  ].filter(l => l !== "").join("\n");
+}
+
+// Smart disease matcher: score diseases against complaint text
+function matchDiseasesToComplaint(complaint: string, imported: PADisease[]): Array<{ disease: PADisease | null; builtin: typeof BUILTIN_DISEASE_KEYWORDS[0] | null; score: number }> {
+  if (!complaint || complaint.trim().length < 3) return [];
+  const q = complaint.toLowerCase();
+  const results: Array<{ disease: PADisease | null; builtin: typeof BUILTIN_DISEASE_KEYWORDS[0] | null; score: number; name: string }> = [];
+
+  // Score builtins
+  for (const b of BUILTIN_DISEASE_KEYWORDS) {
+    let score = 0;
+    for (const kw of b.keywords) { if (q.includes(kw)) score += kw.length; }
+    if (score > 0) results.push({ builtin: b, disease: null, score, name: b.nameEn });
+  }
+
+  // Score imported diseases
+  for (const d of imported) {
+    let score = 0;
+    const nameWords = d.nameEn.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+    for (const w of nameWords) { if (q.includes(w)) score += w.length * 2; }
+    if (score > 0) results.push({ builtin: null, disease: d, score, name: d.nameEn });
+  }
+
+  return results.sort((a, b) => b.score - a.score).slice(0, 6);
+}
 
 // ── Google Sheet helpers ──────────────────────────────────────────────
 const SHEET_KEY = "manglam_sheet_url";
@@ -132,6 +228,13 @@ export default function Home() {
   const [feesMarkedPending, setFeesMarkedPending] = useState(false);
   const refreshPending = () => setPendingFees(getPendingFees());
 
+  // ── Pathya-Apathya suggest state ──
+  const [importedDiseases, setImportedDiseases] = useState<PADisease[]>(() => getAllDiseases());
+  const [paMatches, setPaMatches]               = useState<ReturnType<typeof matchDiseasesToComplaint>>([]);
+  const [selectedPADisease, setSelectedPADisease] = useState<PADisease | null>(null);
+  const [showPAPanel, setShowPAPanel]           = useState(false);
+  const [paSent, setPaSent]                     = useState(false);
+
   // ── Google Sheet state ──
   const [sheetUrl, setSheetUrl] = useState<string>(() => localStorage.getItem(SHEET_KEY) || "");
   const [showSheetModal, setShowSheetModal] = useState(false);
@@ -153,6 +256,7 @@ export default function Home() {
   const complaintCodeValue = form.watch("complaintCode");
   const visitDateValue = form.watch("visitDate");
   const nameValue = form.watch("name");
+  const complaintValue = form.watch("complaint");
 
   // Live dropdown: watch name field, search on every keystroke
   useEffect(() => {
@@ -175,6 +279,20 @@ export default function Home() {
       }
     }
   }, [complaintCodeValue, form]);
+
+  // Auto-match diseases from complaint text
+  useEffect(() => {
+    if (complaintValue && complaintValue.length >= 3) {
+      const freshImported = getAllDiseases();
+      setImportedDiseases(freshImported);
+      const matches = matchDiseasesToComplaint(complaintValue, freshImported);
+      setPaMatches(matches);
+      if (matches.length > 0 && !selectedPADisease) setShowPAPanel(true);
+    } else {
+      setPaMatches([]);
+      setShowPAPanel(false);
+    }
+  }, [complaintValue]);
 
   // Read directly from DOM ref so we always get the latest typed value
   const runMobileLookup = useCallback(() => {
@@ -313,6 +431,19 @@ export default function Home() {
     }
   }, [filterQuery, filterMode]);
 
+  const sendPathyaWhatsApp = (disease: PADisease) => {
+    const patientName = form.getValues("name") || "";
+    const mobile = form.getValues("mobile") || "";
+    const msg = buildWhatsAppMsg(disease, patientName);
+    const number = formatMobileWA(mobile);
+    const url = number
+      ? `https://wa.me/${number}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
+    setPaSent(true);
+    setTimeout(() => setPaSent(false), 3000);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     Array.from(e.target.files || []).forEach(file => {
       if (!file.type.startsWith("image/")) return;
@@ -352,6 +483,9 @@ export default function Home() {
     setPatientHistory([]);
     setHistoryName("");
     setHistoryMobile("");
+    setSelectedPADisease(null);
+    setPaMatches([]);
+    setShowPAPanel(false);
   };
 
   const onSubmit = (data: PatientFormValues) => savePatient(data, "general");
@@ -601,6 +735,151 @@ export default function Home() {
                   <textarea {...form.register("complaint")} rows={2}
                     className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all resize-none text-slate-800" placeholder="Describe the symptoms..." />
                 </div>
+
+                {/* ── Pathya-Apathya Disease Suggest Panel ── */}
+                <AnimatePresence>
+                  {paMatches.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="rounded-2xl border border-emerald-200 bg-emerald-50/60 overflow-hidden"
+                    >
+                      {/* Header */}
+                      <button
+                        type="button"
+                        onClick={() => setShowPAPanel(p => !p)}
+                        className="w-full flex items-center gap-2 px-4 py-3 hover:bg-emerald-100/60 transition-colors"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
+                          <Leaf className="w-3.5 h-3.5 text-white" />
+                        </div>
+                        <span className="text-sm font-bold text-emerald-800">
+                          Pathya-Apathya Suggestions
+                        </span>
+                        <span className="text-xs font-semibold bg-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full ml-1">
+                          {paMatches.length} match{paMatches.length > 1 ? "es" : ""}
+                        </span>
+                        <ChevronDown className={`w-4 h-4 text-emerald-600 ml-auto transition-transform ${showPAPanel ? "rotate-180" : ""}`} />
+                      </button>
+
+                      <AnimatePresence>
+                        {showPAPanel && (
+                          <motion.div
+                            initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="px-4 pb-4 space-y-3">
+                              {/* Disease chips */}
+                              <div className="flex flex-wrap gap-2">
+                                {paMatches.map((m, i) => {
+                                  const name = m.disease?.nameEn || m.builtin?.nameEn || "";
+                                  const isSelected = selectedPADisease?.id === (m.disease?.id || m.builtin?.id);
+                                  // Only imported diseases have full data for preview
+                                  const hasFullData = !!m.disease;
+                                  return (
+                                    <button
+                                      key={i}
+                                      type="button"
+                                      onClick={() => {
+                                        if (m.disease) {
+                                          setSelectedPADisease(isSelected ? null : m.disease);
+                                        } else {
+                                          toast({ title: "Open Pathya-Apathya tab", description: `"${name}" data is in the Pathya-Apathya section. Import it to send via WhatsApp.` });
+                                        }
+                                      }}
+                                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                                        isSelected
+                                          ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
+                                          : hasFullData
+                                          ? "bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                                          : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                                      }`}
+                                    >
+                                      <Stethoscope className="w-3 h-3" />
+                                      {name}
+                                      {!hasFullData && <span className="text-[9px] text-slate-400 ml-0.5">(built-in)</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Selected disease full preview + WhatsApp */}
+                              <AnimatePresence>
+                                {selectedPADisease && (
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                                    className="bg-white rounded-xl border border-emerald-200 overflow-hidden"
+                                  >
+                                    {/* Disease header */}
+                                    <div className="flex items-center justify-between px-4 py-3 bg-emerald-600">
+                                      <div>
+                                        <p className="font-bold text-white text-sm">{selectedPADisease.nameEn}</p>
+                                        <p className="text-emerald-100 text-xs">{selectedPADisease.nameHi} · {selectedPADisease.nameGu}</p>
+                                      </div>
+                                      <button type="button" onClick={() => setSelectedPADisease(null)} className="text-white/70 hover:text-white">
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+
+                                    <div className="p-4 space-y-3 max-h-60 overflow-y-auto text-xs">
+                                      {selectedPADisease.pathyaEn.length > 0 && (
+                                        <div>
+                                          <p className="font-bold text-emerald-700 mb-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Pathya (What to Eat)</p>
+                                          <ul className="space-y-0.5 text-slate-600">
+                                            {selectedPADisease.pathyaEn.slice(0, 5).map((p, i) => (
+                                              <li key={i} className="flex gap-1"><span className="text-emerald-500 shrink-0">•</span>{p}</li>
+                                            ))}
+                                            {selectedPADisease.pathyaEn.length > 5 && <li className="text-slate-400">+{selectedPADisease.pathyaEn.length - 5} more...</li>}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {selectedPADisease.apathyaEn.length > 0 && (
+                                        <div>
+                                          <p className="font-bold text-red-600 mb-1 flex items-center gap-1"><X className="w-3 h-3" /> Apathya (What to Avoid)</p>
+                                          <ul className="space-y-0.5 text-slate-600">
+                                            {selectedPADisease.apathyaEn.slice(0, 4).map((a, i) => (
+                                              <li key={i} className="flex gap-1"><span className="text-red-400 shrink-0">•</span>{a}</li>
+                                            ))}
+                                            {selectedPADisease.apathyaEn.length > 4 && <li className="text-slate-400">+{selectedPADisease.apathyaEn.length - 4} more...</li>}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* WhatsApp send bar */}
+                                    <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex items-center gap-3">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-xs text-slate-500">
+                                          {form.getValues("mobile")
+                                            ? <span>Will send to <strong className="text-slate-700 font-mono">{form.getValues("mobile")}</strong></span>
+                                            : <span className="text-amber-600">Fill mobile number to send directly</span>
+                                          }
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => sendPathyaWhatsApp(selectedPADisease)}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${
+                                          paSent
+                                            ? "bg-emerald-100 text-emerald-700 border border-emerald-300"
+                                            : "bg-[#25D366] hover:bg-[#1ebe5b] text-white shadow-green-200 shadow-md"
+                                        }`}
+                                      >
+                                        <MessageSquare className="w-4 h-4" />
+                                        {paSent ? "Sent! ✓" : "Send on WhatsApp"}
+                                      </button>
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Treatment Plan</label>
                   <textarea {...form.register("treatment")} rows={2}
