@@ -911,7 +911,12 @@ export default function PathyaApathya() {
       } catch { /* skip invalid blocks */ }
     }
     if (blocks.length > 0) return JSON.stringify(blocks);
-    // Fallback: try treating entire file as JSON
+    // Fallback: try to find first { or [ and treat as JSON from there
+    const firstBrace = Math.min(
+      text.indexOf("{") === -1 ? Infinity : text.indexOf("{"),
+      text.indexOf("[") === -1 ? Infinity : text.indexOf("[")
+    );
+    if (firstBrace !== Infinity) return text.slice(firstBrace);
     return text;
   };
 
@@ -1345,7 +1350,7 @@ export default function PathyaApathya() {
                     {lang==="gu" ? "બંધ કરો" : "बंद करें"}
                   </button>
                   <button
-                    onClick={() => importJson.trim() && handleImport(importJson)}
+                    onClick={() => { if (importJson.trim()) handleImport(extractJsonFromTxt(importJson)); }}
                     disabled={!importJson.trim()}
                     className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-bold transition-colors">
                     {lang==="gu" ? "Import કરો" : "Import करें"}
