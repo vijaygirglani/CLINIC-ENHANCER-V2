@@ -784,7 +784,56 @@ const diseases: Disease[] = [
   },
 ];
 
-const GROUP_LABEL = { hi: "पाचन रोग", gu: "પાચન રોગ" };
+// ─── JSON Import helpers ────────────────────────────────────────────────────
+const STORAGE_KEY = "mc_imported_diseases";
+function loadImportedDiseases(): Disease[] {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
+  catch { return []; }
+}
+function saveImportedDiseases(list: Disease[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+function parseJsonDisease(raw: any): Disease | null {
+  try {
+    const pick = (obj: any, lang: string): string[] => {
+      if (!obj) return [];
+      if (Array.isArray(obj[lang])) return obj[lang];
+      if (Array.isArray(obj["english"])) return obj["english"];
+      return [];
+    };
+    const dn = raw.disease_name || {};
+    const nid = raw.nidana || {};
+    const ahara_nid = nid.ahara || {};
+    const vihara_nid = nid.vihara || {};
+    const path = raw.pathya || {};
+    const ahara_path = path.ahara || {};
+    const vihara_path = path.vihara || {};
+    const apat = raw.apathya || {};
+    const ahara_apat = apat.ahara || {};
+    const vihara_apat = apat.vihara || {};
+    const combineLang = (a: any, b: any, lang: string) =>
+      [...pick(a, lang), ...pick(b, lang)];
+    const id = (dn.english || raw.id || "").toLowerCase().replace(/[\s()\/]+/g, "-");
+    if (!id) return null;
+    return {
+      id,
+      group: raw.group || "Imported",
+      nameEn: dn.english || "",
+      nameHi: dn.hindi || dn.english || "",
+      nameGu: dn.gujarati || dn.english || "",
+      causesEn: combineLang(ahara_nid, vihara_nid, "english"),
+      causesHi: combineLang(ahara_nid, vihara_nid, "hindi"),
+      causesGu: combineLang(ahara_nid, vihara_nid, "gujarati"),
+      pathyaEn: combineLang(ahara_path, vihara_path, "english"),
+      pathyaHi: combineLang(ahara_path, vihara_path, "hindi"),
+      pathyaGu: combineLang(ahara_path, vihara_path, "gujarati"),
+      apathyaEn: combineLang(ahara_apat, vihara_apat, "english"),
+      apathyaHi: combineLang(ahara_apat, vihara_apat, "hindi"),
+      apathyaGu: combineLang(ahara_apat, vihara_apat, "gujarati"),
+    };
+  } catch { return null; }
+}
+const GROUP_LABEL = { hi: "रोग सूची", gu: "રોગ સૂચિ" };
 
 function formatMobile(m: string): string {
   const d = m.replace(/\D/g, "");
@@ -807,6 +856,67 @@ export default function PathyaApathya() {
   const [patientMobile, setPatientMobile] = useState("");
   const [diseaseSearch, setDiseaseSearch] = useState("");
   const [selected, setSelected]       = useState<Disease>(diseases[0]);
+
+  // ─── JSON Import panel ────────────────────────────────────────────────────
+  const [importedDiseases, setImportedDiseases] = useState<Disease[]>(() => loadImportedDiseases());
+  const [showImportPanel, setShowImportPanel]   = useState(false);
+  const [importJson, setImportJson]             = useState("");
+  const [importMsg, setImportMsg]               = useState<{ type: "ok"|"err"; text: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const allDiseases = [...diseases, ...importedDiseases];
+
+  const handleImport = (jsonText: string) => {
+    setImportMsg(null);
+    try {
+      const parsed = JSON.parse(jsonText);
+      const items: any[] = Array.isArray(parsed) ? parsed : [parsed];
+      const added: Disease[] = [];
+      const skipped: string[] = [];
+      for (const item of items) {
+        const d = parseJsonDisease(item);
+        if (!d) { skipped.push(item?.disease_name?.english || "unknown"); continue; }
+        if (allDiseases.find(x => x.id === d.id)) {
+          skipped.push(d.nameEn + " (duplicate)"); continue;
+        }
+        added.push(d);
+      }
+      if (added.length === 0) {
+        setImportMsg({ type: "err", text: `No new diseases added. Skipped: ${skipped.join(", ")}` });
+        return;
+      }
+      const newList = [...importedDiseases, ...added];
+      setImportedDiseases(newList);
+      saveImportedDiseases(newList);
+      setSelected(added[0]);
+      setImportJson("");
+      let msg = `✅ ${added.length} disease(s) imported successfully!`;
+      if (skipped.length) msg += ` (Skipped: ${skipped.join(", ")})`;
+      setImportMsg({ type: "ok", text: msg });
+    } catch (e: any) {
+      setImportMsg({ type: "err", text: "Invalid JSON: " + e.message });
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setImportJson(text);
+      handleImport(text);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const removeImported = (id: string) => {
+    const newList = importedDiseases.filter(d => d.id !== id);
+    setImportedDiseases(newList);
+    saveImportedDiseases(newList);
+    if (selected.id === id) setSelected(diseases[0]);
+  };
 
   // Patient search states
   const [ptQuery, setPtQuery]           = useState("");
@@ -895,11 +1005,11 @@ export default function PathyaApathya() {
   };
 
   const filtered = diseaseSearch.length > 0
-    ? diseases.filter(d =>
+    ? allDiseases.filter(d =>
         d.nameGu.toLowerCase().includes(diseaseSearch.toLowerCase()) ||
         d.nameHi.toLowerCase().includes(diseaseSearch.toLowerCase()) ||
         d.nameEn.toLowerCase().includes(diseaseSearch.toLowerCase()))
-    : diseases;
+    : allDiseases;
 
   return (
     <Layout>
@@ -1040,21 +1150,192 @@ export default function PathyaApathya() {
               <span className="text-xs font-bold text-amber-700 uppercase tracking-wide">
                 {lang==="gu" ? GROUP_LABEL.gu : GROUP_LABEL.hi}
               </span>
-              <span className="text-xs text-amber-600 font-semibold">{filtered.length} रोग</span>
+              <span className="text-xs text-amber-600 font-semibold">{filtered.length} {lang==="gu" ? "રોગ" : "रोग"}</span>
             </div>
             <div className="divide-y divide-slate-50 max-h-[520px] overflow-y-auto">
               {filtered.map(d => (
                 <button key={d.id} onClick={() => setSelected(d)}
                   className={`w-full text-left px-4 py-2.5 hover:bg-amber-50/60 transition-colors ${selected.id===d.id ? "bg-amber-50 border-l-4 border-amber-500" : ""}`}>
-                  <p className={`text-sm font-semibold leading-tight ${selected.id===d.id ? "text-amber-700" : "text-slate-800"}`}>
-                    {lang==="gu" ? d.nameGu : d.nameHi}
-                  </p>
-                  <p className="text-[11px] text-slate-400">{d.nameEn}</p>
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="min-w-0">
+                      <p className={`text-sm font-semibold leading-tight ${selected.id===d.id ? "text-amber-700" : "text-slate-800"}`}>
+                        {lang==="gu" ? d.nameGu : d.nameHi}
+                      </p>
+                      <p className="text-[11px] text-slate-400">{d.nameEn}</p>
+                    </div>
+                    {importedDiseases.find(x => x.id === d.id) && (
+                      <button
+                        onClick={e => { e.stopPropagation(); removeImported(d.id); }}
+                        title="Remove imported disease"
+                        className="shrink-0 text-slate-300 hover:text-red-400 transition-colors ml-1">
+                        <X className="w-3.5 h-3.5"/>
+                      </button>
+                    )}
+                  </div>
+                  {importedDiseases.find(x => x.id === d.id) && (
+                    <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">IMPORTED</span>
+                  )}
                 </button>
               ))}
             </div>
+
+            {/* ── JSON Import Button ── */}
+            <div className="px-4 py-3 border-t border-slate-100 bg-slate-50">
+              <button
+                onClick={() => { setShowImportPanel(true); setImportMsg(null); }}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors shadow">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                {lang==="gu" ? "JSON Import — નવો રોગ ઉમેરો" : "JSON Import — नया रोग जोड़ें"}
+              </button>
+              {importedDiseases.length > 0 && (
+                <p className="text-center text-[10px] text-blue-500 mt-1.5 font-semibold">
+                  {importedDiseases.length} {lang==="gu" ? "imported રોગ active" : "imported रोग active"}
+                </p>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* ── JSON Import Modal ── */}
+        {showImportPanel && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+              {/* Modal header */}
+              <div className="flex items-center justify-between px-6 py-4 bg-blue-600 text-white">
+                <div>
+                  <h3 className="font-bold text-lg">📥 JSON Import — Disease Data</h3>
+                  <p className="text-blue-200 text-xs mt-0.5">
+                    {lang==="gu"
+                      ? "AI-generated JSON ફાઇલ upload કરો અને રોગ automatically add થશે"
+                      : "AI-generated JSON file upload करें और रोग automatically add होंगे"}
+                  </p>
+                </div>
+                <button onClick={() => setShowImportPanel(false)} className="text-white/80 hover:text-white">
+                  <X className="w-5 h-5"/>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+                {/* Step 1 — File Upload */}
+                <div className="border-2 border-dashed border-blue-200 rounded-2xl p-6 text-center bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}>
+                  <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileUpload}/>
+                  <div className="text-4xl mb-2">📂</div>
+                  <p className="font-bold text-blue-800 text-sm">
+                    {lang==="gu" ? "JSON ફાઇલ Select કરો" : "JSON File Select करें"}
+                  </p>
+                  <p className="text-blue-500 text-xs mt-1">
+                    {lang==="gu" ? "Click કરો અથવા JSON file drag કરો" : "Click करें या JSON file drag करें"}
+                  </p>
+                </div>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-slate-200"/>
+                  <span className="text-xs font-bold text-slate-400">OR PASTE JSON</span>
+                  <div className="flex-1 h-px bg-slate-200"/>
+                </div>
+
+                {/* Step 2 — Paste JSON */}
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-2">
+                    {lang==="gu" ? "JSON Text Paste કરો:" : "JSON Text Paste करें:"}
+                  </label>
+                  <textarea
+                    value={importJson}
+                    onChange={e => setImportJson(e.target.value)}
+                    rows={8}
+                    placeholder={'[\n  {\n    "disease_name": { "english": "...", "hindi": "...", "gujarati": "..." },\n    "nidana": { "ahara": { "english": [...], "hindi": [...], "gujarati": [...] }, "vihara": {...} },\n    "pathya":  { "ahara": {...}, "vihara": {...} },\n    "apathya": { "ahara": {...}, "vihara": {...} }\n  }\n]'}
+                    className="w-full font-mono text-xs border border-slate-200 rounded-xl p-3 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-none bg-slate-50 text-slate-700"
+                  />
+                </div>
+
+                {/* Status message */}
+                {importMsg && (
+                  <div className={`rounded-xl px-4 py-3 text-sm font-semibold ${importMsg.type==="ok" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                    {importMsg.text}
+                  </div>
+                )}
+
+                {/* JSON Format Guide */}
+                <details className="rounded-xl border border-slate-200 overflow-hidden">
+                  <summary className="px-4 py-3 bg-slate-50 text-xs font-bold text-slate-600 cursor-pointer hover:bg-slate-100">
+                    📋 {lang==="gu" ? "JSON Format Guide જુઓ" : "JSON Format Guide देखें"}
+                  </summary>
+                  <div className="px-4 py-3 text-xs text-slate-500 space-y-1 font-mono bg-white">
+                    <p className="text-slate-700 font-bold font-sans mb-2">Expected structure (array or single object):</p>
+                    <pre className="overflow-x-auto text-[10px] leading-relaxed">{`{
+  "disease_name": {
+    "english": "Kidney Stones",
+    "hindi":   "अश्मरी",
+    "gujarati":"અશ્મરી"
+  },
+  "nidana": {
+    "ahara":  { "english":[...], "hindi":[...], "gujarati":[...] },
+    "vihara": { "english":[...], "hindi":[...], "gujarati":[...] }
+  },
+  "pathya": {
+    "ahara":  { "english":[...], "hindi":[...], "gujarati":[...] },
+    "vihara": { "english":[...], "hindi":[...], "gujarati":[...] }
+  },
+  "apathya": {
+    "ahara":  { "english":[...], "hindi":[...], "gujarati":[...] },
+    "vihara": { "english":[...], "hindi":[...], "gujarati":[...] }
+  }
+}`}</pre>
+                    <p className="font-sans text-[10px] text-slate-400 pt-1">Tip: Wrap multiple diseases in [ ] array. Each nidana/pathya/apathya can have ahara + vihara, both are merged automatically.</p>
+                  </div>
+                </details>
+
+                {/* Imported list */}
+                {importedDiseases.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-slate-600 mb-2">
+                      {lang==="gu" ? "Imported રોગ (localStorage માં saved):" : "Imported रोग (localStorage में saved):"}
+                    </p>
+                    <div className="space-y-1 max-h-36 overflow-y-auto">
+                      {importedDiseases.map(d => (
+                        <div key={d.id} className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                          <div>
+                            <p className="text-xs font-semibold text-blue-800">{d.nameEn}</p>
+                            <p className="text-[10px] text-blue-500">{d.group}</p>
+                          </div>
+                          <button onClick={() => removeImported(d.id)} className="text-red-300 hover:text-red-500 transition-colors ml-3">
+                            <X className="w-3.5 h-3.5"/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal footer */}
+              <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3 bg-slate-50">
+                <p className="text-[10px] text-slate-400">
+                  {lang==="gu"
+                    ? "⚠️ Data browser localStorage માં save થાય છે. App reload પછી પણ available રહેશે."
+                    : "⚠️ Data browser localStorage में save होता है। App reload के बाद भी available रहेगा।"}
+                </p>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => setShowImportPanel(false)}
+                    className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 text-sm font-semibold hover:bg-slate-100 transition-colors">
+                    {lang==="gu" ? "બંધ કરો" : "बंद करें"}
+                  </button>
+                  <button
+                    onClick={() => importJson.trim() && handleImport(importJson)}
+                    disabled={!importJson.trim()}
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-bold transition-colors">
+                    {lang==="gu" ? "Import કરો" : "Import करें"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Main content ── */}
         <div className="lg:col-span-9">
