@@ -72,30 +72,45 @@ function formatMobileWA(m: string): string {
   return d;
 }
 
-function buildWhatsAppMsg(disease: PADisease, patientName: string): string {
+function buildWhatsAppMsg(disease: PADisease, patientName: string, lang: "en" | "hi" | "gu"): string {
   const today = format(new Date(), "dd/MM/yyyy");
-  const causes  = disease.causesEn.map(c => `  • ${c}`).join("\n");
-  const pathya  = disease.pathyaEn.map(p => `  • ${p}`).join("\n");
-  const apathya = disease.apathyaEn.map(a => `  • ${a}`).join("\n");
-  const ptLine  = patientName ? `\n👤 *Patient:* ${patientName}` : "";
+
+  const name    = lang === "gu" ? (disease.nameGu || disease.nameEn) : lang === "hi" ? (disease.nameHi || disease.nameEn) : disease.nameEn;
+  const causes  = (lang === "gu" ? disease.causesGu  : lang === "hi" ? disease.causesHi  : disease.causesEn).map(c => `  • ${c}`).join("\n");
+  const pathya  = (lang === "gu" ? disease.pathyaGu  : lang === "hi" ? disease.pathyaHi  : disease.pathyaEn).map(p => `  • ${p}`).join("\n");
+  const apathya = (lang === "gu" ? disease.apathyaGu : lang === "hi" ? disease.apathyaHi : disease.apathyaEn).map(a => `  • ${a}`).join("\n");
+
+  const ptLabel     = lang === "gu" ? "દર્દી"         : lang === "hi" ? "दर्दी"        : "Patient";
+  const dateLabel   = lang === "gu" ? "તારીખ"        : lang === "hi" ? "तारीख"       : "Date";
+  const causesLabel = lang === "gu" ? "કારણ (Nidana)" : lang === "hi" ? "कारण (Nidana)" : "Causes (Nidana)";
+  const pathyaLabel = lang === "gu" ? "પથ્ય — શું ખાવું"   : lang === "hi" ? "पथ्य — क्या खाएं"   : "Pathya — What to Eat";
+  const apathyaLbl  = lang === "gu" ? "અપથ્ય — શું ન ખાવું" : lang === "hi" ? "अपथ्य — क्या न खाएं" : "Apathya — What to Avoid";
+  const footer      = lang === "gu"
+    ? "_Manglam Skin Care Clinic, Tankara તરફથી આયુર્વેદિક માર્ગદર્શન_"
+    : lang === "hi"
+    ? "_Manglam Skin Care Clinic, Tankara से आयुर्वेदिक मार्गदर्शन_"
+    : "_Manglam Skin Care Clinic, Tankara — Ayurvedic Guidance_";
+
+  const ptLine = patientName ? `\n👤 *${ptLabel}:* ${patientName}` : "";
+
   return [
     `🏥 *Manglam Skin Care Clinic*`,
     `Dr. Vijay Girglani | B.A.M.S., C.S.D. | Reg. GBI 17318`,
     ptLine,
-    `📅 *Date:* ${today}`,
+    `📅 *${dateLabel}:* ${today}`,
     ``,
-    `🔖 *${disease.nameEn}*`,
+    `🔖 *${name}*`,
     ``,
-    `⚠️ *Causes (Nidana):*`,
+    `⚠️ *${causesLabel}:*`,
     causes || "  (See doctor for details)",
     ``,
-    `✅ *Pathya — What to Eat:*`,
+    `✅ *${pathyaLabel}:*`,
     pathya || "  (See doctor for details)",
     ``,
-    `❌ *Apathya — What to Avoid:*`,
+    `❌ *${apathyaLbl}:*`,
     apathya || "  (See doctor for details)",
     ``,
-    `_Manglam Skin Care Clinic, Tankara — Ayurvedic Guidance_`,
+    footer,
   ].filter(l => l !== "").join("\n");
 }
 
@@ -234,6 +249,7 @@ export default function Home() {
   const [selectedPADisease, setSelectedPADisease] = useState<PADisease | null>(null);
   const [showPAPanel, setShowPAPanel]           = useState(false);
   const [paSent, setPaSent]                     = useState(false);
+  const [paLang, setPaLang]                     = useState<"en" | "hi" | "gu">("gu");
 
   // ── Google Sheet state ──
   const [sheetUrl, setSheetUrl] = useState<string>(() => localStorage.getItem(SHEET_KEY) || "");
@@ -434,7 +450,7 @@ export default function Home() {
   const sendPathyaWhatsApp = (disease: PADisease) => {
     const patientName = form.getValues("name") || "";
     const mobile = form.getValues("mobile") || "";
-    const msg = buildWhatsAppMsg(disease, patientName);
+    const msg = buildWhatsAppMsg(disease, patientName, paLang);
     const number = formatMobileWA(mobile);
     const url = number
       ? `https://wa.me/${number}?text=${encodeURIComponent(msg)}`
@@ -746,22 +762,44 @@ export default function Home() {
                       className="rounded-2xl border border-emerald-200 bg-emerald-50/60 overflow-hidden"
                     >
                       {/* Header */}
-                      <button
-                        type="button"
-                        onClick={() => setShowPAPanel(p => !p)}
-                        className="w-full flex items-center gap-2 px-4 py-3 hover:bg-emerald-100/60 transition-colors"
-                      >
-                        <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
-                          <Leaf className="w-3.5 h-3.5 text-white" />
+                      <div className="flex items-center gap-2 px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setShowPAPanel(p => !p)}
+                          className="flex items-center gap-2 flex-1 min-w-0"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
+                            <Leaf className="w-3.5 h-3.5 text-white" />
+                          </div>
+                          <span className="text-sm font-bold text-emerald-800">
+                            Pathya-Apathya Suggestions
+                          </span>
+                          <span className="text-xs font-semibold bg-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full ml-1 shrink-0">
+                            {paMatches.length} match{paMatches.length > 1 ? "es" : ""}
+                          </span>
+                        </button>
+                        {/* Language selector */}
+                        <div className="flex items-center gap-1 shrink-0 ml-auto">
+                          {(["gu", "hi", "en"] as const).map(l => (
+                            <button
+                              key={l}
+                              type="button"
+                              onClick={() => setPaLang(l)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                paLang === l
+                                  ? "bg-emerald-600 text-white shadow-sm"
+                                  : "bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50"
+                              }`}
+                            >
+                              {l === "gu" ? "ગુ" : l === "hi" ? "हि" : "EN"}
+                            </button>
+                          ))}
                         </div>
-                        <span className="text-sm font-bold text-emerald-800">
-                          Pathya-Apathya Suggestions
-                        </span>
-                        <span className="text-xs font-semibold bg-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full ml-1">
-                          {paMatches.length} match{paMatches.length > 1 ? "es" : ""}
-                        </span>
-                        <ChevronDown className={`w-4 h-4 text-emerald-600 ml-auto transition-transform ${showPAPanel ? "rotate-180" : ""}`} />
-                      </button>
+                        <ChevronDown
+                          onClick={() => setShowPAPanel(p => !p)}
+                          className={`w-4 h-4 text-emerald-600 transition-transform cursor-pointer shrink-0 ${showPAPanel ? "rotate-180" : ""}`}
+                        />
+                      </div>
 
                       <AnimatePresence>
                         {showPAPanel && (
@@ -814,8 +852,12 @@ export default function Home() {
                                     {/* Disease header */}
                                     <div className="flex items-center justify-between px-4 py-3 bg-emerald-600">
                                       <div>
-                                        <p className="font-bold text-white text-sm">{selectedPADisease.nameEn}</p>
-                                        <p className="text-emerald-100 text-xs">{selectedPADisease.nameHi} · {selectedPADisease.nameGu}</p>
+                                        <p className="font-bold text-white text-sm">
+                                          {paLang === "gu" ? (selectedPADisease.nameGu || selectedPADisease.nameEn)
+                                            : paLang === "hi" ? (selectedPADisease.nameHi || selectedPADisease.nameEn)
+                                            : selectedPADisease.nameEn}
+                                        </p>
+                                        <p className="text-emerald-100 text-xs">{selectedPADisease.nameEn}</p>
                                       </div>
                                       <button type="button" onClick={() => setSelectedPADisease(null)} className="text-white/70 hover:text-white">
                                         <X className="w-4 h-4" />
@@ -823,28 +865,38 @@ export default function Home() {
                                     </div>
 
                                     <div className="p-4 space-y-3 max-h-60 overflow-y-auto text-xs">
-                                      {selectedPADisease.pathyaEn.length > 0 && (
-                                        <div>
-                                          <p className="font-bold text-emerald-700 mb-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Pathya (What to Eat)</p>
-                                          <ul className="space-y-0.5 text-slate-600">
-                                            {selectedPADisease.pathyaEn.slice(0, 5).map((p, i) => (
-                                              <li key={i} className="flex gap-1"><span className="text-emerald-500 shrink-0">•</span>{p}</li>
-                                            ))}
-                                            {selectedPADisease.pathyaEn.length > 5 && <li className="text-slate-400">+{selectedPADisease.pathyaEn.length - 5} more...</li>}
-                                          </ul>
-                                        </div>
-                                      )}
-                                      {selectedPADisease.apathyaEn.length > 0 && (
-                                        <div>
-                                          <p className="font-bold text-red-600 mb-1 flex items-center gap-1"><X className="w-3 h-3" /> Apathya (What to Avoid)</p>
-                                          <ul className="space-y-0.5 text-slate-600">
-                                            {selectedPADisease.apathyaEn.slice(0, 4).map((a, i) => (
-                                              <li key={i} className="flex gap-1"><span className="text-red-400 shrink-0">•</span>{a}</li>
-                                            ))}
-                                            {selectedPADisease.apathyaEn.length > 4 && <li className="text-slate-400">+{selectedPADisease.apathyaEn.length - 4} more...</li>}
-                                          </ul>
-                                        </div>
-                                      )}
+                                      {(() => {
+                                        const pathyaList = paLang === "gu" ? selectedPADisease.pathyaGu : paLang === "hi" ? selectedPADisease.pathyaHi : selectedPADisease.pathyaEn;
+                                        const apathyaList = paLang === "gu" ? selectedPADisease.apathyaGu : paLang === "hi" ? selectedPADisease.apathyaHi : selectedPADisease.apathyaEn;
+                                        const pathyaLabel = paLang === "gu" ? "પથ્ય — શું ખાવું" : paLang === "hi" ? "पथ्य — क्या खाएं" : "Pathya — What to Eat";
+                                        const apathyaLabel = paLang === "gu" ? "અપથ્ય — શું ન ખાવું" : paLang === "hi" ? "अपथ्य — क्या न खाएं" : "Apathya — What to Avoid";
+                                        return (
+                                          <>
+                                            {pathyaList.length > 0 && (
+                                              <div>
+                                                <p className="font-bold text-emerald-700 mb-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> {pathyaLabel}</p>
+                                                <ul className="space-y-0.5 text-slate-600">
+                                                  {pathyaList.slice(0, 5).map((p, i) => (
+                                                    <li key={i} className="flex gap-1"><span className="text-emerald-500 shrink-0">•</span>{p}</li>
+                                                  ))}
+                                                  {pathyaList.length > 5 && <li className="text-slate-400">+{pathyaList.length - 5} more...</li>}
+                                                </ul>
+                                              </div>
+                                            )}
+                                            {apathyaList.length > 0 && (
+                                              <div>
+                                                <p className="font-bold text-red-600 mb-1 flex items-center gap-1"><X className="w-3 h-3" /> {apathyaLabel}</p>
+                                                <ul className="space-y-0.5 text-slate-600">
+                                                  {apathyaList.slice(0, 4).map((a, i) => (
+                                                    <li key={i} className="flex gap-1"><span className="text-red-400 shrink-0">•</span>{a}</li>
+                                                  ))}
+                                                  {apathyaList.length > 4 && <li className="text-slate-400">+{apathyaList.length - 4} more...</li>}
+                                                </ul>
+                                              </div>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
                                     </div>
 
                                     {/* WhatsApp send bar */}
