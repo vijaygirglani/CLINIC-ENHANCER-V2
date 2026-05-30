@@ -795,41 +795,63 @@ function saveImportedDiseases(list: Disease[]) {
 }
 function parseJsonDisease(raw: any): Disease | null {
   try {
-    const pick = (obj: any, lang: string): string[] => {
+    // Support both "english"/"hindi"/"gujarati" and "en"/"hi"/"gu" key formats
+    const pick = (obj: any, ...langs: string[]): string[] => {
       if (!obj) return [];
-      if (Array.isArray(obj[lang])) return obj[lang];
-      if (Array.isArray(obj["english"])) return obj["english"];
+      for (const lang of langs) {
+        if (Array.isArray(obj[lang])) return obj[lang];
+      }
       return [];
     };
     const dn = raw.disease_name || {};
+    // Support both nidana (with ahara/vihara sub-keys) and flat causes/pathya/apathya
     const nid = raw.nidana || {};
     const ahara_nid = nid.ahara || {};
     const vihara_nid = nid.vihara || {};
+    // Flat format uses "causes" directly with en/hi/gu arrays
+    const causesFlat = raw.causes || {};
     const path = raw.pathya || {};
     const ahara_path = path.ahara || {};
     const vihara_path = path.vihara || {};
+    // Flat format: pathya.en is directly an array
+    const pathyaFlat = (Array.isArray(path.en) || Array.isArray(path.hi) || Array.isArray(path.gu)) ? path : {};
     const apat = raw.apathya || {};
     const ahara_apat = apat.ahara || {};
     const vihara_apat = apat.vihara || {};
-    const combineLang = (a: any, b: any, lang: string) =>
-      [...pick(a, lang), ...pick(b, lang)];
-    const id = (dn.english || raw.id || "").toLowerCase().replace(/[\s()\/]+/g, "-");
+    const apathyaFlat = (Array.isArray(apat.en) || Array.isArray(apat.hi) || Array.isArray(apat.gu)) ? apat : {};
+
+    const combineLang = (nested_a: any, nested_b: any, flat: any, enKey: string, hiKey: string, guKey: string) => ({
+      en: [...pick(nested_a, enKey), ...pick(nested_b, enKey), ...pick(flat, "en", enKey)],
+      hi: [...pick(nested_a, hiKey), ...pick(nested_b, hiKey), ...pick(flat, "hi", hiKey)],
+      gu: [...pick(nested_a, guKey), ...pick(nested_b, guKey), ...pick(flat, "gu", guKey)],
+    });
+
+    const causes  = combineLang(ahara_nid, vihara_nid, causesFlat, "english", "hindi", "gujarati");
+    const pathya  = combineLang(ahara_path, vihara_path, pathyaFlat, "english", "hindi", "gujarati");
+    const apathya = combineLang(ahara_apat, vihara_apat, apathyaFlat, "english", "hindi", "gujarati");
+
+    // disease_name supports both en/hi/gu and english/hindi/gujarati
+    const nameEn = dn.english || dn.en || "";
+    const nameHi = dn.hindi   || dn.hi || nameEn;
+    const nameGu = dn.gujarati || dn.gu || nameEn;
+
+    const id = nameEn.toLowerCase().replace(/[\s()\/]+/g, "-") || raw.id || "";
     if (!id) return null;
     return {
       id,
       group: raw.group || "Imported",
-      nameEn: dn.english || "",
-      nameHi: dn.hindi || dn.english || "",
-      nameGu: dn.gujarati || dn.english || "",
-      causesEn: combineLang(ahara_nid, vihara_nid, "english"),
-      causesHi: combineLang(ahara_nid, vihara_nid, "hindi"),
-      causesGu: combineLang(ahara_nid, vihara_nid, "gujarati"),
-      pathyaEn: combineLang(ahara_path, vihara_path, "english"),
-      pathyaHi: combineLang(ahara_path, vihara_path, "hindi"),
-      pathyaGu: combineLang(ahara_path, vihara_path, "gujarati"),
-      apathyaEn: combineLang(ahara_apat, vihara_apat, "english"),
-      apathyaHi: combineLang(ahara_apat, vihara_apat, "hindi"),
-      apathyaGu: combineLang(ahara_apat, vihara_apat, "gujarati"),
+      nameEn,
+      nameHi,
+      nameGu,
+      causesEn: causes.en,
+      causesHi: causes.hi,
+      causesGu: causes.gu,
+      pathyaEn: pathya.en,
+      pathyaHi: pathya.hi,
+      pathyaGu: pathya.gu,
+      apathyaEn: apathya.en,
+      apathyaHi: apathya.hi,
+      apathyaGu: apathya.gu,
     };
   } catch { return null; }
 }
@@ -899,11 +921,11 @@ export default function PathyaApathya() {
   };
 
   const extractJsonFromTxt = (text: string): string => {
-    // Extract all ```json ... ``` blocks from notepad/txt files
+    // 1. Try ```json ... ``` blocks first
     const blocks: any[] = [];
-    const regex = /```json\s*([\s\S]*?)```/g;
+    const backtickRegex = /```json\s*([\s\S]*?)```/g;
     let match;
-    while ((match = regex.exec(text)) !== null) {
+    while ((match = backtickRegex.exec(text)) !== null) {
       try {
         const parsed = JSON.parse(match[1].trim());
         if (Array.isArray(parsed)) blocks.push(...parsed);
@@ -911,12 +933,33 @@ export default function PathyaApathya() {
       } catch { /* skip invalid blocks */ }
     }
     if (blocks.length > 0) return JSON.stringify(blocks);
-    // Fallback: try to find first { or [ and treat as JSON from there
-    const firstBrace = Math.min(
-      text.indexOf("{") === -1 ? Infinity : text.indexOf("{"),
-      text.indexOf("[") === -1 ? Infinity : text.indexOf("[")
-    );
-    if (firstBrace !== Infinity) return text.slice(firstBrace);
+
+    // 2. Extract ALL top-level [ ... ] and { ... } JSON blocks via bracket matching
+    const extracted: any[] = [];
+    let i = 0;
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === "[" || ch === "{") {
+        const open = ch, close = ch === "[" ? "]" : "}";
+        let depth = 0, j = i;
+        while (j < text.length) {
+          if (text[j] === open) depth++;
+          else if (text[j] === close) { depth--; if (depth === 0) break; }
+          j++;
+        }
+        if (depth === 0) {
+          try {
+            const parsed = JSON.parse(text.slice(i, j + 1));
+            if (Array.isArray(parsed)) extracted.push(...parsed);
+            else extracted.push(parsed);
+            i = j + 1;
+            continue;
+          } catch { /* not valid JSON at this bracket, keep scanning */ }
+        }
+      }
+      i++;
+    }
+    if (extracted.length > 0) return JSON.stringify(extracted);
     return text;
   };
 
