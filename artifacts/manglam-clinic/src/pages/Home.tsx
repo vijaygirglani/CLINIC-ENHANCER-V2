@@ -15,6 +15,7 @@ import {
   FileText, Printer, Paperclip, X, Leaf, Weight, Calendar,
   Zap, Search, SlidersHorizontal, Sheet, Link, ClipboardPaste,
   Hourglass, CheckCircle2, WalletCards, MessageSquare, ChevronDown, Stethoscope,
+  ShoppingBag, PackagePlus, Trash2, IndianRupee,
 } from "lucide-react";
 
 // ── Pending Fees helpers ──────────────────────────────────────────────
@@ -23,6 +24,24 @@ interface PendingEntry { patientId: number; name: string; mobile: string; fees: 
 function getPendingFees(): PendingEntry[] { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch { return []; } }
 function addPendingFee(e: PendingEntry) { const l = getPendingFees().filter(x => x.patientId !== e.patientId); l.push(e); localStorage.setItem(PENDING_KEY, JSON.stringify(l)); }
 function removePendingFee(id: number) { localStorage.setItem(PENDING_KEY, JSON.stringify(getPendingFees().filter(e => e.patientId !== id))); }
+
+// ── Loose Medicine Sale helpers ───────────────────────────────────────────────
+const LOOSE_SALE_KEY = "manglam_loose_sales";
+interface LooseSaleEntry { id: string; product: string; amount: number; date: string; time: string; }
+function getLooseSales(date: string): LooseSaleEntry[] {
+  try { return (JSON.parse(localStorage.getItem(LOOSE_SALE_KEY) || "[]") as LooseSaleEntry[]).filter(e => e.date === date); }
+  catch { return []; }
+}
+function addLooseSale(entry: LooseSaleEntry) {
+  const all: LooseSaleEntry[] = (() => { try { return JSON.parse(localStorage.getItem(LOOSE_SALE_KEY) || "[]"); } catch { return []; } })();
+  all.push(entry);
+  localStorage.setItem(LOOSE_SALE_KEY, JSON.stringify(all));
+}
+function removeLooseSale(id: string) {
+  const all: LooseSaleEntry[] = (() => { try { return JSON.parse(localStorage.getItem(LOOSE_SALE_KEY) || "[]"); } catch { return []; } })();
+  localStorage.setItem(LOOSE_SALE_KEY, JSON.stringify(all.filter(e => e.id !== id)));
+}
+function genSaleId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -242,6 +261,33 @@ export default function Home() {
   const [pendingFees, setPendingFees] = useState<PendingEntry[]>(() => getPendingFees());
   const [feesMarkedPending, setFeesMarkedPending] = useState(false);
   const refreshPending = () => setPendingFees(getPendingFees());
+
+  // ── Loose Medicine Sales state ──
+  const [looseSales, setLooseSales]         = useState<LooseSaleEntry[]>(() => getLooseSales(todayStr));
+  const [looseProduct, setLooseProduct]     = useState("");
+  const [looseAmount, setLooseAmount]       = useState("");
+  const refreshLooseSales = () => setLooseSales(getLooseSales(todayStr));
+  const looseTodayTotal = looseSales.reduce((s, e) => s + e.amount, 0);
+
+  const handleAddLooseSale = () => {
+    const product = looseProduct.trim();
+    const amount  = Number(looseAmount);
+    if (!product || !amount || amount <= 0) return;
+    const entry: LooseSaleEntry = {
+      id: genSaleId(), product, amount,
+      date: todayStr,
+      time: format(new Date(), "hh:mm a"),
+    };
+    addLooseSale(entry);
+    refreshLooseSales();
+    setLooseProduct("");
+    setLooseAmount("");
+  };
+
+  const handleRemoveLooseSale = (id: string) => {
+    removeLooseSale(id);
+    refreshLooseSales();
+  };
 
   // ── Pathya-Apathya suggest state ──
   const [importedDiseases, setImportedDiseases] = useState<PADisease[]>(() => getAllDiseases());
@@ -1135,6 +1181,87 @@ export default function Home() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* ── LOOSE MEDICINE SALES ── */}
+            <div className="medical-card overflow-hidden">
+              <div className="px-4 py-3 bg-violet-50 border-b border-violet-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4 text-violet-600" />
+                  <span className="text-sm font-bold text-violet-800">Loose Medicine Sales</span>
+                </div>
+                {looseTodayTotal > 0 && (
+                  <span className="text-xs font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <IndianRupee className="w-3 h-3" />{looseTodayTotal.toLocaleString("en-IN")}
+                  </span>
+                )}
+              </div>
+              {/* Add Entry Form */}
+              <div className="p-3 border-b border-violet-50 bg-white space-y-2">
+                <input
+                  value={looseProduct}
+                  onChange={e => setLooseProduct(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); document.getElementById("loose-amount-input")?.focus(); } }}
+                  placeholder="Product name (e.g. Triphala Churna)"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm transition-all"
+                />
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₹</span>
+                    <input
+                      id="loose-amount-input"
+                      type="number"
+                      value={looseAmount}
+                      onChange={e => setLooseAmount(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddLooseSale(); } }}
+                      placeholder="Amount"
+                      min={0}
+                      className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm font-mono transition-all"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAddLooseSale}
+                    disabled={!looseProduct.trim() || !looseAmount || Number(looseAmount) <= 0}
+                    className="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors flex items-center gap-1.5 shadow-sm">
+                    <PackagePlus className="w-4 h-4" /> Add
+                  </button>
+                </div>
+              </div>
+              {/* Sales List */}
+              {looseSales.length === 0 ? (
+                <div className="px-4 py-5 text-center text-slate-400">
+                  <ShoppingBag className="w-7 h-7 mx-auto mb-1.5 text-violet-200" />
+                  <p className="text-xs font-medium text-slate-500">No loose sales today</p>
+                  <p className="text-xs mt-0.5 text-slate-400">Add a product above to start tracking</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-50 max-h-52 overflow-y-auto">
+                  {looseSales.map((sale, i) => (
+                    <div key={sale.id} className="flex items-center gap-2 px-3 py-2.5 hover:bg-violet-50/40 transition-colors group">
+                      <span className="text-xs text-slate-300 w-4 shrink-0 font-mono">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-xs text-slate-800 truncate">{sale.product}</p>
+                        <p className="text-[10px] text-slate-400">{sale.time}</p>
+                      </div>
+                      <span className="font-bold text-violet-700 text-sm shrink-0">₹{sale.amount.toLocaleString("en-IN")}</span>
+                      <button
+                        onClick={() => handleRemoveLooseSale(sale.id)}
+                        title="Remove"
+                        className="shrink-0 p-1 rounded-lg text-slate-300 hover:text-red-400 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="px-3 py-2.5 bg-violet-50 flex justify-between items-center sticky bottom-0">
+                    <span className="text-xs font-bold text-violet-700 flex items-center gap-1">
+                      <ShoppingBag className="w-3 h-3" /> Today's Total ({looseSales.length} item{looseSales.length !== 1 ? "s" : ""})
+                    </span>
+                    <span className="font-bold text-violet-700 flex items-center gap-0.5">
+                      <IndianRupee className="w-3.5 h-3.5" />{looseTodayTotal.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* ── PENDING FEES PANEL ── */}
             <div className="medical-card overflow-hidden">
