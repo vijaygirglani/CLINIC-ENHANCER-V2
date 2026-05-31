@@ -8,7 +8,6 @@ import DailyRegister from "@/pages/DailyRegister";
 import AyurvedicRegister from "@/pages/AyurvedicRegister";
 import ComplaintCodes from "@/pages/ComplaintCodes";
 import PathyaApathya from "@/pages/PathyaApathya";
-import SymptomTracker from "@/pages/SymptomTracker";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -25,7 +24,6 @@ function Router() {
       <Route path="/ayurvedic-register" component={AyurvedicRegister} />
       <Route path="/complaint-codes" component={ComplaintCodes} />
       <Route path="/pathya-apathya" component={PathyaApathya} />
-      <Route path="/symptom-tracker" component={SymptomTracker} />
       <Route component={NotFound} />
     </Switch>
   );
