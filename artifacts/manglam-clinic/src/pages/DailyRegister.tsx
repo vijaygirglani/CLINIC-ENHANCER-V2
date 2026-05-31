@@ -9,8 +9,16 @@ import {
 import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
-  TrendingUp, Leaf, MessageCircle, Send, X,
+  TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag,
 } from "lucide-react";
+
+// ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
+const LOOSE_SALE_KEY = "manglam_loose_sales";
+interface LooseSaleEntry { id: string; product: string; amount: number; date: string; time: string; }
+function getLooseSalesForDate(date: string): LooseSaleEntry[] {
+  try { return (JSON.parse(localStorage.getItem(LOOSE_SALE_KEY) || "[]") as LooseSaleEntry[]).filter(e => e.date === date); }
+  catch { return []; }
+}
 import { exportToExcel, parseExcelFile } from "@/lib/export";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -55,9 +63,14 @@ export default function DailyRegister() {
   const [waCustomNote, setWaCustomNote] = useState("");
   const { toast } = useToast();
 
+  // Loose sales for selected date
+  const [looseSalesForDay, setLooseSalesForDay] = useState<LooseSaleEntry[]>(() => getLooseSalesForDate(format(new Date(), "yyyy-MM-dd")));
+  const looseDayTotal = looseSalesForDay.reduce((s, e) => s + e.amount, 0);
+
   const refresh = useCallback(() => {
     setStats(getDailyStats(selectedDate));
     setAllDates(getAllDates());
+    setLooseSalesForDay(getLooseSalesForDate(selectedDate));
   }, [selectedDate]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -174,17 +187,21 @@ export default function DailyRegister() {
     const generalFees = (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").reduce((s, p) => s + (p.fees || 0), 0);
     const ayurvedicFees = (stats?.patients || []).filter(p => p.registerType === "ayurvedic").reduce((s, p) => s + (p.fees || 0), 0);
     const dateStr = format(new Date(selectedDate + "T00:00:00"), "dd/MM/yyyy");
+    const grandTotal = (stats?.totalFees || 0) + looseDayTotal;
+    const looseLine = looseDayTotal > 0
+      ? `\n\n🛒 *Loose Medicine Sales:* ₹${looseDayTotal.toLocaleString("en-IN")} (${looseSalesForDay.length} items)`
+      : "";
     return `🏥 *Manglam Clinic Daily Update*
 
 📅 *Date:* ${dateStr}
 
 👥 *Patients Seen Today:* ${stats?.totalPatients || 0}
 
-💵 *Today's Collection:* ₹${(stats?.totalFees || 0).toLocaleString("en-IN")}
+💵 *Today's Collection:* ₹${grandTotal.toLocaleString("en-IN")}
 
 🩺 *General Cases:* ${generalCount} (₹${generalFees.toLocaleString("en-IN")})
 
-🌿 *Ayurvedic Cases:* ${ayurvedicCount} (₹${ayurvedicFees.toLocaleString("en-IN")})${waCustomNote.trim() ? `\n\n📝 *Note:* ${waCustomNote.trim()}` : ""}
+🌿 *Ayurvedic Cases:* ${ayurvedicCount} (₹${ayurvedicFees.toLocaleString("en-IN")})${looseLine}${waCustomNote.trim() ? `\n\n📝 *Note:* ${waCustomNote.trim()}` : ""}
 
 Thank you everyone for your trust 🙏
 *Dr. Vijay Girglani*
@@ -246,8 +263,8 @@ Thank you everyone for your trust 🙏
             { label: "Total", value: stats?.totalPatients || 0, icon: Users, color: "bg-blue-100 text-primary" },
             { label: "General", value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, icon: FileText, color: "bg-slate-100 text-slate-600" },
             { label: "Ayurvedic", value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, icon: Leaf, color: "bg-emerald-100 text-emerald-600" },
-            { label: "Collection", value: formatCurrency(stats?.totalFees || 0), icon: IndianRupee, color: "bg-emerald-100 text-emerald-600" },
-          ].map(({ label, value, icon: Icon, color }) => (
+            { label: "Collection", value: formatCurrency((stats?.totalFees || 0) + looseDayTotal), icon: IndianRupee, color: "bg-emerald-100 text-emerald-600", sub: looseDayTotal > 0 ? `+₹${looseDayTotal} loose` : undefined },
+          ].map(({ label, value, icon: Icon, color, sub }: any) => (
             <div key={label} className="medical-card p-4 flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
                 <Icon className="w-5 h-5" />
@@ -255,6 +272,7 @@ Thank you everyone for your trust 🙏
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
                 <p className="text-2xl font-display font-bold text-slate-900">{value}</p>
+                {sub && <p className="text-[10px] text-violet-600 font-semibold flex items-center gap-0.5"><ShoppingBag className="w-2.5 h-2.5" />{sub}</p>}
               </div>
             </div>
           ))}
