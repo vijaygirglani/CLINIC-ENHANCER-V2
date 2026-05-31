@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import {
-  UserPlus, BookOpen, Leaf, Code2, BookMarked, Menu, X,
+  UserPlus, BookOpen, Leaf, Code2, BookMarked, Menu, X, Activity,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -10,6 +10,7 @@ const NAV = [
   { to: "/ayurvedic-register",label: "Ayurvedic Register",   icon: Leaf },
   { to: "/complaint-codes",   label: "Complaint Codes",      icon: Code2 },
   { to: "/pathya-apathya",    label: "Pathya-Apathya",       icon: BookMarked },
+  { to: "/symptom-tracker",   label: "Symptom Tracker",      icon: Activity },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
