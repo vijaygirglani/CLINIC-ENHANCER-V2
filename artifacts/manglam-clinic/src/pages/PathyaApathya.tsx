@@ -899,6 +899,12 @@ export default function PathyaApathya() {
   const [hiddenIds, setHiddenIds]               = useState<string[]>(() => loadHiddenDiseaseIds());
   const [confirmDelete, setConfirmDelete]       = useState<Disease | null>(null);
 
+  // ─── Share as Image ───────────────────────────────────────────────────────
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isCapturing, setIsCapturing]           = useState(false);
+  const [showImageShareModal, setShowImageShareModal] = useState(false);
+  const [capturedImageUrl, setCapturedImageUrl] = useState<string | null>(null);
+
   const allDiseases = [...diseases, ...importedDiseases].filter(d => !hiddenIds.includes(d.id));
 
   const handleImport = (jsonText: string) => {
@@ -1105,6 +1111,64 @@ export default function PathyaApathya() {
       ? `https://wa.me/${number}?text=${encodeURIComponent(msg)}`
       : `https://wa.me/?text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank");
+  };
+
+  const shareAsImage = async () => {
+    if (!cardRef.current) return;
+    setIsCapturing(true);
+    try {
+      // Dynamically load html2canvas from CDN
+      if (!(window as any).html2canvas) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error("Failed to load html2canvas"));
+          document.head.appendChild(s);
+        });
+      }
+      const h2c = (window as any).html2canvas;
+      const canvas = await h2c(cardRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        windowWidth: cardRef.current.scrollWidth,
+        width: cardRef.current.scrollWidth,
+        height: cardRef.current.scrollHeight,
+      });
+      const dataUrl = canvas.toDataURL("image/png");
+      setCapturedImageUrl(dataUrl);
+      setShowImageShareModal(true);
+    } catch (e) {
+      alert("Screenshot failed. Please try the Print button instead.");
+    }
+    setIsCapturing(false);
+  };
+
+  const downloadAndOpenWhatsApp = () => {
+    if (!capturedImageUrl) return;
+    // Download the image
+    const a = document.createElement("a");
+    a.href = capturedImageUrl;
+    const ptSuffix = patientName ? `_${patientName.replace(/\s+/g, "_")}` : "";
+    a.download = `Pathya_Apathya_${selected.id}${ptSuffix}_${today.replace(/\//g, "-")}.png`;
+    a.click();
+    // Open WhatsApp after short delay
+    setTimeout(() => {
+      const number = patientMobile ? formatMobile(patientMobile) : "";
+      const greeting = patientName
+        ? (lang === "gu" ? `નમસ્તે ${patientName},` : `नमस्ते ${patientName},`)
+        : "";
+      const note = lang === "gu"
+        ? `${greeting}\nManglam Skin Care Clinic તરફથી તમારા માટે Pathya-Apathya માર્ગદર્શન.\nકૃપા કરીને ઉપર download થયેલ image attach કરો. 🙏`
+        : `${greeting}\nManglam Skin Care Clinic की तरफ से आपके लिए Pathya-Apathya मार्गदर्शन।\nकृपया ऊपर download हुई image attach करें। 🙏`;
+      const url = number
+        ? `https://wa.me/${number}?text=${encodeURIComponent(note)}`
+        : `https://wa.me/?text=${encodeURIComponent(note)}`;
+      window.open(url, "_blank");
+    }, 800);
+    setShowImageShareModal(false);
   };
 
   const filtered = diseaseSearch.length > 0
@@ -1501,7 +1565,7 @@ export default function PathyaApathya() {
 
         {/* ── Main content ── */}
         <div className="lg:col-span-9">
-          <div className="medical-card overflow-hidden">
+          <div ref={cardRef} className="medical-card overflow-hidden">
 
             {/* Header */}
             <div className="bg-emerald-800 text-white p-5 flex items-start justify-between gap-4">
@@ -1551,13 +1615,37 @@ export default function PathyaApathya() {
                   </p>
                 </div>
               </div>
-              <button onClick={shareOnWhatsApp}
-                className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-md hover:shadow-lg shrink-0">
-                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                </svg>
-                {lang==="gu" ? "Share કરો" : "Share करें"}
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Image Share Button */}
+                <button
+                  onClick={shareAsImage}
+                  disabled={isCapturing}
+                  title={lang==="gu" ? "Card ની Image download કરી WhatsApp ખોલો" : "Card की Image download करके WhatsApp खोलें"}
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all shadow-md hover:shadow-lg">
+                  {isCapturing ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                    </svg>
+                  )}
+                  {isCapturing
+                    ? (lang==="gu" ? "બનાવી રહ્યા..." : "बना रहे...")
+                    : (lang==="gu" ? "📸 Image Share" : "📸 Image Share")}
+                </button>
+                {/* Text Share Button */}
+                <button onClick={shareOnWhatsApp}
+                  title={lang==="gu" ? "Text format માં share કરો" : "Text format में share करें"}
+                  className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all shadow-md hover:shadow-lg">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  {lang==="gu" ? "Text" : "Text"}
+                </button>
+              </div>
             </div>
 
             {/* Pathya / Apathya */}
@@ -1599,6 +1687,59 @@ export default function PathyaApathya() {
           </div>
         </div>
       </div>
+        {/* ── Image Share Modal ── */}
+        {showImageShareModal && capturedImageUrl && (
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/60 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 bg-emerald-700 text-white">
+                <div>
+                  <h3 className="font-bold text-base">📸 {lang==="gu" ? "Image Ready!" : "Image Ready!"}</h3>
+                  <p className="text-emerald-200 text-xs mt-0.5">
+                    {lang==="gu" ? "Image download કરો અને WhatsApp માં attach કરો" : "Image download करें और WhatsApp में attach करें"}
+                  </p>
+                </div>
+                <button onClick={() => setShowImageShareModal(false)} className="text-white/70 hover:text-white">
+                  <X className="w-5 h-5"/>
+                </button>
+              </div>
+
+              {/* Preview */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <img src={capturedImageUrl} alt="Card preview" className="w-full rounded-xl border border-slate-200 shadow"/>
+
+                {/* Steps */}
+                <div className="mt-4 space-y-2">
+                  {[
+                    lang==="gu" ? "① નીચે 'Download & WhatsApp ખોલો' દબાવો" : "① नीचे 'Download & WhatsApp खोलें' दबाएं",
+                    lang==="gu" ? "② Image automatically download થશે (PNG file)" : "② Image automatically download होगी (PNG file)",
+                    lang==="gu" ? "③ WhatsApp chat ખુલ્લો — 📎 Attach icon → Gallery → Download folder → Image select કરો" : "③ WhatsApp chat खुलेगा — 📎 Attach → Gallery → Downloads → Image select करें",
+                    lang==="gu" ? "④ Send કરો! 🎉" : "④ Send करें! 🎉",
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
+                      {step}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex gap-3">
+                <button onClick={() => setShowImageShareModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-semibold text-sm hover:bg-slate-100 transition-colors">
+                  {lang==="gu" ? "રદ કરો" : "रद्द करें"}
+                </button>
+                <button onClick={downloadAndOpenWhatsApp}
+                  className="flex-1 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 shadow-md">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  {lang==="gu" ? "Download & WhatsApp ખોલો" : "Download & WhatsApp खोलें"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </Layout>
   );
 }
