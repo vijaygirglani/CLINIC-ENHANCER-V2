@@ -263,11 +263,20 @@ export default function Home() {
   const refreshPending = () => setPendingFees(getPendingFees());
 
   // ── Loose Medicine Sales state ──
-  const [looseSales, setLooseSales]         = useState<LooseSaleEntry[]>(() => getLooseSales(todayStr));
+  const getLiveToday = () => format(new Date(), "yyyy-MM-dd");
+  const [looseSales, setLooseSales]         = useState<LooseSaleEntry[]>(() => getLooseSales(getLiveToday()));
   const [looseProduct, setLooseProduct]     = useState("");
   const [looseAmount, setLooseAmount]       = useState("");
-  const refreshLooseSales = () => setLooseSales(getLooseSales(todayStr));
+  const refreshLooseSales = () => setLooseSales(getLooseSales(getLiveToday()));
   const looseTodayTotal = looseSales.reduce((s, e) => s + e.amount, 0);
+
+  // ── Auto-refresh at midnight so the panel resets without page reload ──
+  useEffect(() => {
+    const checkMidnight = setInterval(() => {
+      refreshLooseSales();
+    }, 60 * 1000); // check every 60 seconds
+    return () => clearInterval(checkMidnight);
+  }, []);
 
   const handleAddLooseSale = () => {
     const product = looseProduct.trim();
@@ -275,7 +284,7 @@ export default function Home() {
     if (!product || !amount || amount <= 0) return;
     const entry: LooseSaleEntry = {
       id: genSaleId(), product, amount,
-      date: todayStr,
+      date: getLiveToday(),
       time: format(new Date(), "hh:mm a"),
     };
     addLooseSale(entry);
