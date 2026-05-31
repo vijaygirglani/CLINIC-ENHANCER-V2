@@ -1114,34 +1114,194 @@ export default function PathyaApathya() {
   };
 
   const shareAsImage = async () => {
-    if (!cardRef.current) return;
     setIsCapturing(true);
     try {
-      // Dynamically load html2canvas from CDN
-      if (!(window as any).html2canvas) {
-        await new Promise<void>((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-          s.onload = () => resolve();
-          s.onerror = () => reject(new Error("Failed to load html2canvas"));
-          document.head.appendChild(s);
-        });
+      const W = 900, SCALE = 2;
+      const causes  = getCauses();
+      const pathya  = getPathya();
+      const apathya = getApathya();
+      const name     = getName();
+
+      // ── helpers ──────────────────────────────────────────────────────────
+      const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] => {
+        const words = text.split(" ");
+        const lines: string[] = [];
+        let cur = "";
+        for (const w of words) {
+          const test = cur ? cur + " " + w : w;
+          if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; }
+          else cur = test;
+        }
+        if (cur) lines.push(cur);
+        return lines;
+      };
+
+      const drawBulletBlock = (
+        ctx: CanvasRenderingContext2D,
+        items: string[], y: number,
+        xLeft: number, maxW: number,
+        bulletColor: string, textColor: string,
+        fontSize: number
+      ): number => {
+        ctx.font = `${fontSize * SCALE}px Arial, sans-serif`;
+        ctx.fillStyle = textColor;
+        const lh = (fontSize + 5) * SCALE;
+        for (const item of items) {
+          const lines = wrapText(ctx, item, maxW);
+          // bullet
+          ctx.fillStyle = bulletColor;
+          ctx.fillText("•", xLeft, y + lh * 0.8);
+          ctx.fillStyle = textColor;
+          for (let li = 0; li < lines.length; li++) {
+            ctx.fillText(lines[li], xLeft + 18 * SCALE, y + lh * (li + 0.85));
+          }
+          y += lh * lines.length + 4 * SCALE;
+        }
+        return y;
+      };
+
+      // ── first pass: measure height ────────────────────────────────────────
+      const measure = document.createElement("canvas");
+      measure.width = W * SCALE;
+      measure.height = 100;
+      const mctx = measure.getContext("2d")!;
+
+      const measureBlock = (items: string[], maxW: number, fontSize: number): number => {
+        mctx.font = `${fontSize * SCALE}px Arial, sans-serif`;
+        const lh = (fontSize + 5) * SCALE;
+        let h = 0;
+        for (const item of items) {
+          const lines = wrapText(mctx, item, maxW);
+          h += lh * lines.length + 4 * SCALE;
+        }
+        return h;
+      };
+
+      const PAD = 24 * SCALE;
+      const colW = (W / 2 - 36) * SCALE;
+      const fullW = (W - 48) * SCALE;
+
+      const headerH  = 110 * SCALE;
+      const causeH   = measureBlock(causes,  fullW - 18 * SCALE, 13) + 48 * SCALE;
+      const pathyaH  = measureBlock(pathya,  colW  - 18 * SCALE, 13) + 48 * SCALE;
+      const apathyaH = measureBlock(apathya, colW  - 18 * SCALE, 13) + 48 * SCALE;
+      const colsH    = Math.max(pathyaH, apathyaH) + 10 * SCALE;
+      const footerH  = 44 * SCALE;
+      const totalH   = headerH + causeH + colsH + footerH + PAD;
+
+      // ── actual canvas ─────────────────────────────────────────────────────
+      const canvas = document.createElement("canvas");
+      canvas.width  = W * SCALE;
+      canvas.height = totalH;
+      const ctx = canvas.getContext("2d")!;
+
+      // white background
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // ── HEADER ────────────────────────────────────────────────────────────
+      ctx.fillStyle = "#1d4e3b"; // emerald-800
+      ctx.fillRect(0, 0, canvas.width, headerH);
+
+      ctx.fillStyle = "#6ee7b7"; // emerald-300
+      ctx.font = `${11 * SCALE}px Arial, sans-serif`;
+      ctx.fillText("Manglam Skin Care Clinic · Dr. Vijay Girglani · B.A.M.S., C.S.D. · Reg. GBI 17318", PAD, 22 * SCALE);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font      = `bold ${22 * SCALE}px Arial, sans-serif`;
+      ctx.fillText(name, PAD, 52 * SCALE);
+
+      ctx.fillStyle = "#6ee7b7";
+      ctx.font      = `${12 * SCALE}px Arial, sans-serif`;
+      ctx.fillText(selected.nameEn, PAD, 68 * SCALE);
+
+      if (patientName) {
+        ctx.fillStyle = "#a7f3d0";
+        ctx.font = `bold ${13 * SCALE}px Arial, sans-serif`;
+        ctx.fillText(`👤 ${patientName}`, PAD, 86 * SCALE);
       }
-      const h2c = (window as any).html2canvas;
-      const canvas = await h2c(cardRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        windowWidth: cardRef.current.scrollWidth,
-        width: cardRef.current.scrollWidth,
-        height: cardRef.current.scrollHeight,
-      });
+
+      // date top-right
+      ctx.fillStyle = "#6ee7b7";
+      ctx.font      = `${11 * SCALE}px Arial, sans-serif`;
+      ctx.textAlign = "right";
+      ctx.fillText(today, (W - 24) * SCALE, 22 * SCALE);
+      ctx.textAlign = "left";
+
+      // ── CAUSES ───────────────────────────────────────────────────────────
+      let y = headerH;
+      ctx.fillStyle = "#fffbeb"; // amber-50
+      ctx.fillRect(0, y, canvas.width, causeH);
+
+      // causes border bottom
+      ctx.fillStyle = "#fde68a";
+      ctx.fillRect(0, y + causeH - 2, canvas.width, 2);
+
+      ctx.fillStyle = "#b45309"; // amber-700
+      ctx.font      = `bold ${11 * SCALE}px Arial, sans-serif`;
+      ctx.fillText(causesTitle.toUpperCase(), PAD, y + 20 * SCALE);
+      y += 32 * SCALE;
+      y = drawBulletBlock(ctx, causes, y, PAD, fullW - 18 * SCALE, "#f59e0b", "#92400e", 13);
+      y = headerH + causeH;
+
+      // ── COLUMNS ──────────────────────────────────────────────────────────
+      const colsTop = y;
+
+      // pathya column (left)
+      ctx.fillStyle = "#f0fdf4";
+      ctx.fillRect(0, colsTop, canvas.width / 2, colsH);
+
+      // apathya column (right)
+      ctx.fillStyle = "#fff5f5";
+      ctx.fillRect(canvas.width / 2, colsTop, canvas.width / 2, colsH);
+
+      // divider
+      ctx.fillStyle = "#e2e8f0";
+      ctx.fillRect(canvas.width / 2 - 1, colsTop, 2, colsH);
+
+      // pathya header
+      ctx.fillStyle = "#15803d";
+      ctx.font      = `bold ${14 * SCALE}px Arial, sans-serif`;
+      ctx.fillText("✅  " + pathyaTitle, PAD, colsTop + 22 * SCALE);
+      ctx.fillStyle = "#4ade80";
+      ctx.font      = `${10 * SCALE}px Arial, sans-serif`;
+      ctx.fillText(lang === "hi" ? "क्या खाएं और अपनाएं" : "શું ખાવું અને અપનાવવું", PAD + 26 * SCALE, colsTop + 36 * SCALE);
+
+      let leftY = colsTop + 48 * SCALE;
+      leftY = drawBulletBlock(ctx, pathya, leftY, PAD, colW - 18 * SCALE, "#22c55e", "#374151", 12);
+
+      // apathya header
+      const rightX = canvas.width / 2 + PAD;
+      ctx.fillStyle = "#dc2626";
+      ctx.font      = `bold ${14 * SCALE}px Arial, sans-serif`;
+      ctx.fillText("❌  " + apathyaTitle, rightX, colsTop + 22 * SCALE);
+      ctx.fillStyle = "#f87171";
+      ctx.font      = `${10 * SCALE}px Arial, sans-serif`;
+      ctx.fillText(lang === "hi" ? "क्या न खाएं" : "શું ન ખાવું", rightX + 26 * SCALE, colsTop + 36 * SCALE);
+
+      let rightY = colsTop + 48 * SCALE;
+      rightY = drawBulletBlock(ctx, apathya, rightY, rightX, colW - 18 * SCALE, "#ef4444", "#374151", 12);
+
+      // ── FOOTER ───────────────────────────────────────────────────────────
+      const footerY = colsTop + colsH;
+      ctx.fillStyle = "#1d4e3b";
+      ctx.fillRect(0, footerY, canvas.width, footerH);
+      ctx.fillStyle = "#a7f3d0";
+      ctx.font      = `${11 * SCALE}px Arial, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(
+        lang === "gu"
+          ? "Manglam Skin Care Clinic, Tankara · Dr. Vijay Girglani · B.A.M.S., C.S.D. · Reg. GBI 17318"
+          : "Manglam Skin Care Clinic, Tankara · Dr. Vijay Girglani · B.A.M.S., C.S.D. · Reg. GBI 17318",
+        canvas.width / 2, footerY + 26 * SCALE
+      );
+      ctx.textAlign = "left";
+
       const dataUrl = canvas.toDataURL("image/png");
       setCapturedImageUrl(dataUrl);
       setShowImageShareModal(true);
-    } catch (e) {
-      alert("Screenshot failed. Please try the Print button instead.");
+    } catch (e: any) {
+      alert("Image creation failed: " + e.message);
     }
     setIsCapturing(false);
   };
