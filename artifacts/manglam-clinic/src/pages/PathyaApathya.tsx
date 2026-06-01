@@ -1081,26 +1081,26 @@ export default function PathyaApathya() {
     const causes  = getCauses().map(c => `  • ${c}`).join("\n");
     const pathya  = getPathya().map(p => `  • ${p}`).join("\n");
     const apathya = getApathya().map(a => `  • ${a}`).join("\n");
-    const ptLine  = patientName ? `\n👤 *${lang === "gu" ? "દર્દી" : "दर्दी"}:* ${patientName}` : "";
+    const ptLine  = patientName ? `\n*${lang === "gu" ? "દર્દી" : "दर्दी"}:* ${patientName}` : "";
     const footer  = lang === "gu"
-      ? "_Manglam Skin Care Clinic, Tankara તરફથી આયુર્વેદિક માર્ગદર્શન_"
-      : "_Manglam Skin Care Clinic, Tankara से आयुर्वेदिक मार्गदर्शन_";
+      ? "_Manglam Clinic તરફથી આયુર્વેદિક માર્ગદર્શન_"
+      : "_Manglam Clinic से आयुर्वेदिक मार्गदर्शन_";
 
     const msg = [
-      `🏥 *Manglam Skin Care Clinic*`,
-      `Dr. Vijay Girglani | B.A.M.S., C.S.D. | Reg. GBI 17318`,
+      `*Manglam Clinic*`,
+      `Dr. Vijay Girglani | B.A.M.S. | Reg. GBI 17318`,
       ptLine,
-      `📅 *${lang === "gu" ? "તારીખ" : "तारीख"}:* ${today}`,
+      `*${lang === "gu" ? "તારીખ" : "तारीख"}:* ${today}`,
       ``,
-      `🔖 *${name}* (${selected.nameEn})`,
+      `*${name}* (${selected.nameEn})`,
       ``,
-      `⚠️ *${causesTitle}:*`,
+      `*${causesTitle}:*`,
       causes,
       ``,
-      `✅ *${pathyaTitle}*`,
+      `*${pathyaTitle}*`,
       pathya,
       ``,
-      `❌ *${apathyaTitle}*`,
+      `*${apathyaTitle}*`,
       apathya,
       ``,
       footer,
@@ -1205,7 +1205,7 @@ export default function PathyaApathya() {
 
       ctx.fillStyle = "#6ee7b7"; // emerald-300
       ctx.font = `${11 * SCALE}px Arial, sans-serif`;
-      ctx.fillText("Manglam Skin Care Clinic · Dr. Vijay Girglani · B.A.M.S., C.S.D. · Reg. GBI 17318", PAD, 22 * SCALE);
+      ctx.fillText("Manglam Clinic · Dr. Vijay Girglani · B.A.M.S. · Reg. GBI 17318", PAD, 22 * SCALE);
 
       ctx.fillStyle = "#ffffff";
       ctx.font      = `bold ${22 * SCALE}px Arial, sans-serif`;
@@ -1291,8 +1291,8 @@ export default function PathyaApathya() {
       ctx.textAlign = "center";
       ctx.fillText(
         lang === "gu"
-          ? "Manglam Skin Care Clinic, Tankara · Dr. Vijay Girglani · B.A.M.S., C.S.D. · Reg. GBI 17318"
-          : "Manglam Skin Care Clinic, Tankara · Dr. Vijay Girglani · B.A.M.S., C.S.D. · Reg. GBI 17318",
+          ? "Manglam Clinic · Dr. Vijay Girglani · B.A.M.S. · Reg. GBI 17318"
+          : "Manglam Clinic · Dr. Vijay Girglani · B.A.M.S. · Reg. GBI 17318",
         canvas.width / 2, footerY + 26 * SCALE
       );
       ctx.textAlign = "left";
@@ -1321,8 +1321,8 @@ export default function PathyaApathya() {
         ? (lang === "gu" ? `નમસ્તે ${patientName},` : `नमस्ते ${patientName},`)
         : "";
       const note = lang === "gu"
-        ? `${greeting}\nManglam Skin Care Clinic તરફથી તમારા માટે Pathya-Apathya માર્ગદર્શન.\nકૃપા કરીને ઉપર download થયેલ image attach કરો. 🙏`
-        : `${greeting}\nManglam Skin Care Clinic की तरफ से आपके लिए Pathya-Apathya मार्गदर्शन।\nकृपया ऊपर download हुई image attach करें। 🙏`;
+        ? `${greeting}\nManglam Clinic તરફથી તમારા માટે Pathya-Apathya માર્ગદર્શન.\nકૃપા કરીને ઉપર download થયેલ image attach કરો.`
+        : `${greeting}\nManglam Clinic की तरफ से आपके लिए Pathya-Apathya मार्गदर्शन।\nकृपया ऊपर download हुई image attach करें।`;
       const url = number
         ? `https://wa.me/${number}?text=${encodeURIComponent(note)}`
         : `https://wa.me/?text=${encodeURIComponent(note)}`;
@@ -1345,12 +1345,12 @@ export default function PathyaApathya() {
         <table style={{ width:"100%", borderBottom:"3px double #2d6a4f", paddingBottom:"8px", marginBottom:"12px" }}>
           <tbody><tr>
             <td>
-              <div style={{ fontSize:"18px", fontWeight:"900", color:"#2d6a4f" }}>Manglam Skin Care Clinic</div>
+              <div style={{ fontSize:"18px", fontWeight:"900", color:"#2d6a4f" }}>Manglam Clinic</div>
               <div style={{ fontSize:"11px", color:"#666" }}>Ayurvedic Dietary Guidelines — Pathya-Apathya</div>
             </td>
             <td style={{ textAlign:"right", verticalAlign:"top" }}>
               <div style={{ fontWeight:"bold" }}>Dr. Vijay Girglani</div>
-              <div style={{ fontSize:"11px" }}>B.A.M.S., C.S.D. (Skin)</div>
+              <div style={{ fontSize:"11px" }}>B.A.M.S.</div>
               <div style={{ fontSize:"11px" }}>Reg. No. GBI 17318</div>
             </td>
           </tr></tbody>
@@ -1732,7 +1732,7 @@ export default function PathyaApathya() {
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-x-2 mb-2 text-emerald-300 text-xs">
                   <BookOpen className="w-4 h-4"/>
-                  <span>Manglam Skin Care Clinic · Dr. Vijay Girglani · B.A.M.S., C.S.D. · Reg. GBI 17318</span>
+                  <span>Manglam Clinic · Dr. Vijay Girglani · B.A.M.S. · Reg. GBI 17318</span>
                 </div>
                 <h2 className="text-2xl font-bold text-white">{getName()}</h2>
                 <p className="text-emerald-300 text-sm mt-0.5">{selected.nameEn}</p>
