@@ -245,6 +245,148 @@ const emptyDefaults: PatientFormValues = {
   advice: "", reports: "", fees: 0, paymentMode: "cash" as const,
 };
 
+// ── Patient Card Modal ─────────────────────────────────────────────────────
+function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+  const caseNo = patient.mobile.padStart(9, "0");
+  const mobile = patient.mobile.replace(/(\d{5})(\d{5})/, "$1 $2");
+
+  const sendWhatsApp = () => {
+    const number = formatMobileWA(patient.mobile);
+    const msg = [
+      `🏥 *Manglam Clinic — Patient Card*`,
+      `Dr. Vijay Girglani | B.A.M.S.`,
+      `_Ayurvedic & General Practice_`,
+      ``,
+      `👤 *Patient:* ${patient.name}`,
+      `🔢 *Case No.:* ${caseNo}`,
+      patient.address ? `📍 *Address:* ${patient.address}` : "",
+      ``,
+      `📞 *Clinic:* +91 XXXXX XXXXX`,
+      `📍 *Address:* Manglam Hospital, Morbi`,
+      ``,
+      `_Please show this card on your next visit._`,
+      `_Manglam Clinic, Morbi, Gujarat_ 🌿`,
+    ].filter(Boolean).join("\n");
+
+    const url = number
+      ? `https://wa.me/${number}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.85, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.85, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          onClick={e => e.stopPropagation()}
+          className="w-full max-w-sm"
+        >
+          {/* ── Card ── */}
+          <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/30">
+            {/* Header */}
+            <div className="bg-gradient-to-br from-[#c45e10] via-[#d4711f] to-[#b84f0a] px-6 pt-6 pb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner">
+                  <span className="text-white font-black text-xl">M</span>
+                </div>
+                <div>
+                  <p className="text-white font-bold text-lg leading-tight">Manglam Clinic</p>
+                  <p className="text-orange-100 text-xs font-medium">Dr. Vijay Girglani | B.A.M.S.</p>
+                </div>
+              </div>
+              <div className="mt-4 border-t border-white/20 pt-3">
+                <p className="text-orange-100/90 text-[10px] font-bold tracking-[0.2em] uppercase text-center">
+                  Ayurvedic &amp; General Practice
+                </p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="bg-[#fdf8f3] px-6 py-5 space-y-4">
+              {/* PATIENT CARD label */}
+              <div className="flex justify-center">
+                <span className="border border-[#c45e10]/40 text-[#c45e10] text-[10px] font-bold tracking-widest uppercase px-4 py-1 rounded-full">
+                  Patient Card
+                </span>
+              </div>
+
+              {/* Case Number */}
+              <div className="bg-[#f5ece0] rounded-2xl px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-0.5">Case Number</p>
+                  <p className="text-2xl font-black text-[#c45e10] tracking-wide font-mono">{caseNo}</p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-[#c45e10]">
+                  <WalletCards className="w-5 h-5" />
+                </div>
+              </div>
+
+              {/* Patient info rows */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Patient Name</span>
+                  <span className="text-sm font-bold text-slate-800">{patient.name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Mobile</span>
+                  <span className="text-sm font-mono text-slate-700">{mobile}</span>
+                </div>
+                <div className="h-px bg-slate-200" />
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1 mt-0.5 shrink-0">
+                    <MapPin className="w-2.5 h-2.5" /> Address
+                  </span>
+                  <span className="text-sm font-semibold text-slate-700 text-right">{patient.address || "Manglam Hospital, Morbi"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
+                    <Phone className="w-2.5 h-2.5" /> Clinic Phone
+                  </span>
+                  <span className="text-sm font-mono text-slate-600">+91 XXXXX XXXXX</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-[#2d5a1b] px-6 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-white font-bold text-sm">Manglam Hospital</p>
+                <p className="text-green-200 text-xs">Morbi, Gujarat</p>
+              </div>
+              <p className="text-green-200 text-xs text-right leading-tight">
+                Show this card<br />on your next visit
+              </p>
+            </div>
+          </div>
+
+          {/* ── Action buttons ── */}
+          <div className="mt-4 flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 rounded-2xl bg-white/90 backdrop-blur text-slate-600 font-semibold text-sm hover:bg-white transition-all shadow">
+              Close
+            </button>
+            <button
+              onClick={sendWhatsApp}
+              className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30">
+              <MessageSquare className="w-4 h-4" />
+              Send on WhatsApp
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 export default function Home() {
   const { toast } = useToast();
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -253,6 +395,7 @@ export default function Home() {
   const [historyMobile, setHistoryMobile] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [lastSaved, setLastSaved] = useState<Patient | null>(null);
+  const [showCard, setShowCard] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>("history");
   const [filterQuery, setFilterQuery] = useState("");
   const [filterResults, setFilterResults] = useState<Patient[]>([]);
@@ -572,6 +715,7 @@ export default function Home() {
   return (
     <Layout>
       {lastSaved && <PrintPrescription patient={lastSaved} />}
+      {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* ── MAIN FORM ── */}
@@ -1075,6 +1219,12 @@ export default function Home() {
                   <button type="button" onClick={() => printPatientPrescription(lastSaved)}
                     className="px-5 py-3 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-2">
                     <Printer className="w-5 h-5" /> Print Last
+                  </button>
+                )}
+                {lastSaved && (
+                  <button type="button" onClick={() => setShowCard(true)}
+                    className="px-5 py-3 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-400/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
+                    <WalletCards className="w-5 h-5" /> Share Card
                   </button>
                 )}
                 <button type="button" onClick={onSaveAyurvedic}
