@@ -248,30 +248,63 @@ const emptyDefaults: PatientFormValues = {
 // ── Patient Card Modal ─────────────────────────────────────────────────────
 function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
   const caseNo = patient.mobile.padStart(9, "0");
-  const mobile = patient.mobile.replace(/(\d{5})(\d{5})/, "$1 $2");
+  const CLINIC_MOBILE = "9638181875";
+  const CLINIC_ADDRESS = "Pipaliya Char Rasta";
+  const mobile = CLINIC_MOBILE.replace(/(\d{5})(\d{5})/, "$1 $2");
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [sharing, setSharing] = useState(false);
 
-  const sendWhatsApp = () => {
+  const sendWhatsApp = async () => {
     const number = formatMobileWA(patient.mobile);
-    const msg = [
-      `🏥 *Manglam Clinic — Patient Card*`,
-      `Dr. Vijay Girglani | B.A.M.S.`,
-      `_Ayurvedic & General Practice_`,
-      ``,
-      `👤 *Patient:* ${patient.name}`,
-      `🔢 *Case No.:* ${caseNo}`,
-      patient.address ? `📍 *Address:* ${patient.address}` : "",
-      ``,
-      `📞 *Clinic:* +91 XXXXX XXXXX`,
-      `📍 *Address:* Manglam Hospital, Morbi`,
-      ``,
-      `_Please show this card on your next visit._`,
-      `_Manglam Clinic, Morbi, Gujarat_ 🌿`,
-    ].filter(Boolean).join("\n");
+    setSharing(true);
+    try {
+      // Dynamically load html2canvas
+      // @ts-ignore
+      const html2canvas = (await import("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js")).default;
+      const canvas = await html2canvas(cardRef.current!, {
+        scale: 3,
+        useCORS: true,
+        backgroundColor: null,
+        logging: false,
+      });
 
-    const url = number
-      ? `https://wa.me/${number}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank");
+      canvas.toBlob(async (blob: Blob | null) => {
+        if (!blob) { setSharing(false); return; }
+        const file = new File([blob], "patient-card.png", { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: "Manglam Clinic — Patient Card",
+            });
+          } catch {
+            // user cancelled or not supported — fallback to WhatsApp URL
+            const url = number
+              ? `https://wa.me/${number}`
+              : `https://wa.me/`;
+            window.open(url, "_blank");
+          }
+        } else {
+          // Fallback: download the image and open WhatsApp
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "patient-card.png";
+          a.click();
+          const url = number
+            ? `https://wa.me/${number}`
+            : `https://wa.me/`;
+          setTimeout(() => window.open(url, "_blank"), 800);
+        }
+        setSharing(false);
+      }, "image/png");
+    } catch {
+      setSharing(false);
+      // Fallback to text share
+      const url = number
+        ? `https://wa.me/${number}`
+        : `https://wa.me/`;
+      window.open(url, "_blank");
+    }
   };
 
   return (
@@ -290,7 +323,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           className="w-full max-w-sm"
         >
           {/* ── Card ── */}
-          <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/30">
+          <div ref={cardRef} className="rounded-3xl overflow-hidden shadow-2xl shadow-black/30">
             {/* Header */}
             <div className="bg-gradient-to-br from-[#c45e10] via-[#d4711f] to-[#b84f0a] px-6 pt-6 pb-5">
               <div className="flex items-center gap-3">
@@ -338,19 +371,20 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Mobile</span>
                   <span className="text-sm font-mono text-slate-700">{mobile}</span>
+                  {/* mobile = CLINIC_MOBILE formatted */}
                 </div>
                 <div className="h-px bg-slate-200" />
                 <div className="flex items-start justify-between gap-2">
                   <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1 mt-0.5 shrink-0">
                     <MapPin className="w-2.5 h-2.5" /> Address
                   </span>
-                  <span className="text-sm font-semibold text-slate-700 text-right">{patient.address || "Manglam Hospital, Morbi"}</span>
+                  <span className="text-sm font-semibold text-slate-700 text-right">{patient.address || CLINIC_ADDRESS}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
                     <Phone className="w-2.5 h-2.5" /> Clinic Phone
                   </span>
-                  <span className="text-sm font-mono text-slate-600">+91 XXXXX XXXXX</span>
+                  <span className="text-sm font-mono text-slate-600">+91 {mobile}</span>
                 </div>
               </div>
             </div>
@@ -376,9 +410,10 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
             </button>
             <button
               onClick={sendWhatsApp}
-              className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30">
-              <MessageSquare className="w-4 h-4" />
-              Send on WhatsApp
+              disabled={sharing}
+              className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30 disabled:opacity-70">
+              {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+              {sharing ? "Preparing…" : "Send on WhatsApp"}
             </button>
           </div>
         </motion.div>
