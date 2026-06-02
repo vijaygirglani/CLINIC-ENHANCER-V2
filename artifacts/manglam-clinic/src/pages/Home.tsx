@@ -246,15 +246,18 @@ const emptyDefaults: PatientFormValues = {
 };
 
 // ── load html2canvas once via <script> tag ────────────────────────────────
+let html2canvasPromise: Promise<any> | null = null;
 function loadHtml2Canvas(): Promise<any> {
-  return new Promise((resolve, reject) => {
+  if (html2canvasPromise) return html2canvasPromise;
+  html2canvasPromise = new Promise((resolve, reject) => {
     if ((window as any).html2canvas) { resolve((window as any).html2canvas); return; }
     const s = document.createElement("script");
     s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
     s.onload = () => resolve((window as any).html2canvas);
-    s.onerror = reject;
+    s.onerror = (e) => { html2canvasPromise = null; reject(e); };
     document.head.appendChild(s);
   });
+  return html2canvasPromise;
 }
 
 // ── Patient Card Modal ─────────────────────────────────────────────────────
@@ -267,48 +270,64 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState("");
 
+  // Preload html2canvas as soon as modal opens
+  useEffect(() => { loadHtml2Canvas().catch(() => {}); }, []);
+
   const sendWhatsApp = async () => {
     if (!cardRef.current) return;
     setSharing(true);
     setShareError("");
-    try {
-      const html2canvas = await loadHtml2Canvas();
 
-      // Capture the card at high resolution
-      const canvas = await html2canvas(cardRef.current, {
+    try {
+      // html2canvas should already be loaded (preloaded on mount)
+      const h2c = await loadHtml2Canvas();
+
+      // Capture card at 3× for crisp quality
+      const canvas = await h2c(cardRef.current, {
         scale: 3,
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
         logging: false,
         removeContainer: true,
+        ignoreElements: (el: Element) => el.tagName === "BUTTON",
       });
 
-      // Convert canvas → blob
+      // canvas → blob
       const blob: Blob = await new Promise((res, rej) =>
         canvas.toBlob((b: Blob | null) => b ? res(b) : rej(new Error("toBlob failed")), "image/png", 1.0)
       );
 
       const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
-      const number = formatMobileWA(patient.mobile);
 
-      // ── Strategy 1: Web Share API with file (Android Chrome / iOS Safari) ──
-      if (
+      // ── Strategy 1: Web Share API with file ──────────────────────────────
+      // Works on Android Chrome 89+, iOS Safari 15+ when page is HTTPS
+      const canShareFiles =
         typeof navigator.share === "function" &&
         typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [file] })
-      ) {
-        await navigator.share({
-          files: [file],
-          title: "Manglam Clinic — Patient Card",
-          text: `Patient card for ${patient.name}`,
-        });
-        setSharing(false);
-        return;
+        navigator.canShare({ files: [file] });
+
+      if (canShareFiles) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: "Manglam Clinic — Patient Card",
+            text: `Patient card for ${patient.name}`,
+          });
+          setSharing(false);
+          return;
+        } catch (shareErr: any) {
+          // AbortError = user cancelled — don't fall through to download
+          if (shareErr?.name === "AbortError") {
+            setSharing(false);
+            return;
+          }
+          // Other errors: fall through to Strategy 2
+        }
       }
 
-      // ── Strategy 2: Download image, then open WhatsApp (desktop / unsupported) ──
-      // Download the image so user has it, then open WhatsApp chat
+      // ── Strategy 2: Download PNG then open WhatsApp ──────────────────────
+      // Auto-download the card image
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objectUrl;
@@ -316,20 +335,20 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
 
-      // Open WhatsApp — user manually attaches the downloaded image
-      const waUrl = number
-        ? `https://wa.me/${number}`
-        : `https://wa.me/`;
-      setTimeout(() => window.open(waUrl, "_blank"), 500);
+      // Open WhatsApp chat with the patient's number
+      const number = formatMobileWA(patient.mobile);
+      const waUrl = number ? `https://wa.me/${number}` : `https://wa.me/`;
+      setTimeout(() => window.open(waUrl, "_blank"), 800);
+
+      setShareError("Image saved — attach it in WhatsApp.");
 
     } catch (err: any) {
-      // User cancelled share — that's fine, not an error
-      if (err?.name !== "AbortError") {
-        setShareError("Could not share. Image downloaded — attach it in WhatsApp.");
-      }
+      console.error("WhatsApp share error:", err);
+      setShareError("Could not capture card. Please try again.");
     }
+
     setSharing(false);
   };
 
@@ -424,7 +443,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
 
           {/* error hint */}
           {shareError && (
-            <p className="mt-2 text-center text-xs text-amber-600 font-medium">{shareError}</p>
+            <p className="mt-2 text-center text-xs font-medium" style={{ color: shareError.startsWith("Could not") ? "#d97706" : "#16a34a" }}>{shareError}</p>
           )}
 
           {/* ── Action buttons ── */}
