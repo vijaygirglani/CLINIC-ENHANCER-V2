@@ -245,66 +245,92 @@ const emptyDefaults: PatientFormValues = {
   advice: "", reports: "", fees: 0, paymentMode: "cash" as const,
 };
 
+// ── load html2canvas once via <script> tag ────────────────────────────────
+function loadHtml2Canvas(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).html2canvas) { resolve((window as any).html2canvas); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    s.onload = () => resolve((window as any).html2canvas);
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
 // ── Patient Card Modal ─────────────────────────────────────────────────────
 function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
   const caseNo = patient.mobile.padStart(9, "0");
   const CLINIC_MOBILE = "9638181875";
   const CLINIC_ADDRESS = "Pipaliya Char Rasta";
-  const mobile = CLINIC_MOBILE.replace(/(\d{5})(\d{5})/, "$1 $2");
+  const clinicPhone = CLINIC_MOBILE.replace(/(\d{5})(\d{5})/, "$1 $2");
   const cardRef = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState("");
 
   const sendWhatsApp = async () => {
-    const number = formatMobileWA(patient.mobile);
+    if (!cardRef.current) return;
     setSharing(true);
+    setShareError("");
     try {
-      // Dynamically load html2canvas
-      // @ts-ignore
-      const html2canvas = (await import("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js")).default;
-      const canvas = await html2canvas(cardRef.current!, {
+      const html2canvas = await loadHtml2Canvas();
+
+      // Capture the card at high resolution
+      const canvas = await html2canvas(cardRef.current, {
         scale: 3,
         useCORS: true,
-        backgroundColor: null,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
         logging: false,
+        removeContainer: true,
       });
 
-      canvas.toBlob(async (blob: Blob | null) => {
-        if (!blob) { setSharing(false); return; }
-        const file = new File([blob], "patient-card.png", { type: "image/png" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({
-              files: [file],
-              title: "Manglam Clinic — Patient Card",
-            });
-          } catch {
-            // user cancelled or not supported — fallback to WhatsApp URL
-            const url = number
-              ? `https://wa.me/${number}`
-              : `https://wa.me/`;
-            window.open(url, "_blank");
-          }
-        } else {
-          // Fallback: download the image and open WhatsApp
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = "patient-card.png";
-          a.click();
-          const url = number
-            ? `https://wa.me/${number}`
-            : `https://wa.me/`;
-          setTimeout(() => window.open(url, "_blank"), 800);
-        }
+      // Convert canvas → blob
+      const blob: Blob = await new Promise((res, rej) =>
+        canvas.toBlob((b: Blob | null) => b ? res(b) : rej(new Error("toBlob failed")), "image/png", 1.0)
+      );
+
+      const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
+      const number = formatMobileWA(patient.mobile);
+
+      // ── Strategy 1: Web Share API with file (Android Chrome / iOS Safari) ──
+      if (
+        typeof navigator.share === "function" &&
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [file] })
+      ) {
+        await navigator.share({
+          files: [file],
+          title: "Manglam Clinic — Patient Card",
+          text: `Patient card for ${patient.name}`,
+        });
         setSharing(false);
-      }, "image/png");
-    } catch {
-      setSharing(false);
-      // Fallback to text share
-      const url = number
+        return;
+      }
+
+      // ── Strategy 2: Download image, then open WhatsApp (desktop / unsupported) ──
+      // Download the image so user has it, then open WhatsApp chat
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = "manglam-patient-card.png";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+
+      // Open WhatsApp — user manually attaches the downloaded image
+      const waUrl = number
         ? `https://wa.me/${number}`
         : `https://wa.me/`;
-      window.open(url, "_blank");
+      setTimeout(() => window.open(waUrl, "_blank"), 500);
+
+    } catch (err: any) {
+      // User cancelled share — that's fine, not an error
+      if (err?.name !== "AbortError") {
+        setShareError("Could not share. Image downloaded — attach it in WhatsApp.");
+      }
     }
+    setSharing(false);
   };
 
   return (
@@ -322,42 +348,42 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           onClick={e => e.stopPropagation()}
           className="w-full max-w-sm"
         >
-          {/* ── Card ── */}
+          {/* ── Card (this is what gets captured) ── */}
           <div ref={cardRef} className="rounded-3xl overflow-hidden shadow-2xl shadow-black/30">
             {/* Header */}
-            <div className="bg-gradient-to-br from-[#c45e10] via-[#d4711f] to-[#b84f0a] px-6 pt-6 pb-5">
+            <div style={{ background: "linear-gradient(135deg, #c45e10, #d4711f, #b84f0a)" }} className="px-6 pt-6 pb-5">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}>
                   <span className="text-white font-black text-xl">M</span>
                 </div>
                 <div>
                   <p className="text-white font-bold text-lg leading-tight">Manglam Clinic</p>
-                  <p className="text-orange-100 text-xs font-medium">Dr. Vijay Girglani | B.A.M.S.</p>
+                  <p className="text-xs font-medium" style={{ color: "#ffe0c0" }}>Dr. Vijay Girglani | B.A.M.S.</p>
                 </div>
               </div>
-              <div className="mt-4 border-t border-white/20 pt-3">
-                <p className="text-orange-100/90 text-[10px] font-bold tracking-[0.2em] uppercase text-center">
+              <div className="mt-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}>
+                <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-center" style={{ color: "rgba(255,224,192,0.9)" }}>
                   Ayurvedic &amp; General Practice
                 </p>
               </div>
             </div>
 
             {/* Body */}
-            <div className="bg-[#fdf8f3] px-6 py-5 space-y-4">
+            <div style={{ background: "#fdf8f3" }} className="px-6 py-5 space-y-4">
               {/* PATIENT CARD label */}
               <div className="flex justify-center">
-                <span className="border border-[#c45e10]/40 text-[#c45e10] text-[10px] font-bold tracking-widest uppercase px-4 py-1 rounded-full">
+                <span className="text-[10px] font-bold tracking-widest uppercase px-4 py-1 rounded-full" style={{ border: "1px solid rgba(196,94,16,0.4)", color: "#c45e10" }}>
                   Patient Card
                 </span>
               </div>
 
               {/* Case Number */}
-              <div className="bg-[#f5ece0] rounded-2xl px-4 py-3 flex items-center justify-between">
+              <div className="rounded-2xl px-4 py-3 flex items-center justify-between" style={{ background: "#f5ece0" }}>
                 <div>
-                  <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-0.5">Case Number</p>
-                  <p className="text-2xl font-black text-[#c45e10] tracking-wide font-mono">{caseNo}</p>
+                  <p className="text-[10px] font-bold tracking-widest uppercase mb-0.5" style={{ color: "#94a3b8" }}>Case Number</p>
+                  <p className="text-2xl font-black tracking-wide font-mono" style={{ color: "#c45e10" }}>{caseNo}</p>
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-[#c45e10]">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", color: "#c45e10" }}>
                   <WalletCards className="w-5 h-5" />
                 </div>
               </div>
@@ -365,41 +391,41 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
               {/* Patient info rows */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Patient Name</span>
-                  <span className="text-sm font-bold text-slate-800">{patient.name}</span>
+                  <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#94a3b8" }}>Patient Name</span>
+                  <span className="text-sm font-bold" style={{ color: "#1e293b" }}>{patient.name}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Mobile</span>
-                  <span className="text-sm font-mono text-slate-700">{mobile}</span>
-                  {/* mobile = CLINIC_MOBILE formatted */}
-                </div>
-                <div className="h-px bg-slate-200" />
+                <div style={{ height: 1, background: "#e2e8f0" }} />
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1 mt-0.5 shrink-0">
+                  <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1 mt-0.5 shrink-0" style={{ color: "#94a3b8" }}>
                     <MapPin className="w-2.5 h-2.5" /> Address
                   </span>
-                  <span className="text-sm font-semibold text-slate-700 text-right">{patient.address || CLINIC_ADDRESS}</span>
+                  <span className="text-sm font-semibold text-right" style={{ color: "#334155" }}>{patient.address || CLINIC_ADDRESS}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
+                  <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1" style={{ color: "#94a3b8" }}>
                     <Phone className="w-2.5 h-2.5" /> Clinic Phone
                   </span>
-                  <span className="text-sm font-mono text-slate-600">+91 {mobile}</span>
+                  <span className="text-sm font-mono" style={{ color: "#475569" }}>+91 {clinicPhone}</span>
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="bg-[#2d5a1b] px-6 py-4 flex items-center justify-between">
+            <div className="px-6 py-4 flex items-center justify-between" style={{ background: "#2d5a1b" }}>
               <div>
                 <p className="text-white font-bold text-sm">Manglam Hospital</p>
-                <p className="text-green-200 text-xs">Morbi, Gujarat</p>
+                <p className="text-xs" style={{ color: "#bbf7d0" }}>Morbi, Gujarat</p>
               </div>
-              <p className="text-green-200 text-xs text-right leading-tight">
+              <p className="text-xs text-right leading-tight" style={{ color: "#bbf7d0" }}>
                 Show this card<br />on your next visit
               </p>
             </div>
           </div>
+
+          {/* error hint */}
+          {shareError && (
+            <p className="mt-2 text-center text-xs text-amber-600 font-medium">{shareError}</p>
+          )}
 
           {/* ── Action buttons ── */}
           <div className="mt-4 flex gap-3">
@@ -413,7 +439,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
               disabled={sharing}
               className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30 disabled:opacity-70">
               {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
-              {sharing ? "Preparing…" : "Send on WhatsApp"}
+              {sharing ? "Capturing…" : "Send on WhatsApp"}
             </button>
           </div>
         </motion.div>
