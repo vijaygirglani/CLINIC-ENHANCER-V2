@@ -247,15 +247,16 @@ const emptyDefaults: PatientFormValues = {
 
 // ── Draw patient card directly onto a Canvas (no html2canvas) ────────────
 function drawPatientCard(patient: Patient): HTMLCanvasElement {
-  const W = 900, scale = 3;
+  // A4-proportioned compact card: 595 × 420 logical px @2x
+  const W = 595, scale = 2;
   const cw = W * scale;
 
   // ── measure text to compute dynamic height ──
   const tmpC = document.createElement("canvas");
   const tmpX = tmpC.getContext("2d")!;
-  tmpX.font = `bold ${11 * scale}px sans-serif`;
+  tmpX.font = `bold ${10 * scale}px sans-serif`;
   const addrText = patient.address || "Pipaliya Char Rasta";
-  const maxAddrW = 320 * scale;
+  const maxAddrW = 220 * scale;
   // wrap address
   const addrLines: string[] = [];
   let addrCur = "";
@@ -267,9 +268,9 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
   if (addrCur) addrLines.push(addrCur);
   const addrExtraLines = Math.max(0, addrLines.length - 1);
 
-  const HEADER_H = 185;
-  const BODY_H   = 290 + addrExtraLines * 22;
-  const FOOTER_H = 90;
+  const HEADER_H = 120;
+  const BODY_H   = 220 + addrExtraLines * 18;
+  const FOOTER_H = 60;
   const TOTAL_H  = HEADER_H + BODY_H + FOOTER_H;
   const ch = TOTAL_H * scale;
 
@@ -300,117 +301,117 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
 
   // Logo circle
   ctx.fillStyle = "rgba(255,255,255,0.2)";
-  r(24, 22, 52, 52, 14); ctx.fill();
+  r(16, 14, 38, 38, 10); ctx.fill();
   ctx.fillStyle = "#ffffff";
-  ctx.font = `900 ${26}px sans-serif`;
+  ctx.font = `900 ${18}px sans-serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("M", 50, 48);
+  ctx.fillText("M", 35, 33);
 
   // Clinic name
   ctx.fillStyle = "#ffffff";
-  ctx.font = `bold ${20}px sans-serif`;
+  ctx.font = `bold ${15}px sans-serif`;
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("Manglam Clinic", 90, 44);
+  ctx.fillText("Manglam Clinic", 62, 30);
   ctx.fillStyle = "#ffe0c0";
-  ctx.font = `${13}px sans-serif`;
-  ctx.fillText("Dr. Vijay Girglani | B.A.M.S.", 90, 62);
+  ctx.font = `${10}px sans-serif`;
+  ctx.fillText("Dr. Vijay Girglani | B.A.M.S.", 62, 44);
 
   // Divider
   ctx.strokeStyle = "rgba(255,255,255,0.25)"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(24, 90); ctx.lineTo(W - 24, 90); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(16, 62); ctx.lineTo(W - 16, 62); ctx.stroke();
 
   // Subtitle
   ctx.fillStyle = "rgba(255,224,192,0.9)";
-  ctx.font = `bold ${10}px sans-serif`;
+  ctx.font = `bold ${8}px sans-serif`;
   ctx.textAlign = "center";
   ctx.letterSpacing = "2px";
-  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, 118);
+  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, 80);
   ctx.letterSpacing = "0px";
 
   // ── BODY ──
   ctx.fillStyle = "#fdf8f3"; ctx.fillRect(0, HEADER_H, W, BODY_H);
 
   // "PATIENT CARD" badge
-  const badgeY = HEADER_H + 28;
+  const badgeY = HEADER_H + 18;
   const badgeLabel = "PATIENT CARD";
-  ctx.font = `bold ${10}px sans-serif`;
+  ctx.font = `bold ${8}px sans-serif`;
   ctx.textAlign = "center";
-  const badgeW = ctx.measureText(badgeLabel).width + 32;
+  const badgeW = ctx.measureText(badgeLabel).width + 24;
   const badgeX = (W - badgeW) / 2;
   ctx.strokeStyle = "rgba(196,94,16,0.4)"; ctx.lineWidth = 1;
-  r(badgeX, badgeY - 11, badgeW, 20, 10); ctx.stroke();
-  ctx.fillStyle = "#c45e10"; ctx.fillText(badgeLabel, W / 2, badgeY + 3);
+  r(badgeX, badgeY - 8, badgeW, 16, 8); ctx.stroke();
+  ctx.fillStyle = "#c45e10"; ctx.fillText(badgeLabel, W / 2, badgeY + 2);
 
   // Case Number box
-  const boxY = HEADER_H + 58;
-  ctx.fillStyle = "#f5ece0"; r(24, boxY, W - 48, 62, 16); ctx.fill();
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${9}px sans-serif`;
+  const boxY = HEADER_H + 40;
+  ctx.fillStyle = "#f5ece0"; r(16, boxY, W - 32, 48, 12); ctx.fill();
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${7.5}px sans-serif`;
   ctx.textAlign = "left"; ctx.letterSpacing = "1.5px";
-  ctx.fillText("CASE NUMBER", 42, boxY + 18);
+  ctx.fillText("CASE NUMBER", 30, boxY + 14);
   ctx.letterSpacing = "0px";
   const caseNo = patient.mobile.padStart(9, "0");
-  ctx.fillStyle = "#c45e10"; ctx.font = `900 ${26}px monospace`;
-  ctx.fillText(caseNo, 42, boxY + 44);
-  // wallet icon (simplified as rounded rect + lines)
-  const iconX = W - 72, iconY = boxY + 11;
+  ctx.fillStyle = "#c45e10"; ctx.font = `900 ${20}px monospace`;
+  ctx.fillText(caseNo, 30, boxY + 36);
+  // wallet icon
+  const iconX = W - 54, iconY = boxY + 8;
   ctx.fillStyle = "#ffffff";
-  r(iconX, iconY, 40, 40, 10); ctx.fill();
+  r(iconX, iconY, 32, 32, 8); ctx.fill();
   ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.5;
-  r(iconX + 8, iconY + 10, 24, 20, 4); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(iconX + 8, iconY + 17); ctx.lineTo(iconX + 32, iconY + 17); ctx.stroke();
+  r(iconX + 6, iconY + 8, 20, 16, 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(iconX + 6, iconY + 13); ctx.lineTo(iconX + 26, iconY + 13); ctx.stroke();
 
   // Info rows
-  let rowY = HEADER_H + 58 + 62 + 24;
-  const LX = 24, RX = W - 24;
+  let rowY = HEADER_H + 40 + 48 + 18;
+  const LX = 16, RX = W - 16;
 
   // Patient Name row
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${9}px sans-serif`;
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${7.5}px sans-serif`;
   ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
   ctx.fillText("PATIENT NAME", LX, rowY);
   ctx.letterSpacing = "0px";
-  ctx.fillStyle = "#1e293b"; ctx.font = `bold ${14}px sans-serif`;
+  ctx.fillStyle = "#1e293b"; ctx.font = `bold ${12}px sans-serif`;
   ctx.textAlign = "right"; ctx.fillText(patient.name.toUpperCase(), RX, rowY);
 
   // Divider
-  rowY += 14;
+  rowY += 10;
   ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(LX, rowY); ctx.lineTo(RX, rowY); ctx.stroke();
-  rowY += 18;
+  rowY += 14;
 
   // Address row (multi-line)
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${9}px sans-serif`;
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${7.5}px sans-serif`;
   ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
-  ctx.fillText("ADDRESS", LX + 14, rowY);
+  ctx.fillText("ADDRESS", LX + 10, rowY);
   ctx.letterSpacing = "0px";
-  ctx.fillStyle = "#334155"; ctx.font = `bold ${13}px sans-serif`;
+  ctx.fillStyle = "#334155"; ctx.font = `bold ${11}px sans-serif`;
   ctx.textAlign = "right";
-  addrLines.forEach((line, i) => ctx.fillText(line, RX, rowY + i * 18));
-  rowY += Math.max(16, addrLines.length * 18) + 10;
+  addrLines.forEach((line, i) => ctx.fillText(line, RX, rowY + i * 15));
+  rowY += Math.max(14, addrLines.length * 15) + 8;
 
   // Divider
   ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(LX, rowY); ctx.lineTo(RX, rowY); ctx.stroke();
-  rowY += 18;
+  rowY += 14;
 
   // Clinic Phone row
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${9}px sans-serif`;
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${7.5}px sans-serif`;
   ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
-  ctx.fillText("CLINIC PHONE", LX + 14, rowY);
+  ctx.fillText("CLINIC PHONE", LX + 10, rowY);
   ctx.letterSpacing = "0px";
-  ctx.fillStyle = "#475569"; ctx.font = `${13}px monospace`;
+  ctx.fillStyle = "#475569"; ctx.font = `${11}px monospace`;
   ctx.textAlign = "right"; ctx.fillText("+91 96381 81875", RX, rowY);
 
   // ── FOOTER ──
   ctx.fillStyle = "#2d5a1b"; ctx.fillRect(0, HEADER_H + BODY_H, W, FOOTER_H);
-  ctx.fillStyle = "#ffffff"; ctx.font = `bold ${14}px sans-serif`;
+  ctx.fillStyle = "#ffffff"; ctx.font = `bold ${11}px sans-serif`;
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("Manglam Hospital", 24, HEADER_H + BODY_H + 32);
-  ctx.fillStyle = "#bbf7d0"; ctx.font = `${12}px sans-serif`;
-  ctx.fillText("Morbi, Gujarat", 24, HEADER_H + BODY_H + 50);
-  ctx.fillStyle = "#bbf7d0"; ctx.font = `${11}px sans-serif`;
+  ctx.fillText("Manglam Hospital", 16, HEADER_H + BODY_H + 22);
+  ctx.fillStyle = "#bbf7d0"; ctx.font = `${9.5}px sans-serif`;
+  ctx.fillText("Morbi, Gujarat", 16, HEADER_H + BODY_H + 36);
+  ctx.fillStyle = "#bbf7d0"; ctx.font = `${9}px sans-serif`;
   ctx.textAlign = "right";
-  ctx.fillText("Show this card", W - 24, HEADER_H + BODY_H + 32);
-  ctx.fillText("on your next visit", W - 24, HEADER_H + BODY_H + 48);
+  ctx.fillText("Show this card", W - 16, HEADER_H + BODY_H + 22);
+  ctx.fillText("on your next visit", W - 16, HEADER_H + BODY_H + 36);
 
   ctx.restore();
   return canvas;
@@ -438,7 +439,9 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       );
 
       const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
+      // Auto-use the patient's own mobile number for direct WhatsApp
       const number = formatMobileWA(patient.mobile);
+      const waDirectUrl = number ? `https://wa.me/${number}` : `https://wa.me/`;
 
       // ── Strategy 1: Web Share API with file (Android Chrome / iOS Safari) ──
       const canShareFiles =
@@ -453,6 +456,8 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
             title: "Manglam Clinic — Patient Card",
             text: `Patient card for ${patient.name}`,
           });
+          // After sharing the image, open the patient's WhatsApp chat directly
+          setTimeout(() => window.open(waDirectUrl, "_blank"), 500);
           setSharing(false);
           return;
         } catch (shareErr: any) {
@@ -461,16 +466,16 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
         }
       }
 
-      // ── Strategy 2: Download image then open WhatsApp ──
+      // ── Strategy 2: Download image then open patient's WhatsApp directly ──
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objectUrl; a.download = "manglam-patient-card.png";
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
 
-      const waUrl = number ? `https://wa.me/${number}` : `https://wa.me/`;
-      setTimeout(() => window.open(waUrl, "_blank"), 800);
-      setShareError("Image saved — attach it in WhatsApp.");
+      // Open patient's WhatsApp chat automatically
+      setTimeout(() => window.open(waDirectUrl, "_blank"), 800);
+      setShareError("Image saved — attach it in the WhatsApp chat that opened.");
 
     } catch (err: any) {
       console.error("Card share error:", err);
@@ -492,77 +497,77 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           exit={{ scale: 0.85, opacity: 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 25 }}
           onClick={e => e.stopPropagation()}
-          className="w-full max-w-sm"
+          className="w-full max-w-xs"
         >
           {/* ── Card (this is what gets captured) ── */}
-          <div ref={cardRef} className="rounded-3xl overflow-hidden shadow-2xl shadow-black/30">
+          <div ref={cardRef} className="rounded-2xl overflow-hidden shadow-2xl shadow-black/30">
             {/* Header */}
-            <div style={{ background: "linear-gradient(135deg, #c45e10, #d4711f, #b84f0a)" }} className="px-6 pt-6 pb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}>
-                  <span className="text-white font-black text-xl">M</span>
+            <div style={{ background: "linear-gradient(135deg, #c45e10, #d4711f, #b84f0a)" }} className="px-4 pt-4 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}>
+                  <span className="text-white font-black text-base">M</span>
                 </div>
                 <div>
-                  <p className="text-white font-bold text-lg leading-tight">Manglam Clinic</p>
-                  <p className="text-xs font-medium" style={{ color: "#ffe0c0" }}>Dr. Vijay Girglani | B.A.M.S.</p>
+                  <p className="text-white font-bold text-sm leading-tight">Manglam Clinic</p>
+                  <p className="text-[9px] font-medium" style={{ color: "#ffe0c0" }}>Dr. Vijay Girglani | B.A.M.S.</p>
                 </div>
               </div>
-              <div className="mt-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}>
-                <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-center" style={{ color: "rgba(255,224,192,0.9)" }}>
+              <div className="mt-2.5 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}>
+                <p className="text-[8px] font-bold tracking-[0.2em] uppercase text-center" style={{ color: "rgba(255,224,192,0.9)" }}>
                   Ayurvedic &amp; General Practice
                 </p>
               </div>
             </div>
 
             {/* Body */}
-            <div style={{ background: "#fdf8f3" }} className="px-6 py-5 space-y-4">
+            <div style={{ background: "#fdf8f3" }} className="px-4 py-3 space-y-2.5">
               {/* PATIENT CARD label */}
               <div className="flex justify-center">
-                <span className="text-[10px] font-bold tracking-widest uppercase px-4 py-1 rounded-full" style={{ border: "1px solid rgba(196,94,16,0.4)", color: "#c45e10" }}>
+                <span className="text-[8px] font-bold tracking-widest uppercase px-3 py-0.5 rounded-full" style={{ border: "1px solid rgba(196,94,16,0.4)", color: "#c45e10" }}>
                   Patient Card
                 </span>
               </div>
 
               {/* Case Number */}
-              <div className="rounded-2xl px-4 py-3 flex items-center justify-between" style={{ background: "#f5ece0" }}>
+              <div className="rounded-xl px-3 py-2 flex items-center justify-between" style={{ background: "#f5ece0" }}>
                 <div>
-                  <p className="text-[10px] font-bold tracking-widest uppercase mb-0.5" style={{ color: "#94a3b8" }}>Case Number</p>
-                  <p className="text-2xl font-black tracking-wide font-mono" style={{ color: "#c45e10" }}>{caseNo}</p>
+                  <p className="text-[8px] font-bold tracking-widest uppercase mb-0.5" style={{ color: "#94a3b8" }}>Case Number</p>
+                  <p className="text-lg font-black tracking-wide font-mono" style={{ color: "#c45e10" }}>{caseNo}</p>
                 </div>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", color: "#c45e10" }}>
-                  <WalletCards className="w-5 h-5" />
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", color: "#c45e10" }}>
+                  <WalletCards className="w-4 h-4" />
                 </div>
               </div>
 
               {/* Patient info rows */}
-              <div className="space-y-2.5">
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#94a3b8" }}>Patient Name</span>
-                  <span className="text-sm font-bold" style={{ color: "#1e293b" }}>{patient.name}</span>
+                  <span className="text-[8px] font-bold tracking-widest uppercase" style={{ color: "#94a3b8" }}>Patient Name</span>
+                  <span className="text-xs font-bold" style={{ color: "#1e293b" }}>{patient.name}</span>
                 </div>
                 <div style={{ height: 1, background: "#e2e8f0" }} />
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1 mt-0.5 shrink-0" style={{ color: "#94a3b8" }}>
-                    <MapPin className="w-2.5 h-2.5" /> Address
+                  <span className="text-[8px] font-bold tracking-widest uppercase flex items-center gap-1 mt-0.5 shrink-0" style={{ color: "#94a3b8" }}>
+                    <MapPin className="w-2 h-2" /> Address
                   </span>
-                  <span className="text-sm font-semibold text-right" style={{ color: "#334155" }}>{patient.address || CLINIC_ADDRESS}</span>
+                  <span className="text-xs font-semibold text-right" style={{ color: "#334155" }}>{patient.address || CLINIC_ADDRESS}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1" style={{ color: "#94a3b8" }}>
-                    <Phone className="w-2.5 h-2.5" /> Clinic Phone
+                  <span className="text-[8px] font-bold tracking-widest uppercase flex items-center gap-1" style={{ color: "#94a3b8" }}>
+                    <Phone className="w-2 h-2" /> Clinic Phone
                   </span>
-                  <span className="text-sm font-mono" style={{ color: "#475569" }}>+91 {clinicPhone}</span>
+                  <span className="text-xs font-mono" style={{ color: "#475569" }}>+91 {clinicPhone}</span>
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 flex items-center justify-between" style={{ background: "#2d5a1b" }}>
+            <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: "#2d5a1b" }}>
               <div>
-                <p className="text-white font-bold text-sm">Manglam Hospital</p>
-                <p className="text-xs" style={{ color: "#bbf7d0" }}>Morbi, Gujarat</p>
+                <p className="text-white font-bold text-xs">Manglam Hospital</p>
+                <p className="text-[9px]" style={{ color: "#bbf7d0" }}>Morbi, Gujarat</p>
               </div>
-              <p className="text-xs text-right leading-tight" style={{ color: "#bbf7d0" }}>
+              <p className="text-[9px] text-right leading-tight" style={{ color: "#bbf7d0" }}>
                 Show this card<br />on your next visit
               </p>
             </div>
@@ -585,7 +590,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
               disabled={sharing}
               className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30 disabled:opacity-70">
               {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
-              {sharing ? "Capturing…" : "Send on WhatsApp"}
+              {sharing ? "Capturing…" : `Send to ${patient.mobile || "WhatsApp"}`}
             </button>
           </div>
         </motion.div>
