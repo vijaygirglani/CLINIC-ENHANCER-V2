@@ -230,6 +230,7 @@ const patientSchema = z.object({
   advice: z.string().optional(),
   reports: z.string().optional(),
   fees: z.coerce.number().min(0).optional(),
+  paymentMode: z.enum(["cash", "online"]).optional(),
 });
 
 type PatientFormValues = z.infer<typeof patientSchema>;
@@ -241,7 +242,7 @@ const emptyDefaults: PatientFormValues = {
   name: "", mobile: "", visitDate: todayStr,
   age: 0, ageMonths: 0, weight: "", address: "",
   complaintCode: "", complaint: "", treatment: "",
-  advice: "", reports: "", fees: 0,
+  advice: "", reports: "", fees: 0, paymentMode: "cash" as const,
 };
 
 export default function Home() {
@@ -328,6 +329,7 @@ export default function Home() {
   const visitDateValue = form.watch("visitDate");
   const nameValue = form.watch("name");
   const complaintValue = form.watch("complaint");
+  const paymentModeValue = form.watch("paymentMode");
 
   // Live dropdown: watch name field, search on every keystroke
   useEffect(() => {
@@ -535,6 +537,7 @@ export default function Home() {
       complaintCode: data.complaintCode || "", complaint: data.complaint || "",
       treatment: data.treatment || "", advice: data.advice || "",
       reports: data.reports || "", fees: Number(data.fees || 0),
+      paymentMode: data.paymentMode || "cash",
       attachments, registerType, visitDate,
     });
     if (feesMarkedPending && saved.fees > 0) {
@@ -779,9 +782,40 @@ export default function Home() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Consultation Fees (₹)</label>
+                    {/* Preset buttons */}
+                    <div className="flex gap-1.5 mb-1">
+                      {[200, 250, 550].map(preset => (
+                        <button key={preset} type="button"
+                          onClick={() => form.setValue("fees", preset)}
+                          className="px-3 py-1 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-all border border-primary/20">
+                          ₹{preset}
+                        </button>
+                      ))}
+                    </div>
                     <div className="flex gap-2 items-center">
                       <input type="number" {...form.register("fees")} min={0}
                         className="flex-1 px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all font-semibold text-slate-900" placeholder="Amount" />
+                      {/* Cash / Online toggle */}
+                      <div className="flex rounded-xl border border-slate-200 overflow-hidden shrink-0">
+                        <button type="button"
+                          onClick={() => form.setValue("paymentMode", "cash")}
+                          className={`flex items-center gap-1 px-3 py-2.5 text-xs font-bold transition-all ${
+                            paymentModeValue !== "online"
+                              ? "bg-emerald-500 text-white shadow-inner"
+                              : "bg-white text-slate-400 hover:bg-slate-50"
+                          }`}>
+                          💵 Cash
+                        </button>
+                        <button type="button"
+                          onClick={() => form.setValue("paymentMode", "online")}
+                          className={`flex items-center gap-1 px-3 py-2.5 text-xs font-bold transition-all border-l border-slate-200 ${
+                            paymentModeValue === "online"
+                              ? "bg-blue-500 text-white shadow-inner"
+                              : "bg-white text-slate-400 hover:bg-slate-50"
+                          }`}>
+                          📱 Online
+                        </button>
+                      </div>
                       <button type="button"
                         onClick={() => setFeesMarkedPending(p => !p)}
                         title={feesMarkedPending ? "Click to unmark pending" : "Mark fees as pending"}
