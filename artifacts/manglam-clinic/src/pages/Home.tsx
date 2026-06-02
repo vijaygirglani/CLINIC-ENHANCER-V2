@@ -105,28 +105,28 @@ function buildWhatsAppMsg(disease: PADisease, patientName: string, lang: "en" | 
   const pathyaLabel = lang === "gu" ? "પથ્ય — શું ખાવું"   : lang === "hi" ? "पथ्य — क्या खाएं"   : "Pathya — What to Eat";
   const apathyaLbl  = lang === "gu" ? "અપથ્ય — શું ન ખાવું" : lang === "hi" ? "अपथ्य — क्या न खाएं" : "Apathya — What to Avoid";
   const footer      = lang === "gu"
-    ? "_Manglam Skin Care Clinic, Tankara તરફથી આયુર્વેદિક માર્ગદર્શન_"
+    ? "_Manglam Clinic તરફથી આયુર્વેદિક માર્ગદર્શન_"
     : lang === "hi"
-    ? "_Manglam Skin Care Clinic, Tankara से आयुर्वेदिक मार्गदर्शन_"
-    : "_Manglam Skin Care Clinic, Tankara — Ayurvedic Guidance_";
+    ? "_Manglam Clinic से आयुर्वेदिक मार्गदर्शन_"
+    : "_Manglam Clinic — Ayurvedic Guidance_";
 
-  const ptLine = patientName ? `\n👤 *${ptLabel}:* ${patientName}` : "";
+  const ptLine = patientName ? `\n*${ptLabel}:* ${patientName}` : "";
 
   return [
-    `🏥 *Manglam Skin Care Clinic*`,
-    `Dr. Vijay Girglani | B.A.M.S., C.S.D. | Reg. GBI 17318`,
+    `*Manglam Clinic*`,
+    `Dr. Vijay Girglani | B.A.M.S.`,
     ptLine,
-    `📅 *${dateLabel}:* ${today}`,
+    `*${dateLabel}:* ${today}`,
     ``,
-    `🔖 *${name}*`,
+    `*${name}*`,
     ``,
-    `⚠️ *${causesLabel}:*`,
+    `*${causesLabel}:*`,
     causes || "  (See doctor for details)",
     ``,
-    `✅ *${pathyaLabel}:*`,
+    `*${pathyaLabel}:*`,
     pathya || "  (See doctor for details)",
     ``,
-    `❌ *${apathyaLbl}:*`,
+    `*${apathyaLbl}:*`,
     apathya || "  (See doctor for details)",
     ``,
     footer,
