@@ -9,7 +9,7 @@ import {
 import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
-  TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag,
+  TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -186,26 +186,30 @@ export default function DailyRegister() {
     const ayurvedicCount = (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length;
     const generalFees = (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").reduce((s, p) => s + (p.fees || 0), 0);
     const ayurvedicFees = (stats?.patients || []).filter(p => p.registerType === "ayurvedic").reduce((s, p) => s + (p.fees || 0), 0);
+    const cashFees = (stats?.patients || []).filter(p => p.paymentMode !== "online").reduce((s, p) => s + (p.fees || 0), 0);
+    const onlineFees = (stats?.patients || []).filter(p => p.paymentMode === "online").reduce((s, p) => s + (p.fees || 0), 0);
     const dateStr = format(new Date(selectedDate + "T00:00:00"), "dd/MM/yyyy");
     const grandTotal = (stats?.totalFees || 0) + looseDayTotal;
     const looseLine = looseDayTotal > 0
-      ? `\n\n🛒 *Loose Medicine Sales:* ₹${looseDayTotal.toLocaleString("en-IN")} (${looseSalesForDay.length} items)`
+      ? `\n🛒 *Loose Medicine Sales:* ₹${looseDayTotal.toLocaleString("en-IN")} (${looseSalesForDay.length} items)`
       : "";
-    return `🏥 *Manglam Clinic Daily Update*
+    const paymentLine = (cashFees > 0 || onlineFees > 0)
+      ? `\n\n💵 *Cash:* ₹${cashFees.toLocaleString("en-IN")}   📱 *Online:* ₹${onlineFees.toLocaleString("en-IN")}`
+      : "";
+    return `*Manglam Clinic Daily Update*
 
-📅 *Date:* ${dateStr}
+Date: ${dateStr}
 
-👥 *Patients Seen Today:* ${stats?.totalPatients || 0}
+Patients Seen Today: ${stats?.totalPatients || 0}
 
-💵 *Today's Collection:* ₹${grandTotal.toLocaleString("en-IN")}
+Today's Collection: ₹${grandTotal.toLocaleString("en-IN")}${paymentLine}
 
-🩺 *General Cases:* ${generalCount} (₹${generalFees.toLocaleString("en-IN")})
+General Cases: ${generalCount} (₹${generalFees.toLocaleString("en-IN")})
+Ayurvedic Cases: ${ayurvedicCount} (₹${ayurvedicFees.toLocaleString("en-IN")})${looseLine}${waCustomNote.trim() ? `\n\nNote: ${waCustomNote.trim()}` : ""}
 
-🌿 *Ayurvedic Cases:* ${ayurvedicCount} (₹${ayurvedicFees.toLocaleString("en-IN")})${looseLine}${waCustomNote.trim() ? `\n\n📝 *Note:* ${waCustomNote.trim()}` : ""}
-
-Thank you everyone for your trust 🙏
-*Dr. Vijay Girglani*
-📍 Manglam Hospital, Morbi`;
+Thank you everyone for your trust
+Dr. Vijay Girglani
+Manglam Hospital, Morbi`;
   };
 
   const handleSendDailyReport = () => {
@@ -258,25 +262,60 @@ Thank you everyone for your trust 🙏
         </div>
 
         {/* ── STATS CARDS ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: "Total", value: stats?.totalPatients || 0, icon: Users, color: "bg-blue-100 text-primary" },
-            { label: "General", value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, icon: FileText, color: "bg-slate-100 text-slate-600" },
-            { label: "Ayurvedic", value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, icon: Leaf, color: "bg-emerald-100 text-emerald-600" },
-            { label: "Collection", value: formatCurrency((stats?.totalFees || 0) + looseDayTotal), icon: IndianRupee, color: "bg-emerald-100 text-emerald-600", sub: looseDayTotal > 0 ? `+₹${looseDayTotal} loose` : undefined },
-          ].map(({ label, value, icon: Icon, color, sub }: any) => (
-            <div key={label} className="medical-card p-4 flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
-                <Icon className="w-5 h-5" />
+        {/* compute cash/online splits */}
+        {(() => {
+          const cashFees = (stats?.patients || []).filter(p => p.paymentMode !== "online").reduce((s, p) => s + (p.fees || 0), 0);
+          const onlineFees = (stats?.patients || []).filter(p => p.paymentMode === "online").reduce((s, p) => s + (p.fees || 0), 0);
+          const onlineCount = (stats?.patients || []).filter(p => p.paymentMode === "online").length;
+          return (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[
+                  { label: "Total", value: stats?.totalPatients || 0, icon: Users, color: "bg-blue-100 text-primary" },
+                  { label: "General", value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, icon: FileText, color: "bg-slate-100 text-slate-600" },
+                  { label: "Ayurvedic", value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, icon: Leaf, color: "bg-emerald-100 text-emerald-600" },
+                  { label: "Collection", value: formatCurrency((stats?.totalFees || 0) + looseDayTotal), icon: IndianRupee, color: "bg-emerald-100 text-emerald-600", sub: looseDayTotal > 0 ? `+₹${looseDayTotal} loose` : undefined },
+                ].map(({ label, value, icon: Icon, color, sub }: any) => (
+                  <div key={label} className="medical-card p-4 flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+                      <p className="text-2xl font-display font-bold text-slate-900">{value}</p>
+                      {sub && <p className="text-[10px] text-violet-600 font-semibold flex items-center gap-0.5"><ShoppingBag className="w-2.5 h-2.5" />{sub}</p>}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
-                <p className="text-2xl font-display font-bold text-slate-900">{value}</p>
-                {sub && <p className="text-[10px] text-violet-600 font-semibold flex items-center gap-0.5"><ShoppingBag className="w-2.5 h-2.5" />{sub}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
+              {/* Cash vs Online split bar */}
+              {(stats?.totalFees || 0) > 0 && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="medical-card p-4 flex items-center gap-3 border-l-4 border-l-emerald-400">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+                      <Banknote className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cash Collection</p>
+                      <p className="text-2xl font-display font-bold text-emerald-700">{formatCurrency(cashFees)}</p>
+                      <p className="text-[10px] text-slate-400">{(stats?.patients || []).filter(p => p.paymentMode !== "online").length} patients</p>
+                    </div>
+                  </div>
+                  <div className="medical-card p-4 flex items-center gap-3 border-l-4 border-l-blue-400">
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+                      <Wifi className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Online Collection</p>
+                      <p className="text-2xl font-display font-bold text-blue-700">{formatCurrency(onlineFees)}</p>
+                      <p className="text-[10px] text-slate-400">{onlineCount} patients</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* ── FILTER TABS ── */}
         <div className="flex items-center gap-2">
@@ -332,7 +371,17 @@ Thank you everyone for your trust 🙏
                           ? <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700">Ayurvedic</span>
                           : <span className="text-xs font-bold px-2 py-1 rounded-md bg-blue-100 text-blue-700">General</span>}
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-900">{p.fees ? `₹${p.fees}` : "-"}</td>
+                      <td className="px-4 py-3 text-right">
+                        {p.fees ? (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="font-bold text-slate-900">₹{p.fees}</span>
+                            {p.paymentMode === "online"
+                              ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 flex items-center gap-0.5"><Wifi className="w-2.5 h-2.5" />Online</span>
+                              : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-600 flex items-center gap-0.5"><Banknote className="w-2.5 h-2.5" />Cash</span>
+                            }
+                          </div>
+                        ) : "-"}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => { setPrintPatient(p); setTimeout(() => printPatientPrescription(p), 50); }}
@@ -564,6 +613,16 @@ Thank you everyone for your trust 🙏
               <div className="rounded-xl bg-amber-50 p-3 text-center">
                 <p className="text-xl font-bold text-amber-700">₹{(stats?.totalFees || 0).toLocaleString("en-IN")}</p>
                 <p className="text-xs font-semibold text-amber-600 mt-0.5">Total Collection</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-emerald-50 p-3 text-center border border-emerald-100">
+                  <p className="text-lg font-bold text-emerald-700">₹{(stats?.patients || []).filter(p => p.paymentMode !== "online").reduce((s, p) => s + (p.fees || 0), 0).toLocaleString("en-IN")}</p>
+                  <p className="text-xs font-semibold text-emerald-600 mt-0.5">💵 Cash</p>
+                </div>
+                <div className="rounded-xl bg-blue-50 p-3 text-center border border-blue-100">
+                  <p className="text-lg font-bold text-blue-700">₹{(stats?.patients || []).filter(p => p.paymentMode === "online").reduce((s, p) => s + (p.fees || 0), 0).toLocaleString("en-IN")}</p>
+                  <p className="text-xs font-semibold text-blue-600 mt-0.5">📱 Online</p>
+                </div>
               </div>
             </div>
 
