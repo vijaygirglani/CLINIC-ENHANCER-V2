@@ -573,19 +573,19 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* ── MAIN FORM ── */}
         <div className="lg:col-span-8 space-y-6">
-          <div className="medical-card p-6 md:p-8">
+          <div className="medical-card p-6 md:p-8 border-l-4 border-l-primary shadow-md">
             <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                <User className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-blue-400 flex items-center justify-center text-white shadow-md shadow-primary/30">
+                <User className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-2xl font-display text-slate-900">Patient Registration</h2>
+                <h2 className="text-2xl font-display bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">Patient Registration</h2>
                 <p className="text-slate-500 text-sm">Register a new visit and view medical history.</p>
               </div>
               {/* Sheet action buttons */}
               <div className="ml-auto flex items-center gap-2">
                 <button type="button" onClick={handleSync}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-all shadow">
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all shadow-md shadow-emerald-200">
                   {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                   Sync from Sheet
                 </button>
@@ -599,7 +599,7 @@ export default function Home() {
 
             {/* Sheet connected banner */}
             {sheetConnected && (
-              <div className="mb-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
+              <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-700 text-sm shadow-sm">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
                 <span><strong>Google Sheet connected.</strong> Press "Sync from Sheet" to load today's patients.</span>
               </div>
@@ -607,21 +607,21 @@ export default function Home() {
 
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {/* Visit Date */}
-              <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 space-y-4">
+              <div className="bg-gradient-to-br from-blue-50/60 to-slate-50/40 p-6 rounded-2xl border border-blue-100 border-l-4 border-l-blue-400 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-slate-400" /> Visit Date
                     </label>
                     <input type="date" {...form.register("visitDate")}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800" />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" />
                   </div>
                 </div>
 
                 {/* Mobile / Case No */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
                       <Phone className="w-4 h-4 text-slate-400" /> Mobile / Case No. <span className="text-red-500">*</span>
                     </label>
                     <div className="flex gap-2">
@@ -635,7 +635,7 @@ export default function Home() {
                           onKeyDown={e => {
                             if (e.key === "Enter") { e.preventDefault(); runMobileLookup(); }
                           }}
-                          className="w-full pl-4 pr-10 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800 font-mono"
+                          className="w-full pl-4 pr-10 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800 font-mono"
                           placeholder="Mobile or Case No."
                         />
                         {isLookingUp && <Loader2 className="w-4 h-4 absolute right-3 top-3.5 animate-spin text-slate-400" />}
@@ -645,7 +645,7 @@ export default function Home() {
                         <Search className="w-4 h-4" />
                       </button>
                       <button type="button" onClick={handleAutoCase} title="Auto-generate case number"
-                        className="px-3 py-2 rounded-xl bg-purple-600 text-white font-semibold text-xs hover:bg-purple-700 transition-all flex items-center gap-1 shadow whitespace-nowrap">
+                        className="px-3 py-2 rounded-xl bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 transition-all flex items-center gap-1 shadow whitespace-nowrap">
                         <Zap className="w-3.5 h-3.5" /> Auto
                       </button>
                     </div>
@@ -657,7 +657,7 @@ export default function Home() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
                       <User className="w-4 h-4 text-slate-400" /> Patient Name <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
@@ -673,7 +673,7 @@ export default function Home() {
                             if (e.key === "Escape") setShowNameDropdown(false);
                           }}
                           onBlur={() => setTimeout(() => setShowNameDropdown(false), 200)}
-                          className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800"
+                          className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800"
                           placeholder="Full Name"
                         />
                         <button type="button" onClick={runNameLookup}
@@ -735,53 +735,53 @@ export default function Home() {
                 {/* Age + Weight + Address */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Age <span className="text-slate-400 text-xs">(optional)</span></label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Age <span className="text-slate-400 text-xs">(optional)</span></label>
                     <div className="flex gap-2">
                       <div className="flex-1 relative">
                         <input type="number" {...form.register("age")} min={0}
-                          className="w-full px-3 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800" placeholder="0" />
+                          className="w-full px-3 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="0" />
                         <span className="absolute right-2 top-3.5 text-xs text-slate-400">yrs</span>
                       </div>
                       <div className="w-20 relative">
                         <input type="number" {...form.register("ageMonths")} min={0} max={11}
-                          className="w-full px-2 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800" placeholder="0" />
+                          className="w-full px-2 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="0" />
                         <span className="absolute right-2 top-3.5 text-xs text-slate-400">mo</span>
                       </div>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
                       <Weight className="w-4 h-4 text-slate-400" /> Weight
                     </label>
                     <input {...form.register("weight")}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800" placeholder="e.g. 65 kg" />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="e.g. 65 kg" />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-slate-400" /> Address
                     </label>
                     <input {...form.register("address")}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-slate-800" placeholder="City / Area" />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="City / Area" />
                   </div>
                 </div>
               </div>
 
               {/* Medical Details */}
-              <div className="bg-blue-50/30 p-6 rounded-2xl border border-blue-100 space-y-4">
+              <div className="bg-gradient-to-br from-emerald-50/50 to-blue-50/20 p-6 rounded-2xl border border-emerald-100 border-l-4 border-l-emerald-400 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
                       <Activity className="w-4 h-4 text-slate-400" /> Complaint Code
                     </label>
                     <input {...form.register("complaintCode")}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 uppercase transition-all text-slate-800"
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 uppercase transition-all text-slate-800"
                       placeholder="E.G. CCF" />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Consultation Fees (₹)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Consultation Fees (₹)</label>
                     <div className="flex gap-2 items-center">
                       <input type="number" {...form.register("fees")} min={0}
-                        className="flex-1 px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-semibold text-slate-900" placeholder="Amount" />
+                        className="flex-1 px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all font-semibold text-slate-900" placeholder="Amount" />
                       <button type="button"
                         onClick={() => setFeesMarkedPending(p => !p)}
                         title={feesMarkedPending ? "Click to unmark pending" : "Mark fees as pending"}
@@ -802,9 +802,9 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Presenting Complaints</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Presenting Complaints</label>
                   <textarea {...form.register("complaint")} rows={2}
-                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all resize-none text-slate-800" placeholder="Describe the symptoms..." />
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Describe the symptoms..." />
                 </div>
 
                 {/* ── Pathya-Apathya Disease Suggest Panel ── */}
@@ -988,28 +988,28 @@ export default function Home() {
                   )}
                 </AnimatePresence>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Treatment Plan</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Treatment Plan</label>
                   <textarea {...form.register("treatment")} rows={2}
-                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all resize-none text-slate-800" placeholder="Prescribed medicines..." />
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Prescribed medicines..." />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
                       Advice / Notes
                       <span className="text-slate-400 font-normal text-xs ml-2">— F5 = follow-up after 5 days</span>
                     </label>
                     <textarea {...form.register("advice")} rows={2}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all resize-none text-slate-800" placeholder="F5 · Rest, diet..." />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="F5 · Rest, diet..." />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Reports Required</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Reports Required</label>
                     <textarea {...form.register("reports")} rows={2}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all resize-none text-slate-800" placeholder="Blood test, X-ray..." />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Blood test, X-ray..." />
                   </div>
                 </div>
                 {/* Attachments */}
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
                     <Paperclip className="w-4 h-4 text-slate-400" /> Attach Report Images
                   </label>
                   <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 flex flex-col items-center gap-2 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all"
@@ -1043,11 +1043,11 @@ export default function Home() {
                   </button>
                 )}
                 <button type="button" onClick={onSaveAyurvedic}
-                  className="px-5 py-3 rounded-xl font-semibold bg-emerald-600 text-white shadow-lg shadow-emerald-600/25 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
+                  className="px-5 py-3 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
                   <Leaf className="w-5 h-5" /> Save Ayurvedic
                 </button>
                 <button type="submit"
-                  className="px-7 py-3 rounded-xl font-semibold bg-gradient-to-r from-primary to-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
+                  className="px-7 py-3 rounded-xl font-semibold bg-gradient-to-r from-primary via-blue-500 to-indigo-600 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
                   <Save className="w-5 h-5" /> Save General
                 </button>
               </div>
@@ -1060,7 +1060,7 @@ export default function Home() {
           <div className="sticky top-24 space-y-4">
             {/* Filter Mode Selector */}
             <div className="medical-card p-3">
-              <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+              <div className="flex gap-1 bg-slate-100 rounded-2xl p-1">
                 <button onClick={() => setFilterMode("history")}
                   className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "history" ? "bg-white shadow text-primary" : "text-slate-500 hover:text-slate-700"}`}>
                   <RefreshCw className="w-3 h-3" /> History
@@ -1098,7 +1098,7 @@ export default function Home() {
                   {patientHistory.length > 0 ? (
                     <>
                       {/* Patient identity header */}
-                      <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60 shrink-0">
+                      <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-primary/10 to-blue-50 shrink-0">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
                             <User className="w-4 h-4" />
@@ -1112,7 +1112,7 @@ export default function Home() {
                       </div>
                       <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         {patientHistory.map((visit, i) => (
-                          <div key={i} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                          <div key={i} className="p-3 rounded-xl border border-slate-100 bg-white hover:bg-gradient-to-r hover:from-blue-50/60 hover:to-slate-50 transition-all hover:border-blue-100 hover:shadow-sm">
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-xs font-bold px-2 py-1 bg-white rounded-md border border-slate-200 text-slate-600">
                                 {format(new Date(visit.visitDate), "dd MMM yyyy")}
@@ -1193,13 +1193,13 @@ export default function Home() {
 
             {/* ── LOOSE MEDICINE SALES ── */}
             <div className="medical-card overflow-hidden">
-              <div className="px-4 py-3 bg-violet-50 border-b border-violet-100 flex items-center justify-between">
+              <div className="px-4 py-3 bg-gradient-to-r from-violet-600 to-purple-600 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4 text-violet-600" />
-                  <span className="text-sm font-bold text-violet-800">Loose Medicine Sales</span>
+                  <ShoppingBag className="w-4 h-4 text-white" />
+                  <span className="text-sm font-bold text-white">Loose Medicine Sales</span>
                 </div>
                 {looseTodayTotal > 0 && (
-                  <span className="text-xs font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="text-xs font-bold text-violet-700 bg-white px-2 py-0.5 rounded-full flex items-center gap-1">
                     <IndianRupee className="w-3 h-3" />{looseTodayTotal.toLocaleString("en-IN")}
                   </span>
                 )}
@@ -1274,16 +1274,16 @@ export default function Home() {
 
             {/* ── PENDING FEES PANEL ── */}
             <div className="medical-card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 bg-amber-50 border-b border-amber-100">
+              <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500">
                 <div className="flex items-center gap-2">
-                  <WalletCards className="w-4 h-4 text-amber-500" />
-                  <span className="font-semibold text-sm text-slate-800">Pending Fees</span>
+                  <WalletCards className="w-4 h-4 text-white" />
+                  <span className="font-semibold text-sm text-white">Pending Fees</span>
                   {pendingFees.length > 0 && (
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{pendingFees.length}</span>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white text-amber-600">{pendingFees.length}</span>
                   )}
                 </div>
                 {pendingFees.length > 0 && (
-                  <span className="text-xs font-bold text-amber-700">
+                  <span className="text-xs font-bold text-white">
                     Total: ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
                   </span>
                 )}
