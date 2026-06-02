@@ -245,19 +245,175 @@ const emptyDefaults: PatientFormValues = {
   advice: "", reports: "", fees: 0, paymentMode: "cash" as const,
 };
 
-// ── load html2canvas once via <script> tag ────────────────────────────────
-let html2canvasPromise: Promise<any> | null = null;
-function loadHtml2Canvas(): Promise<any> {
-  if (html2canvasPromise) return html2canvasPromise;
-  html2canvasPromise = new Promise((resolve, reject) => {
-    if ((window as any).html2canvas) { resolve((window as any).html2canvas); return; }
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-    s.onload = () => resolve((window as any).html2canvas);
-    s.onerror = (e) => { html2canvasPromise = null; reject(e); };
-    document.head.appendChild(s);
-  });
-  return html2canvasPromise;
+// ── Draw patient card directly onto a Canvas (no html2canvas) ────────────
+function drawPatientCard(patient: Patient): HTMLCanvasElement {
+  const W = 900, scale = 3;
+  const cw = W * scale;
+
+  // ── measure text to compute dynamic height ──
+  const tmpC = document.createElement("canvas");
+  const tmpX = tmpC.getContext("2d")!;
+  tmpX.font = `bold ${11 * scale}px sans-serif`;
+  const addrText = patient.address || "Pipaliya Char Rasta";
+  const maxAddrW = 320 * scale;
+  // wrap address
+  const addrLines: string[] = [];
+  let addrCur = "";
+  for (const word of addrText.split(" ")) {
+    const test = addrCur ? addrCur + " " + word : word;
+    if (tmpX.measureText(test).width > maxAddrW && addrCur) { addrLines.push(addrCur); addrCur = word; }
+    else addrCur = test;
+  }
+  if (addrCur) addrLines.push(addrCur);
+  const addrExtraLines = Math.max(0, addrLines.length - 1);
+
+  const HEADER_H = 185;
+  const BODY_H   = 290 + addrExtraLines * 22;
+  const FOOTER_H = 90;
+  const TOTAL_H  = HEADER_H + BODY_H + FOOTER_H;
+  const ch = TOTAL_H * scale;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext("2d")!;
+  ctx.scale(scale, scale);
+
+  const r = (x: number, y: number, w: number, h: number, rad: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x + rad, y);
+    ctx.lineTo(x + w - rad, y); ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+    ctx.lineTo(x + w, y + h - rad); ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+    ctx.lineTo(x + rad, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+    ctx.lineTo(x, y + rad); ctx.quadraticCurveTo(x, y, x + rad, y);
+    ctx.closePath();
+  };
+
+  // ── CARD BACKGROUND with rounded corners ──
+  r(0, 0, W, TOTAL_H, 24);
+  ctx.fillStyle = "#ffffff"; ctx.fill();
+  ctx.save(); ctx.clip();
+
+  // ── HEADER ──
+  const hg = ctx.createLinearGradient(0, 0, W, HEADER_H);
+  hg.addColorStop(0, "#c45e10"); hg.addColorStop(0.5, "#d4711f"); hg.addColorStop(1, "#b84f0a");
+  ctx.fillStyle = hg; ctx.fillRect(0, 0, W, HEADER_H);
+
+  // Logo circle
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  r(24, 22, 52, 52, 14); ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `900 ${26}px sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("M", 50, 48);
+
+  // Clinic name
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `bold ${20}px sans-serif`;
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("Manglam Clinic", 90, 44);
+  ctx.fillStyle = "#ffe0c0";
+  ctx.font = `${13}px sans-serif`;
+  ctx.fillText("Dr. Vijay Girglani | B.A.M.S.", 90, 62);
+
+  // Divider
+  ctx.strokeStyle = "rgba(255,255,255,0.25)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(24, 90); ctx.lineTo(W - 24, 90); ctx.stroke();
+
+  // Subtitle
+  ctx.fillStyle = "rgba(255,224,192,0.9)";
+  ctx.font = `bold ${10}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.letterSpacing = "2px";
+  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, 118);
+  ctx.letterSpacing = "0px";
+
+  // ── BODY ──
+  ctx.fillStyle = "#fdf8f3"; ctx.fillRect(0, HEADER_H, W, BODY_H);
+
+  // "PATIENT CARD" badge
+  const badgeY = HEADER_H + 28;
+  const badgeLabel = "PATIENT CARD";
+  ctx.font = `bold ${10}px sans-serif`;
+  ctx.textAlign = "center";
+  const badgeW = ctx.measureText(badgeLabel).width + 32;
+  const badgeX = (W - badgeW) / 2;
+  ctx.strokeStyle = "rgba(196,94,16,0.4)"; ctx.lineWidth = 1;
+  r(badgeX, badgeY - 11, badgeW, 20, 10); ctx.stroke();
+  ctx.fillStyle = "#c45e10"; ctx.fillText(badgeLabel, W / 2, badgeY + 3);
+
+  // Case Number box
+  const boxY = HEADER_H + 58;
+  ctx.fillStyle = "#f5ece0"; r(24, boxY, W - 48, 62, 16); ctx.fill();
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${9}px sans-serif`;
+  ctx.textAlign = "left"; ctx.letterSpacing = "1.5px";
+  ctx.fillText("CASE NUMBER", 42, boxY + 18);
+  ctx.letterSpacing = "0px";
+  const caseNo = patient.mobile.padStart(9, "0");
+  ctx.fillStyle = "#c45e10"; ctx.font = `900 ${26}px monospace`;
+  ctx.fillText(caseNo, 42, boxY + 44);
+  // wallet icon (simplified as rounded rect + lines)
+  const iconX = W - 72, iconY = boxY + 11;
+  ctx.fillStyle = "#ffffff";
+  r(iconX, iconY, 40, 40, 10); ctx.fill();
+  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.5;
+  r(iconX + 8, iconY + 10, 24, 20, 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(iconX + 8, iconY + 17); ctx.lineTo(iconX + 32, iconY + 17); ctx.stroke();
+
+  // Info rows
+  let rowY = HEADER_H + 58 + 62 + 24;
+  const LX = 24, RX = W - 24;
+
+  // Patient Name row
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${9}px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
+  ctx.fillText("PATIENT NAME", LX, rowY);
+  ctx.letterSpacing = "0px";
+  ctx.fillStyle = "#1e293b"; ctx.font = `bold ${14}px sans-serif`;
+  ctx.textAlign = "right"; ctx.fillText(patient.name.toUpperCase(), RX, rowY);
+
+  // Divider
+  rowY += 14;
+  ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(LX, rowY); ctx.lineTo(RX, rowY); ctx.stroke();
+  rowY += 18;
+
+  // Address row (multi-line)
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${9}px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
+  ctx.fillText("ADDRESS", LX + 14, rowY);
+  ctx.letterSpacing = "0px";
+  ctx.fillStyle = "#334155"; ctx.font = `bold ${13}px sans-serif`;
+  ctx.textAlign = "right";
+  addrLines.forEach((line, i) => ctx.fillText(line, RX, rowY + i * 18));
+  rowY += Math.max(16, addrLines.length * 18) + 10;
+
+  // Divider
+  ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(LX, rowY); ctx.lineTo(RX, rowY); ctx.stroke();
+  rowY += 18;
+
+  // Clinic Phone row
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${9}px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
+  ctx.fillText("CLINIC PHONE", LX + 14, rowY);
+  ctx.letterSpacing = "0px";
+  ctx.fillStyle = "#475569"; ctx.font = `${13}px monospace`;
+  ctx.textAlign = "right"; ctx.fillText("+91 96381 81875", RX, rowY);
+
+  // ── FOOTER ──
+  ctx.fillStyle = "#2d5a1b"; ctx.fillRect(0, HEADER_H + BODY_H, W, FOOTER_H);
+  ctx.fillStyle = "#ffffff"; ctx.font = `bold ${14}px sans-serif`;
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("Manglam Hospital", 24, HEADER_H + BODY_H + 32);
+  ctx.fillStyle = "#bbf7d0"; ctx.font = `${12}px sans-serif`;
+  ctx.fillText("Morbi, Gujarat", 24, HEADER_H + BODY_H + 50);
+  ctx.fillStyle = "#bbf7d0"; ctx.font = `${11}px sans-serif`;
+  ctx.textAlign = "right";
+  ctx.fillText("Show this card", W - 24, HEADER_H + BODY_H + 32);
+  ctx.fillText("on your next visit", W - 24, HEADER_H + BODY_H + 48);
+
+  ctx.restore();
+  return canvas;
 }
 
 // ── Patient Card Modal ─────────────────────────────────────────────────────
@@ -270,38 +426,21 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState("");
 
-  // Preload html2canvas as soon as modal opens
-  useEffect(() => { loadHtml2Canvas().catch(() => {}); }, []);
-
   const sendWhatsApp = async () => {
-    if (!cardRef.current) return;
     setSharing(true);
     setShareError("");
-
     try {
-      // html2canvas should already be loaded (preloaded on mount)
-      const h2c = await loadHtml2Canvas();
+      // Draw card directly on canvas — no html2canvas needed
+      const canvas = drawPatientCard(patient);
 
-      // Capture card at 3× for crisp quality
-      const canvas = await h2c(cardRef.current, {
-        scale: 3,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        removeContainer: true,
-        ignoreElements: (el: Element) => el.tagName === "BUTTON",
-      });
-
-      // canvas → blob
       const blob: Blob = await new Promise((res, rej) =>
         canvas.toBlob((b: Blob | null) => b ? res(b) : rej(new Error("toBlob failed")), "image/png", 1.0)
       );
 
       const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
+      const number = formatMobileWA(patient.mobile);
 
-      // ── Strategy 1: Web Share API with file ──────────────────────────────
-      // Works on Android Chrome 89+, iOS Safari 15+ when page is HTTPS
+      // ── Strategy 1: Web Share API with file (Android Chrome / iOS Safari) ──
       const canShareFiles =
         typeof navigator.share === "function" &&
         typeof navigator.canShare === "function" &&
@@ -317,38 +456,26 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           setSharing(false);
           return;
         } catch (shareErr: any) {
-          // AbortError = user cancelled — don't fall through to download
-          if (shareErr?.name === "AbortError") {
-            setSharing(false);
-            return;
-          }
-          // Other errors: fall through to Strategy 2
+          if (shareErr?.name === "AbortError") { setSharing(false); return; }
+          // fall through to download strategy
         }
       }
 
-      // ── Strategy 2: Download PNG then open WhatsApp ──────────────────────
-      // Auto-download the card image
+      // ── Strategy 2: Download image then open WhatsApp ──
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = "manglam-patient-card.png";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      a.href = objectUrl; a.download = "manglam-patient-card.png";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
 
-      // Open WhatsApp chat with the patient's number
-      const number = formatMobileWA(patient.mobile);
       const waUrl = number ? `https://wa.me/${number}` : `https://wa.me/`;
       setTimeout(() => window.open(waUrl, "_blank"), 800);
-
       setShareError("Image saved — attach it in WhatsApp.");
 
     } catch (err: any) {
-      console.error("WhatsApp share error:", err);
-      setShareError("Could not capture card. Please try again.");
+      console.error("Card share error:", err);
+      setShareError("Could not generate card. Please try again.");
     }
-
     setSharing(false);
   };
 
@@ -443,7 +570,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
 
           {/* error hint */}
           {shareError && (
-            <p className="mt-2 text-center text-xs font-medium" style={{ color: shareError.startsWith("Could not") ? "#d97706" : "#16a34a" }}>{shareError}</p>
+            <p className="mt-2 text-center text-xs text-amber-600 font-medium">{shareError}</p>
           )}
 
           {/* ── Action buttons ── */}
