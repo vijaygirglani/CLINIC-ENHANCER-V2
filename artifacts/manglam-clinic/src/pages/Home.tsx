@@ -792,14 +792,15 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
+                    {/* Row 1: Amount input */}
+                    <input type="number" {...form.register("fees")} min={0}
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all font-semibold text-slate-900" placeholder="Amount" />
+                    {/* Row 2: Cash/Online toggle + Mark Pending */}
                     <div className="flex gap-2 items-center">
-                      <input type="number" {...form.register("fees")} min={0}
-                        className="flex-1 px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all font-semibold text-slate-900" placeholder="Amount" />
-                      {/* Cash / Online toggle */}
                       <div className="flex rounded-xl border border-slate-200 overflow-hidden shrink-0">
                         <button type="button"
                           onClick={() => form.setValue("paymentMode", "cash")}
-                          className={`flex items-center gap-1 px-3 py-2.5 text-xs font-bold transition-all ${
+                          className={`flex items-center gap-1 px-3 py-2 text-xs font-bold transition-all ${
                             paymentModeValue !== "online"
                               ? "bg-emerald-500 text-white shadow-inner"
                               : "bg-white text-slate-400 hover:bg-slate-50"
@@ -808,7 +809,7 @@ export default function Home() {
                         </button>
                         <button type="button"
                           onClick={() => form.setValue("paymentMode", "online")}
-                          className={`flex items-center gap-1 px-3 py-2.5 text-xs font-bold transition-all border-l border-slate-200 ${
+                          className={`flex items-center gap-1 px-3 py-2 text-xs font-bold transition-all border-l border-slate-200 ${
                             paymentModeValue === "online"
                               ? "bg-blue-500 text-white shadow-inner"
                               : "bg-white text-slate-400 hover:bg-slate-50"
@@ -819,13 +820,13 @@ export default function Home() {
                       <button type="button"
                         onClick={() => setFeesMarkedPending(p => !p)}
                         title={feesMarkedPending ? "Click to unmark pending" : "Mark fees as pending"}
-                        className={`shrink-0 flex items-center gap-1.5 px-3 py-3 rounded-xl border font-semibold text-xs transition-all ${
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border font-semibold text-xs transition-all ${
                           feesMarkedPending
                             ? "bg-amber-100 border-amber-400 text-amber-700 shadow-inner"
                             : "bg-white border-slate-200 text-slate-400 hover:border-amber-300 hover:text-amber-500"
                         }`}>
-                        <Hourglass className="w-4 h-4" />
-                        {feesMarkedPending ? "Pending" : "Mark Pending"}
+                        <Hourglass className="w-3.5 h-3.5" />
+                        {feesMarkedPending ? "Pending ✓" : "Mark Pending"}
                       </button>
                     </div>
                     {feesMarkedPending && (
