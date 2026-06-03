@@ -1367,8 +1367,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Medical Details */}
-              </div>
             </form>
           </div>
         </div>
@@ -1705,7 +1703,6 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-              </div>
 
               {/* Action Buttons for clinical form */}
               <div className="flex gap-2 mt-2">
