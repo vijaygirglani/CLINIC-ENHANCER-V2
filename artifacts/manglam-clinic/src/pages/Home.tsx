@@ -800,6 +800,8 @@ export default function Home() {
   const [feesMarkedPending, setFeesMarkedPending] = useState(false);
   const [pendingAmount, setPendingAmount] = useState<string>("");
   const refreshPending = () => setPendingFees(getPendingFees());
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [pendingAlert, setPendingAlert] = useState<PendingEntry | null>(null);
 
   // ── Loose Medicine Sales state ──
   const getLiveToday = () => format(new Date(), "yyyy-MM-dd");
@@ -931,9 +933,13 @@ export default function Home() {
     setPatientHistory(result.history);
     setFilterMode("history");
     setIsLookingUp(false);
-  }, [form, toast]);
-
-  const runNameLookup = useCallback(() => {
+    // ── Check for pending fees ──
+    if (result.latestInfo) {
+      const allPending = getPendingFees();
+      const match = allPending.find(e => e.mobile.replace(/\D/g,"") === mobile.replace(/\D/g,""));
+      if (match) setPendingAlert(match);
+    }
+  }, [form, toast]); = useCallback(() => {
     const name = (nameRef.current?.value || form.getValues("name") || "").trim();
     if (!name || name.length < 2) return;
     setIsLookingUp(true);
@@ -955,9 +961,13 @@ export default function Home() {
     setPatientHistory(result.history);
     setFilterMode("history");
     setIsLookingUp(false);
-  }, [form, toast]);
-
-  // When user clicks a suggestion: autofill all fields + load history
+    // ── Check for pending fees ──
+    if (result.latestInfo) {
+      const allPending = getPendingFees();
+      const match = allPending.find(e => e.mobile.replace(/\D/g,"") === result.latestInfo!.mobile.replace(/\D/g,""));
+      if (match) setPendingAlert(match);
+    }
+  }, [form, toast]);: autofill all fields + load history
   const handleSelectSuggestion = useCallback((s: PatientSuggestion) => {
     form.setValue("name", s.name);
     form.setValue("mobile", s.mobile);
@@ -974,6 +984,10 @@ export default function Home() {
     setHistoryMobile(s.mobile);
     setFilterMode("history");
     toast({ title: "Patient found", description: `${s.visitCount} visit(s) found.` });
+    // ── Check for pending fees ──
+    const allPending = getPendingFees();
+    const match = allPending.find(e => e.mobile.replace(/\D/g,"") === s.mobile.replace(/\D/g,""));
+    if (match) setPendingAlert(match);
   }, [form, toast]);
 
   // ── Google Sheet handlers ──
@@ -1374,41 +1388,33 @@ export default function Home() {
                     </div>
                     {feesMarkedPending && (
                       <div className="space-y-2">
-                        {/* Pending amount input */}
                         <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
                           <Hourglass className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">Pending Amount (₹)</p>
-                            <div className="flex items-center gap-2">
-                              <div className="relative flex-1">
-                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 font-bold text-xs">₹</span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={pendingAmount}
-                                  onChange={e => setPendingAmount(e.target.value)}
-                                  placeholder={`Full (₹${feesValue || 0})`}
-                                  className="w-full pl-6 pr-3 py-1.5 rounded-lg border border-amber-300 bg-white text-sm font-bold text-amber-800 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 placeholder:text-amber-300 placeholder:font-normal"
-                                />
-                              </div>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 font-bold text-xs">₹</span>
+                              <input
+                                type="number" min={0}
+                                value={pendingAmount}
+                                onChange={e => setPendingAmount(e.target.value)}
+                                placeholder={`Full (₹${feesValue || 0})`}
+                                className="w-full pl-6 pr-3 py-1.5 rounded-lg border border-amber-300 bg-white text-sm font-bold text-amber-800 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 placeholder:text-amber-300 placeholder:font-normal"
+                              />
                             </div>
                           </div>
                         </div>
-                        {/* Paid / Pending breakdown */}
-                        {pendingAmount.trim() !== "" && Number(pendingAmount) > 0 && Number(feesValue) > 0 && (
+                        {pendingAmount.trim() !== "" && Number(pendingAmount) > 0 && Number(feesValue) > 0 ? (
                           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs">
                             <span className="flex items-center gap-1 text-emerald-600 font-bold">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              Paid: ₹{Math.max(0, Number(feesValue) - Number(pendingAmount))}
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Paid: ₹{Math.max(0, Number(feesValue) - Number(pendingAmount))}
                             </span>
                             <span className="text-slate-300">|</span>
                             <span className="flex items-center gap-1 text-amber-600 font-bold">
-                              <Hourglass className="w-3.5 h-3.5" />
-                              Pending: ₹{Number(pendingAmount)}
+                              <Hourglass className="w-3.5 h-3.5" /> Pending: ₹{Number(pendingAmount)}
                             </span>
                           </div>
-                        )}
-                        {pendingAmount.trim() === "" && (
+                        ) : (
                           <p className="text-[10px] text-amber-500 px-1">Leave blank to mark full amount (₹{feesValue || 0}) as pending</p>
                         )}
                       </div>
@@ -1892,53 +1898,7 @@ export default function Home() {
               )}
             </div>
 
-            {/* ── PENDING FEES PANEL ── */}
-            <div className="medical-card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500">
-                <div className="flex items-center gap-2">
-                  <WalletCards className="w-4 h-4 text-white" />
-                  <span className="font-semibold text-sm text-white">Pending Fees</span>
-                  {pendingFees.length > 0 && (
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white text-amber-600">{pendingFees.length}</span>
-                  )}
-                </div>
-                {pendingFees.length > 0 && (
-                  <span className="text-xs font-bold text-white">
-                    Total: ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
-                  </span>
-                )}
-              </div>
-              {pendingFees.length === 0 ? (
-                <div className="px-4 py-6 text-center text-slate-400">
-                  <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-300" />
-                  <p className="text-xs font-medium">No pending fees</p>
-                  <p className="text-xs mt-1 text-slate-300">Use "Mark Pending" in the fees field</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-amber-50 max-h-64 overflow-y-auto">
-                  {pendingFees.map((e, i) => (
-                    <div key={e.patientId} className="flex items-center gap-2 px-3 py-2.5 hover:bg-amber-50/50 transition-colors">
-                      <span className="text-xs text-slate-400 w-4 shrink-0">{i + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-xs text-slate-900 truncate">{e.name}</p>
-                        <p className="text-[10px] font-mono text-slate-400">{e.mobile} · {format(new Date(e.date + "T00:00:00"), "dd MMM")}</p>
-                      </div>
-                      <span className="font-bold text-amber-600 text-sm shrink-0">₹{e.fees}</span>
-                      <button
-                        onClick={() => { removePendingFee(e.patientId); refreshPending(); toast({ title: "Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
-                        title="Mark as paid"
-                        className="shrink-0 p-1.5 rounded-lg bg-emerald-100 text-emerald-600 hover:bg-emerald-200 transition-colors">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                  <div className="px-3 py-2 bg-amber-50 flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-600">Total Pending</span>
-                    <span className="font-bold text-amber-600">₹{pendingFees.reduce((s, e) => s + e.fees, 0)}</span>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* ── PENDING FEES: now a floating button — see FAB below ── */}
 
           </div>
         </div>
@@ -2027,6 +1987,194 @@ export default function Home() {
                     <span className="text-xs text-emerald-600 font-semibold shrink-0">Fill →</span>
                   </button>
                 ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      </AnimatePresence>
+
+      {/* ── PENDING FEES FLOATING BUTTON ── */}
+      <AnimatePresence>
+        <motion.button
+          onClick={() => { refreshPending(); setShowPendingModal(true); }}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          whileHover={{ scale: 1.06 }}
+          whileTap={{ scale: 0.95 }}
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-2xl font-bold text-sm text-white"
+          style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)", boxShadow: "0 8px 32px rgba(245,158,11,0.45)" }}
+        >
+          <WalletCards className="w-5 h-5" />
+          <span>Pending Fees</span>
+          {pendingFees.length > 0 && (
+            <motion.span
+              key={pendingFees.length}
+              initial={{ scale: 1.4 }}
+              animate={{ scale: 1 }}
+              className="flex items-center justify-center w-5 h-5 rounded-full bg-white text-amber-600 text-[11px] font-black"
+            >
+              {pendingFees.length}
+            </motion.span>
+          )}
+        </motion.button>
+      </AnimatePresence>
+
+      {/* ── PENDING FEES MODAL ── */}
+      <AnimatePresence>
+        {showPendingModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={() => setShowPendingModal(false)}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0, scale: 0.97 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 60, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 320, damping: 28 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4" style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)" }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                    <WalletCards className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-white text-base leading-none">Pending Fees</p>
+                    <p className="text-amber-100 text-xs mt-0.5">{pendingFees.length} patient{pendingFees.length !== 1 ? "s" : ""}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {pendingFees.length > 0 && (
+                    <div className="text-right">
+                      <p className="text-[10px] text-amber-100 font-semibold uppercase tracking-wide">Total</p>
+                      <p className="text-white font-black text-lg leading-none">₹{pendingFees.reduce((s, e) => s + e.fees, 0).toLocaleString("en-IN")}</p>
+                    </div>
+                  )}
+                  <button onClick={() => setShowPendingModal(false)} className="w-8 h-8 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
+                    <X className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              {pendingFees.length === 0 ? (
+                <div className="px-6 py-12 flex flex-col items-center text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                  </div>
+                  <p className="font-bold text-slate-700 text-base">All cleared!</p>
+                  <p className="text-slate-400 text-sm mt-1">No pending fees at the moment.</p>
+                </div>
+              ) : (
+                <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-100">
+                  {pendingFees.map((e, i) => (
+                    <div key={e.patientId} className="flex items-center gap-3 px-5 py-3.5 hover:bg-amber-50/40 transition-colors">
+                      <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-black text-amber-600">{i + 1}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-900 text-sm truncate">{e.name}</p>
+                        <p className="text-[11px] font-mono text-slate-400 mt-0.5">{e.mobile} · {format(new Date(e.date + "T00:00:00"), "dd MMM yyyy")}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-amber-600 text-base">₹{e.fees.toLocaleString("en-IN")}</p>
+                      </div>
+                      <button
+                        onClick={() => { removePendingFee(e.patientId); refreshPending(); setPendingAlert(null); toast({ title: "✅ Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
+                        title="Mark as paid"
+                        className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-bold text-xs transition-colors"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Paid
+                      </button>
+                    </div>
+                  ))}
+                  <div className="px-5 py-3 bg-amber-50 flex justify-between items-center sticky bottom-0">
+                    <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5"><Hourglass className="w-3.5 h-3.5 text-amber-500" /> Total Pending</span>
+                    <span className="font-black text-amber-600 text-base">₹{pendingFees.reduce((s, e) => s + e.fees, 0).toLocaleString("en-IN")}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-slate-100">
+                <button onClick={() => setShowPendingModal(false)}
+                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── PENDING FEES ALERT (shown on 2nd visit lookup) ── */}
+      <AnimatePresence>
+        {pendingAlert && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: -20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: -20 }}
+            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            onClick={() => setPendingAlert(null)}
+          >
+            <motion.div
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
+              style={{ border: "3px solid #f59e0b" }}
+            >
+              {/* Alert header */}
+              <div className="px-5 pt-6 pb-4 flex flex-col items-center text-center" style={{ background: "linear-gradient(160deg, #fffbeb, #fff7ed)" }}>
+                <motion.div
+                  animate={{ rotate: [0, -8, 8, -8, 8, 0] }}
+                  transition={{ duration: 0.5, delay: 0.2 }}
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-lg"
+                  style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)" }}
+                >
+                  <Hourglass className="w-8 h-8 text-white" />
+                </motion.div>
+                <p className="text-xs font-black uppercase tracking-widest text-amber-500 mb-1">Pending Fees Alert</p>
+                <h3 className="text-xl font-black text-slate-900">{pendingAlert.name}</h3>
+                <p className="text-sm text-slate-500 mt-0.5 font-mono">{pendingAlert.mobile}</p>
+              </div>
+
+              {/* Amount */}
+              <div className="mx-5 my-4 rounded-2xl p-4 flex items-center gap-4" style={{ background: "linear-gradient(135deg, #fef3c7, #fde68a)" }}>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-amber-600 uppercase tracking-wide">Outstanding Amount</p>
+                  <p className="text-3xl font-black text-amber-700 mt-0.5">₹{pendingAlert.fees.toLocaleString("en-IN")}</p>
+                  <p className="text-[11px] text-amber-500 mt-1">Since {format(new Date(pendingAlert.date + "T00:00:00"), "dd MMM yyyy")}</p>
+                </div>
+                <IndianRupee className="w-10 h-10 text-amber-400 shrink-0" />
+              </div>
+
+              <p className="text-center text-xs text-slate-400 px-5 pb-2">This patient has unpaid fees from a previous visit</p>
+
+              {/* Actions */}
+              <div className="px-5 py-4 flex gap-3">
+                <button
+                  onClick={() => setPendingAlert(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors"
+                >
+                  Remind Later
+                </button>
+                <button
+                  onClick={() => {
+                    removePendingFee(pendingAlert.patientId);
+                    refreshPending();
+                    setPendingAlert(null);
+                    toast({ title: "✅ Fees Cleared", description: `${pendingAlert.name}'s pending fees marked as paid.` });
+                  }}
+                  className="flex-[2] py-2.5 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-colors shadow-lg"
+                  style={{ background: "linear-gradient(135deg, #10b981, #059669)" }}
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Mark as Paid
+                </button>
               </div>
             </motion.div>
           </motion.div>
