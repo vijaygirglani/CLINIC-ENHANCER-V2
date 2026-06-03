@@ -1128,63 +1128,61 @@ export default function Home() {
       {lastSaved && <PrintPrescription patient={lastSaved} />}
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* ── MAIN FORM ── */}
-        <div className="lg:col-span-8 space-y-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden">
-            {/* Card header strip */}
-            <div className="h-1 w-full bg-gradient-to-r from-teal-500 via-emerald-400 to-cyan-500" />
-            <div className="px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-sm">
-                  <User className="w-4.5 h-4.5 text-white" style={{width:"18px",height:"18px"}} />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* ── LEFT COLUMN: Patient Info ── */}
+        <div className="lg:col-span-3 space-y-3">
+          <div className="bg-[#faf8f3] rounded-2xl shadow-md border border-[#ddd4c0] overflow-hidden">
+            <div className="h-1 w-full bg-gradient-to-r from-[#2d5a27] via-[#3d7a35] to-[#2d5a27]" />
+            <div className="px-4 py-3">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#2d5a27] to-[#3d7a35] flex items-center justify-center shadow-sm">
+                  <User style={{width:"15px",height:"15px",color:"white"}} />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-stone-800 tracking-tight">Patient Registration</h2>
-                  <p className="text-stone-400 text-xs">Register a new visit and view medical history.</p>
+                  <h2 className="text-sm font-bold text-[#2d3a1e] tracking-tight">Patient Info</h2>
+                  <p className="text-[#7a8a6a] text-[10px]">Register new visit</p>
                 </div>
-                {/* Sheet action buttons */}
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex items-center gap-1.5">
                   <button type="button" onClick={handleSync}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition-all shadow-sm">
-                    {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                    Sync from Sheet
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-white text-[10px] font-semibold transition-all shadow-sm"
+                    style={{background:"#2d5a27"}}>
+                    {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    Sync
                   </button>
                   <button type="button" onClick={() => { setSheetInput(sheetUrl); setShowSheetModal(true); }}
                     title="Connect Google Sheet"
-                    className="p-1.5 rounded-lg bg-stone-100 border border-stone-200 text-stone-500 hover:text-teal-600 hover:bg-teal-50 transition-all">
-                    <Sheet className="w-3.5 h-3.5" />
+                    className="p-1 rounded-lg bg-[#e8e0d0] border border-[#d4c9b0] text-[#5a6a4a] hover:text-[#2d5a27] transition-all">
+                    <Sheet className="w-3 h-3" />
                   </button>
                 </div>
               </div>
-            </div>
 
-            {/* Sheet connected banner */}
-            {sheetConnected && (
-              <div className="mx-6 mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-teal-50 border border-teal-200 text-teal-700 text-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse inline-block" />
-                <span><strong>Google Sheet connected.</strong> Press "Sync from Sheet" to load today's patients.</span>
-              </div>
-            )}
+              {/* Sheet connected banner */}
+              {sheetConnected && (
+                <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200 text-green-700 text-[10px]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+                  <span><strong>Sheet connected.</strong></span>
+                </div>
+              )}
 
-            <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 pb-6 space-y-4">
-              {/* Visit Date + Patient Info */}
-              <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200/70 space-y-3">
-                <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Patient Information</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+              {/* Patient Info section */}
+              <div className="space-y-3">
+                <p className="text-[9px] font-bold text-[#2d5a27] uppercase tracking-widest">Patient Information</p>
+                <div className="grid grid-cols-1 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider flex items-center gap-1.5">
                       <Calendar className="w-3 h-3 text-stone-400" /> Visit Date
                     </label>
                     <input type="date" {...form.register("visitDate")}
-                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" />
+                      className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all text-[#2d3a1e] text-sm" />
                   </div>
                 </div>
 
                 {/* Mobile / Case No */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider flex items-center gap-1.5">
                       <Phone className="w-3 h-3 text-stone-400" /> Mobile / Case No. <span className="text-red-500">*</span>
                     </label>
                     <div className="flex gap-1.5">
@@ -1198,7 +1196,7 @@ export default function Home() {
                           onKeyDown={e => {
                             if (e.key === "Enter") { e.preventDefault(); runMobileLookup(); }
                           }}
-                          className="w-full pl-3 pr-8 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm font-mono"
+                          className="w-full pl-3 pr-8 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all text-[#2d3a1e] text-sm font-mono"
                           placeholder="Mobile or Case No."
                         />
                         {isLookingUp && <Loader2 className="w-3.5 h-3.5 absolute right-2.5 top-3 animate-spin text-stone-400" />}
@@ -1220,7 +1218,7 @@ export default function Home() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider flex items-center gap-1.5">
                       <User className="w-3 h-3 text-stone-400" /> Patient Name <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
@@ -1236,7 +1234,7 @@ export default function Home() {
                             if (e.key === "Escape") setShowNameDropdown(false);
                           }}
                           onBlur={() => setTimeout(() => setShowNameDropdown(false), 200)}
-                          className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm"
+                          className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all text-[#2d3a1e] text-sm"
                           placeholder="Patient Name"
                         />
                         <button type="button" onClick={runNameLookup}
@@ -1250,7 +1248,7 @@ export default function Home() {
                         <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-stone-200 rounded-xl shadow-xl overflow-y-auto" style={{ zIndex: 9999, maxHeight: "280px" }}>
                           <div className="px-3 py-2 border-b border-stone-100 bg-stone-50 flex items-center gap-2">
                             <Search className="w-3 h-3 text-stone-400" />
-                            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">
+                            <span className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wide">
                               {nameSuggestions.length} patient{nameSuggestions.length > 1 ? "s" : ""} found
                             </span>
                           </div>
@@ -1296,66 +1294,73 @@ export default function Home() {
                 </div>
 
                 {/* Age + Weight + Address */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Age <span className="text-stone-400 text-[10px]">(optional)</span></label>
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider">Age <span className="text-stone-400 text-[10px]">(optional)</span></label>
                     <div className="flex gap-1.5">
                       <div className="flex-1 relative">
                         <input type="number" {...form.register("age")} min={0}
-                          className="w-full px-2.5 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" placeholder="0" />
+                          className="w-full px-2.5 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all text-[#2d3a1e] text-sm" placeholder="0" />
                         <span className="absolute right-2 top-3 text-[10px] text-stone-400">yrs</span>
                       </div>
                       <div className="w-16 relative">
                         <input type="number" {...form.register("ageMonths")} min={0} max={11}
-                          className="w-full px-2 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" placeholder="0" />
+                          className="w-full px-2 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all text-[#2d3a1e] text-sm" placeholder="0" />
                         <span className="absolute right-1.5 top-3 text-[10px] text-stone-400">mo</span>
                       </div>
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider flex items-center gap-1.5">
                       <Weight className="w-3 h-3 text-stone-400" /> Weight
                     </label>
                     <input {...form.register("weight")}
-                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" placeholder="e.g. 65 kg" />
+                      className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all text-[#2d3a1e] text-sm" placeholder="e.g. 65 kg" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider flex items-center gap-1.5">
                       <MapPin className="w-3 h-3 text-stone-400" /> Address
                     </label>
                     <input {...form.register("address")}
-                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" placeholder="City / Area" />
+                      className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all text-[#2d3a1e] text-sm" placeholder="City / Area" />
                   </div>
                 </div>
               </div>
+            </div>{/* end space-y-3 patient info */}
+          </div>{/* end card */}
+        </div>{/* end left col */}
 
-              {/* Medical Details */}
-              <div className="bg-teal-50/50 p-4 rounded-xl border border-teal-200/70 space-y-3">
-                <p className="text-[10px] font-bold text-teal-700 uppercase tracking-widest">Clinical Details</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* ── CENTER COLUMN: Clinical Details Form ── */}
+        <div className="lg:col-span-5">
+          <div className="bg-[#faf8f3] rounded-2xl shadow-md border border-[#ddd4c0] overflow-hidden">
+            <div className="h-1 w-full bg-gradient-to-r from-[#3d7a35] via-[#5a9a50] to-[#3d7a35]" />
+            <div className="px-4 py-3">
+              <div className="bg-[#eef6ea]/60 p-4 rounded-xl border border-[#b8d4b0]/70 space-y-3">
+                <p className="text-[9px] font-bold text-[#2d5a27] uppercase tracking-widest">Clinical Details</p>
+                <div className="grid grid-cols-1 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider flex items-center gap-1.5">
                       <Activity className="w-3 h-3 text-stone-400" /> Complaint Code
                     </label>
                     <input {...form.register("complaintCode")}
-                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 uppercase transition-all text-stone-800 text-sm"
+                      className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] uppercase transition-all text-[#2d3a1e] text-sm"
                       placeholder="E.G. CCF" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Consultation Fees (₹)</label>
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider">Consultation Fees (₹)</label>
                     {/* Preset buttons */}
                     <div className="flex gap-1 mb-1">
                       {[200, 250, 550].map(preset => (
                         <button key={preset} type="button"
                           onClick={() => form.setValue("fees", preset)}
-                          className="px-2.5 py-1 rounded-md bg-teal-50 text-teal-700 text-xs font-bold hover:bg-teal-100 transition-all border border-teal-200">
+                          className="px-2.5 py-1 rounded-md bg-[#eef6ea] text-[#2d5a27] text-xs font-bold hover:bg-[#ddf0d8] transition-all border border-[#b8d4b0]">
                           ₹{preset}
                         </button>
                       ))}
                     </div>
                     {/* Row 1: Amount input */}
                     <input type="number" {...form.register("fees")} min={0}
-                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all font-semibold text-stone-900 text-sm" placeholder="Amount" />
+                      className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all font-semibold text-stone-900 text-sm" placeholder="Amount" />
                     {/* Row 2: Cash/Online toggle + Mark Pending */}
                     <div className="flex gap-2 items-center">
                       <div className="flex rounded-lg border border-stone-200 overflow-hidden shrink-0">
@@ -1426,9 +1431,9 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Presenting Complaints</label>
+                  <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider">Presenting Complaints</label>
                   <textarea {...form.register("complaint")} rows={2}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all resize-none text-stone-800 text-sm" placeholder="Describe the symptoms..." />
+                    className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all resize-none text-stone-800 text-sm" placeholder="Describe the symptoms..." />
                 </div>
 
                 {/* ── Pathya-Apathya Disease Suggest Panel ── */}
@@ -1612,28 +1617,28 @@ export default function Home() {
                   )}
                 </AnimatePresence>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Treatment Plan</label>
+                  <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider">Treatment Plan</label>
                   <textarea {...form.register("treatment")} rows={2}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all resize-none text-stone-800 text-sm" placeholder="Prescribed medicines..." />
+                    className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all resize-none text-stone-800 text-sm" placeholder="Prescribed medicines..." />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider">
                       Advice / Notes
                       <span className="text-stone-400 font-normal ml-2">— F5 = follow-up after 5 days</span>
                     </label>
                     <textarea {...form.register("advice")} rows={2}
-                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all resize-none text-stone-800 text-sm" placeholder="F5 · Rest, diet..." />
+                      className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all resize-none text-stone-800 text-sm" placeholder="F5 · Rest, diet..." />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Reports Required</label>
+                    <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider">Reports Required</label>
                     <textarea {...form.register("reports")} rows={2}
-                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all resize-none text-stone-800 text-sm" placeholder="Blood test, X-ray..." />
+                      className="w-full px-3 py-2.5 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] focus:ring-2 focus:ring-[#d4edcc] transition-all resize-none text-stone-800 text-sm" placeholder="Blood test, X-ray..." />
                   </div>
                 </div>
                 {/* Attachments */}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <label className="text-[10px] font-bold text-[#5a6a4a] uppercase tracking-wider flex items-center gap-1.5">
                     <Paperclip className="w-3 h-3 text-stone-400" /> Attach Report Images
                   </label>
                   <div className="border-2 border-dashed border-stone-200 rounded-lg p-4 flex flex-col items-center gap-1.5 cursor-pointer hover:border-teal-300 hover:bg-teal-50/30 transition-all"
@@ -1661,66 +1666,51 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap justify-between gap-2 pt-1">
-                <div className="flex gap-2">
-                  {lastSaved && (
-                    <button type="button" onClick={() => printPatientPrescription(lastSaved)}
-                      className="px-4 py-2.5 rounded-lg font-semibold bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 shadow-sm transition-all flex items-center gap-1.5 text-sm">
-                      <Printer className="w-4 h-4" /> Print
-                    </button>
-                  )}
-                  {lastSaved && (
-                    <button type="button" onClick={() => setShowCard(true)}
-                      className="px-4 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 text-sm">
-                      <WalletCards className="w-4 h-4" /> Patient Card
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-2">
+              {/* Save Buttons */}
+              <div className="flex gap-2 mt-4">
                   <button type="button" onClick={onSaveAyurvedic}
-                    className="px-4 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 text-sm">
+                    className="flex-1 px-3 py-2.5 rounded-xl font-semibold text-white shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 text-sm" style={{background:"linear-gradient(135deg,#2d5a27,#3d7a35)"}}>
                     <Leaf className="w-4 h-4" /> Save Ayurvedic
                   </button>
                   <button type="submit"
-                    className="px-5 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 text-sm">
+                    className="flex-1 px-3 py-2.5 rounded-xl font-semibold text-white shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 text-sm" style={{background:"linear-gradient(135deg,#2d3a1e,#1a2a10)"}}>
                     <Save className="w-4 h-4" /> Save General
                   </button>
-                </div>
               </div>
-            </form>
-          </div>
-        </div>
+            </div>{/* end clinical card inner */}
+          </div>{/* end card */}
+          </form>
+        </div>{/* end center column */}
 
-        {/* ── SIDEBAR ── */}
+        {/* ── RIGHT SIDEBAR ── */}
         <div className="lg:col-span-4">
           <div className="sticky top-24 space-y-3">
             {/* Filter Mode Selector */}
-            <div className="bg-white rounded-2xl shadow-sm border border-stone-200/80 p-3">
-              <div className="h-0.5 w-full bg-gradient-to-r from-teal-500 via-emerald-400 to-cyan-500 rounded-full mb-3" />
-              <div className="flex gap-1 bg-stone-100 rounded-xl p-1">
+            <div className="bg-[#faf8f3] rounded-2xl shadow-sm border border-[#e0d8c8] p-3">
+              <div className="h-0.5 w-full bg-gradient-to-r from-[#2d5a27] via-[#5a9a50] to-[#2d5a27] rounded-full mb-3" />
+              <div className="flex gap-1 bg-[#ede7d8] rounded-xl p-1">
                 <button onClick={() => setFilterMode("history")}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "history" ? "bg-white shadow-sm text-teal-600" : "text-stone-500 hover:text-stone-700"}`}>
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "history" ? "bg-[#faf8f3] shadow-sm text-[#2d5a27]" : "text-[#7a8a6a] hover:text-[#2d3a1e]"}`}>
                   <RefreshCw className="w-3 h-3" /> History
                 </button>
                 <button onClick={() => setFilterMode("complaint")}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "complaint" ? "bg-white shadow-sm text-teal-600" : "text-stone-500 hover:text-stone-700"}`}>
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "complaint" ? "bg-[#faf8f3] shadow-sm text-[#2d5a27]" : "text-[#7a8a6a] hover:text-[#2d3a1e]"}`}>
                   <Activity className="w-3 h-3" /> Complaint
                 </button>
                 <button onClick={() => setFilterMode("address")}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "address" ? "bg-white shadow-sm text-teal-600" : "text-stone-500 hover:text-stone-700"}`}>
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "address" ? "bg-[#faf8f3] shadow-sm text-[#2d5a27]" : "text-[#7a8a6a] hover:text-[#2d3a1e]"}`}>
                   <MapPin className="w-3 h-3" /> Village
                 </button>
               </div>
 
               {(filterMode === "complaint" || filterMode === "address") && (
                 <div className="mt-2 relative">
-                  <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#7a8a6a]" />
                   <input
                     value={filterQuery}
                     onChange={e => setFilterQuery(e.target.value)}
                     placeholder={filterMode === "complaint" ? "Search complaint or code..." : "Search village / city..."}
-                    className="w-full pl-7 pr-3 py-2 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 text-xs"
+                    className="w-full pl-7 pr-3 py-2 rounded-lg bg-[#fdfcf8] border border-[#d4c9b0] focus:outline-none focus:border-[#3d7a35] text-xs"
                     autoFocus
                   />
                 </div>
@@ -1732,27 +1722,27 @@ export default function Home() {
               {/* ── HISTORY MODE ── */}
               {filterMode === "history" && (
                 <motion.div key="history" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
+                  className="bg-[#faf8f3] rounded-2xl shadow-sm border border-[#e0d8c8] overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
                   {patientHistory.length > 0 ? (
                     <>
                       {/* Patient identity header */}
-                      <div className="px-4 py-3 border-b border-stone-100 bg-gradient-to-r from-teal-50 to-stone-50 shrink-0">
+                      <div className="px-4 py-3 border-b border-[#e0d8c8] bg-gradient-to-r from-[#eef6ea] to-[#faf8f3] shrink-0">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600 shrink-0">
+                          <div className="w-7 h-7 rounded-lg bg-[#ddf0d8] flex items-center justify-center text-[#2d5a27] shrink-0">
                             <User className="w-3.5 h-3.5" />
                           </div>
                           <div className="min-w-0">
                             <p className="font-bold text-stone-900 truncate text-sm">{historyName || patientHistory[0]?.name}</p>
                             <p className="text-[10px] font-mono text-stone-500">{historyMobile || patientHistory[0]?.mobile}</p>
                           </div>
-                          <span className="ml-auto text-[10px] text-stone-400 shrink-0 bg-stone-100 px-1.5 py-0.5 rounded">{patientHistory.length} visits</span>
+                          <span className="ml-auto text-[10px] text-[#7a8a6a] shrink-0 bg-[#e0d8c8] px-1.5 py-0.5 rounded">{patientHistory.length} visits</span>
                         </div>
                       </div>
                       <div className="flex-1 overflow-y-auto p-3 space-y-2">
                         {patientHistory.map((visit, i) => (
-                          <div key={i} className="p-2.5 rounded-lg border border-stone-100 bg-white hover:bg-teal-50/40 transition-all hover:border-teal-100">
+                          <div key={i} className="p-2.5 rounded-lg border border-[#e0d8c8] bg-[#fdfcf8] hover:bg-[#eef6ea]/40 transition-all hover:border-[#b8d4b0]">
                             <div className="flex justify-between items-center mb-1.5">
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-stone-100 rounded text-stone-600">
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-[#e0d8c8] rounded text-[#4a5a3a]">
                                 {format(new Date(visit.visitDate), "dd MMM yyyy")}
                               </span>
                               <div className="flex items-center gap-1">
@@ -1760,7 +1750,7 @@ export default function Home() {
                                   <span className="text-[9px] font-bold px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">AYU</span>
                                 )}
                                 {visit.fees > 0 && (
-                                  <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-100">₹{visit.fees}</span>
+                                  <span className="text-[10px] font-bold text-[#2d5a27] bg-[#eef6ea] px-1.5 py-0.5 rounded border border-[#b8d4b0]">₹{visit.fees}</span>
                                 )}
                               </div>
                             </div>
@@ -1771,7 +1761,7 @@ export default function Home() {
                             </div>
                             <div className="mt-1.5 flex justify-end">
                               <button type="button" onClick={() => printPatientPrescription(visit)}
-                                className="flex items-center gap-1 text-[10px] text-stone-400 hover:text-teal-600 transition-colors">
+                                className="flex items-center gap-1 text-[10px] text-[#8a9a7a] hover:text-[#2d5a27] transition-colors">
                                 <Printer className="w-2.5 h-2.5" /> Print
                               </button>
                             </div>
@@ -1792,11 +1782,11 @@ export default function Home() {
               {/* ── COMPLAINT / VILLAGE MODE ── compact list ── */}
               {(filterMode === "complaint" || filterMode === "address") && (
                 <motion.div key="filter" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
+                  className="bg-[#faf8f3] rounded-2xl shadow-sm border border-[#e0d8c8] overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
                   {filterResults.length > 0 ? (
                     <>
-                      <div className="px-3 py-2.5 border-b border-stone-100 bg-stone-50/60 shrink-0 flex items-center gap-2">
-                        <SlidersHorizontal className="w-3.5 h-3.5 text-teal-500" />
+                      <div className="px-3 py-2.5 border-b border-[#e0d8c8] bg-[#f0ebe0]/60 shrink-0 flex items-center gap-2">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-[#2d5a27]" />
                         <span className="font-semibold text-xs text-stone-700">
                           {filterMode === "complaint" ? "By Complaint" : "By Village"}
                         </span>
@@ -1830,9 +1820,9 @@ export default function Home() {
             </AnimatePresence>
 
             {/* ── LOOSE MEDICINE SALES ── */}
-            <div className="bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden">
+            <div className="bg-[#faf8f3] rounded-2xl shadow-sm border border-[#e0d8c8] overflow-hidden">
               <div className="h-0.5 w-full bg-gradient-to-r from-violet-500 to-purple-600 rounded-t-full" />
-              <div className="px-3 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 flex items-center justify-between">
+              <div className="px-3 py-2.5 flex items-center justify-between" style="background:linear-gradient(135deg,#2d5a27,#3d7a35)">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="w-3.5 h-3.5 text-white" />
                   <span className="text-xs font-bold text-white">Loose Medicine Sales</span>
