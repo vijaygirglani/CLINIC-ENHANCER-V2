@@ -457,51 +457,62 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
         canvas.toBlob((b: Blob | null) => b ? res(b) : rej(new Error("toBlob failed")), "image/png", 1.0)
       );
 
-      const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
-
-      // ── Derive WhatsApp number from patient.mobile (the case number / mobile field) ──
-      // Strip non-digits, ensure 10-digit Indian mobile → prefix 91
+      // ── Build WhatsApp number ──
       const rawDigits = patient.mobile.replace(/\D/g, "");
       const waNumber = rawDigits.length === 10
         ? `91${rawDigits}`
         : rawDigits.startsWith("91") && rawDigits.length === 12
-          ? rawDigits
-          : rawDigits; // fallback: use as-is
+          ? rawDigits : rawDigits;
       const waUrl = waNumber ? `https://wa.me/${waNumber}` : `https://wa.me/`;
 
-      // ── Strategy 1: Web Share API with file (Android / iOS) ──
-      const canShareFiles =
-        typeof navigator.share === "function" &&
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [file] });
+      // ── Detect mobile vs desktop ──
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-      if (canShareFiles) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: "Manglam Clinic — Patient Card",
-            text: `Patient card for ${patient.name}`,
-          });
-          // Open the patient's WhatsApp chat directly after sharing image
-          setTimeout(() => window.open(waUrl, "_blank"), 400);
-          setSharing(false);
-          return;
-        } catch (shareErr: any) {
-          if (shareErr?.name === "AbortError") { setSharing(false); return; }
-          // fall through
+      if (isMobile) {
+        // Mobile: use Web Share API — shows WhatsApp directly in the share sheet
+        const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
+        const canShare = typeof navigator.share === "function" &&
+          typeof navigator.canShare === "function" &&
+          navigator.canShare({ files: [file] });
+        if (canShare) {
+          try {
+            await navigator.share({ files: [file], title: "Manglam Clinic — Patient Card" });
+            setSharing(false);
+            return;
+          } catch (e: any) {
+            if (e?.name === "AbortError") { setSharing(false); return; }
+          }
         }
+        // Mobile fallback: open WhatsApp deep link
+        window.location.href = waUrl;
+      } else {
+        // ── Desktop: Step 1 — copy image to clipboard ──
+        let copied = false;
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob })
+          ]);
+          copied = true;
+        } catch (_) { /* clipboard not supported */ }
+
+        // ── Desktop: Step 2 — open WhatsApp Web chat for that number directly ──
+        // Use WhatsApp Web URL which opens the exact chat, not a generic page
+        const waWebUrl = `https://web.whatsapp.com/send?phone=${waNumber}&text=`;
+        window.open(waWebUrl, "_blank");
+
+        // ── Desktop: Step 3 — also download image as backup ──
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl; a.download = "manglam-patient-card.png";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
+
+        setShareError(
+          copied
+            ? `✅ Image copied! WhatsApp opened — just press Ctrl+V to paste & send.`
+            : `Image downloaded — attach it in the WhatsApp chat that opened.`
+        );
       }
-
-      // ── Strategy 2 (desktop): Download image + open patient's WA chat directly ──
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl; a.download = "manglam-patient-card.png";
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
-
-      // Open patient's WhatsApp chat directly — number auto-filled from case/mobile field
-      setTimeout(() => window.open(waUrl, "_blank"), 800);
-      setShareError(`Image downloaded — attach it in WhatsApp (${rawDigits.slice(-10)}).`);
 
     } catch (err: any) {
       console.error("Card share error:", err);
@@ -606,9 +617,12 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
             <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
           </div>
 
-          {/* error hint */}
+          {/* hint */}
           {shareError && (
-            <p className="mt-2 text-center text-xs text-amber-600 font-medium">{shareError}</p>
+            <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
+              style={{ background: shareError.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)", color: shareError.startsWith("✅") ? "#15803d" : "#92400e", border: `1px solid ${shareError.startsWith("✅") ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.3)"}` }}>
+              {shareError}
+            </div>
           )}
 
           {/* ── Action buttons ── */}
