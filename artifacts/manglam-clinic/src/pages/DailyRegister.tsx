@@ -10,6 +10,7 @@ import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
   TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
+  WalletCards, Loader2, MessageSquare,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -20,6 +21,7 @@ function getLooseSalesForDate(date: string): LooseSaleEntry[] {
   catch { return []; }
 }
 import { exportToExcel, parseExcelFile } from "@/lib/export";
+import { motion, AnimatePresence } from "framer-motion";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -46,6 +48,213 @@ const editSchema = z.object({
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
+// ── Patient Card (copied from Home.tsx) ──────────────────────────────────────
+type CardLang = "en" | "hi" | "gu";
+const CARD_LABELS: Record<CardLang, {
+  clinicName: string; doctor: string; tagline: string;
+  patientCard: string; caseNo: string;
+  patientName: string; address: string; clinicPhone: string;
+  footer: string; footerSub: string;
+}> = {
+  en: { clinicName: "Manglam Clinic", doctor: "Dr. Vijay Girglani  |  B.A.M.S.", tagline: "AYURVEDIC & GENERAL PRACTICE", patientCard: "✦  PATIENT CARD  ✦", caseNo: "CASE NO.", patientName: "PATIENT NAME", address: "ADDRESS", clinicPhone: "CLINIC PHONE", footer: "MANGLAM HOSPITAL  •  MORBI, GUJARAT", footerSub: "Show this card on your next visit" },
+  hi: { clinicName: "मंगलम क्लिनिक", doctor: "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.", tagline: "आयुर्वेदिक एवं सामान्य चिकित्सा", patientCard: "✦  रोगी कार्ड  ✦", caseNo: "केस नं.", patientName: "रोगी का नाम", address: "पता", clinicPhone: "क्लिनिक फोन", footer: "मंगलम हॉस्पिटल  •  मोरबी, गुजरात", footerSub: "अगली मुलाकात पर यह कार्ड दिखाएं" },
+  gu: { clinicName: "મંગલમ ક્લિનિક", doctor: "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.", tagline: "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ", patientCard: "✦  દર્દી કાર્ડ  ✦", caseNo: "કેસ નં.", patientName: "દર્દીનું નામ", address: "સરનામું", clinicPhone: "ક્લિનિક ફોન", footer: "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત", footerSub: "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો" },
+};
+
+function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasElement {
+  const L = CARD_LABELS[lang];
+  const scale = 3;
+  const W = 360;
+  const AMBER_H=5,HDR_PT=24,LOGO_D=64,LOGO_MB=10,CNAME_H=22,CNAME_MB=3,DR_H=14,DR_MB=10,DIV_H=12,HDR_PB=16;
+  const PANEL_MX=16,PANEL_MB=16,STRIPE_H=3,PANEL_PX=16,PANEL_PT=16,PC_LABEL_H=18;
+  const CASE_PT=10,CASE_LABEL=12,CASE_NUM=28,CASE_PB=10,CASE_MB=16,ROW_H=40,PANEL_PB=16,FTR_PB=16,FTR_L1=14,FTR_L2=14;
+  const caseBoxH=CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
+  const panelInnerH=STRIPE_H+PANEL_PT+PC_LABEL_H+caseBoxH+CASE_MB+ROW_H*3+PANEL_PB;
+  const hdrH=HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
+  const ftrH=FTR_L1+FTR_L2+FTR_PB+4;
+  const H=AMBER_H+hdrH+panelInnerH+PANEL_MB+ftrH+AMBER_H;
+  const canvas=document.createElement("canvas");
+  canvas.width=W*scale; canvas.height=H*scale;
+  const ctx=canvas.getContext("2d")!;
+  ctx.scale(scale,scale);
+  const rr=(x:number,y:number,w:number,h:number,r:number)=>{ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();};
+  const amberGrad=ctx.createLinearGradient(0,0,W,0);amberGrad.addColorStop(0,"#c45e10");amberGrad.addColorStop(0.5,"#e07828");amberGrad.addColorStop(1,"#c45e10");
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);bgGrad.addColorStop(0,"#1a3a0f");bgGrad.addColorStop(0.5,"#1f4a12");bgGrad.addColorStop(1,"#0f2208");
+  rr(0,0,W,H,24);ctx.fillStyle=bgGrad;ctx.fill();ctx.save();ctx.clip();
+  ctx.save();ctx.globalAlpha=0.05;ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(W-30,50,100,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(-20,H-50,110,0,Math.PI*2);ctx.fill();ctx.restore();
+  ctx.fillStyle=amberGrad;ctx.fillRect(0,0,W,AMBER_H);
+  let cy=AMBER_H+HDR_PT;
+  const logoX=W/2,logoY=cy+LOGO_D/2;
+  ctx.save();ctx.shadowColor="rgba(224,120,40,0.5)";ctx.shadowBlur=14;ctx.strokeStyle="rgba(224,120,40,0.4)";ctx.lineWidth=2;ctx.beginPath();ctx.arc(logoX,logoY,LOGO_D/2+3,0,Math.PI*2);ctx.stroke();ctx.restore();
+  const logoGrad=ctx.createRadialGradient(logoX-10,logoY-10,4,logoX,logoY,LOGO_D/2);logoGrad.addColorStop(0,"#e07828");logoGrad.addColorStop(1,"#b84f0a");ctx.fillStyle=logoGrad;ctx.beginPath();ctx.arc(logoX,logoY,LOGO_D/2,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#ffffff";ctx.font=`900 28px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("M",logoX,logoY+1);
+  cy+=LOGO_D+LOGO_MB;ctx.fillStyle="#ffffff";ctx.font=`bold 20px serif`;ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.fillText(L.clinicName,W/2,cy+CNAME_H-4);cy+=CNAME_H+CNAME_MB;
+  ctx.fillStyle="#d4a574";ctx.font=`italic 10.5px serif`;ctx.fillText(L.doctor,W/2,cy+DR_H-3);cy+=DR_H+DR_MB;
+  const lineY=cy+DIV_H/2;ctx.strokeStyle="rgba(212,165,116,0.3)";ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(20,lineY);ctx.lineTo(W/2-62,lineY);ctx.stroke();ctx.beginPath();ctx.moveTo(W/2+62,lineY);ctx.lineTo(W-20,lineY);ctx.stroke();ctx.fillStyle="rgba(212,165,116,0.8)";ctx.font=`600 7px sans-serif`;ctx.textBaseline="middle";ctx.fillText(L.tagline,W/2,lineY);cy+=DIV_H+HDR_PB;
+  const pX=PANEL_MX,pW=W-PANEL_MX*2,pY=cy;
+  ctx.save();ctx.shadowColor="rgba(0,0,0,0.35)";ctx.shadowBlur=18;ctx.shadowOffsetY=4;rr(pX,pY,pW,panelInnerH,16);ctx.fillStyle="#ffffff";ctx.fill();ctx.restore();
+  ctx.save();rr(pX,pY,pW,panelInnerH,16);ctx.clip();ctx.fillStyle=amberGrad;ctx.fillRect(pX,pY,pW,STRIPE_H);
+  let py=pY+STRIPE_H+PANEL_PT;
+  ctx.fillStyle="#7c3a0a";ctx.font=`700 7.5px sans-serif`;(ctx as any).letterSpacing="2px";ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.fillText(L.patientCard,W/2,py+10);(ctx as any).letterSpacing="0px";py+=PC_LABEL_H;
+  const cBX=pX+12,cBW=pW-24;rr(cBX,py,cBW,caseBoxH,10);ctx.fillStyle="#fdf0e6";ctx.fill();ctx.fillStyle="#b8825a";ctx.font=`700 6.5px sans-serif`;(ctx as any).letterSpacing="1.5px";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText(L.caseNo,cBX+14,py+CASE_PT+CASE_LABEL-2);(ctx as any).letterSpacing="0px";
+  const rawD=patient.mobile.replace(/\D/g,"");const caseNo=rawD.padStart(10,"0");ctx.fillStyle="#c45e10";ctx.font=`900 22px monospace`;ctx.textBaseline="alphabetic";ctx.fillText(caseNo,cBX+14,py+CASE_PT+CASE_LABEL+CASE_NUM-4);
+  const icX=cBX+cBW-46,icY=py+caseBoxH/2-14;ctx.fillStyle="rgba(196,94,16,0.1)";rr(icX,icY,28,28,7);ctx.fill();ctx.strokeStyle="#c45e10";ctx.lineWidth=1.5;rr(icX+4,icY+6,20,16,3);ctx.stroke();ctx.beginPath();ctx.moveTo(icX+4,icY+11);ctx.lineTo(icX+24,icY+11);ctx.stroke();py+=caseBoxH+CASE_MB;
+  const rowPX=pX+12,rowPXR=pX+pW-12;
+  const infoRow=(emoji:string,label:string,value:string,isLast:boolean)=>{const rowMid=py+ROW_H/2;ctx.fillStyle="#fdf0e6";ctx.beginPath();ctx.arc(rowPX+11,rowMid,11,0,Math.PI*2);ctx.fill();ctx.font=`11px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(emoji,rowPX+11,rowMid);const textX=rowPX+22+8;ctx.fillStyle="#94a3b8";ctx.font=`700 7px sans-serif`;(ctx as any).letterSpacing="0.8px";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText(label,textX,rowMid-2);(ctx as any).letterSpacing="0px";ctx.fillStyle="#1e293b";ctx.font=`700 11px sans-serif`;ctx.textBaseline="alphabetic";let v=value;const maxW=rowPXR-textX-4;while(ctx.measureText(v).width>maxW&&v.length>2)v=v.slice(0,-1);if(v!==value)v=v.trimEnd()+"…";ctx.fillText(v,textX,rowMid+12);py+=ROW_H;if(!isLast){ctx.strokeStyle="#f1f5f9";ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(rowPX,py);ctx.lineTo(rowPXR,py);ctx.stroke();}};
+  infoRow("👤",L.patientName,patient.name.toUpperCase(),false);infoRow("📍",L.address,patient.address||"Pipaliya Char Rasta",false);infoRow("📞",L.clinicPhone,"+91 96381 81875",true);
+  ctx.restore();
+  const fY=pY+panelInnerH+PANEL_MB;ctx.fillStyle="rgba(212,165,116,0.75)";ctx.font=`700 8px sans-serif`;(ctx as any).letterSpacing="1.5px";ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.fillText(L.footer,W/2,fY+FTR_L1);(ctx as any).letterSpacing="0px";ctx.fillStyle="rgba(255,255,255,0.35)";ctx.font=`9px sans-serif`;ctx.fillText(L.footerSub,W/2,fY+FTR_L1+FTR_L2+2);
+  ctx.fillStyle=amberGrad;ctx.fillRect(0,H-AMBER_H,W,AMBER_H);ctx.restore();
+  return canvas;
+}
+
+function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+  const rawDigits = patient.mobile.replace(/\D/g, "");
+  const caseNo = rawDigits.padStart(10, "0");
+  const CLINIC_MOBILE = "9638181875";
+  const CLINIC_ADDRESS = "Pipaliya Char Rasta";
+  const clinicPhone = CLINIC_MOBILE.replace(/(\d{5})(\d{5})/, "$1 $2");
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState("");
+  const [lang, setLang] = useState<CardLang>("en");
+  const [showLangPicker, setShowLangPicker] = useState(false);
+  const L = CARD_LABELS[lang];
+  const patientWaLabel = rawDigits.length >= 10 ? `Send to ${rawDigits.slice(-10)}` : "Send on WhatsApp";
+
+  const doShare = async (chosenLang: CardLang) => {
+    setShowLangPicker(false); setLang(chosenLang); setSharing(true); setShareError("");
+    try {
+      const canvas = drawPatientCard(patient, chosenLang);
+      const blob: Blob = await new Promise((res, rej) => canvas.toBlob((b: Blob | null) => b ? res(b) : rej(new Error("toBlob failed")), "image/png", 1.0));
+      const waNumber = rawDigits.length === 10 ? `91${rawDigits}` : rawDigits.startsWith("91") && rawDigits.length === 12 ? rawDigits : rawDigits;
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile) {
+        const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
+        if (typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: "Manglam Clinic — Patient Card" }); setSharing(false); return; } catch (e: any) { if (e?.name === "AbortError") { setSharing(false); return; } }
+        }
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+      } else {
+        let copied = false;
+        try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (_) {}
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+        setShareError(copied ? `✅ Image copied! Just press Ctrl+V in the chat to send.` : `⚠️ Could not copy image — paste manually after opening chat.`);
+      }
+    } catch (err: any) { setShareError("Could not generate card. Please try again."); }
+    setSharing(false);
+  };
+
+  const LANGS: { id: CardLang; label: string; native: string; flag: string }[] = [
+    { id: "en", label: "English", native: "English", flag: "🇬🇧" },
+    { id: "hi", label: "Hindi", native: "हिन्दी", flag: "🇮🇳" },
+    { id: "gu", label: "Gujarati", native: "ગુજરાતી", flag: "🏵️" },
+  ];
+
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+        <motion.div initial={{ scale: 0.85, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.85, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25 }} onClick={e => e.stopPropagation()} className="w-full max-w-xs">
+          {/* Language tab strip */}
+          <div className="flex gap-1 mb-3 p-1 rounded-2xl" style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)" }}>
+            {LANGS.map(l => (
+              <button key={l.id} onClick={() => setLang(l.id)} className="flex-1 py-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-0.5"
+                style={{ background: lang === l.id ? "#ffffff" : "transparent", color: lang === l.id ? "#c45e10" : "rgba(255,255,255,0.7)", boxShadow: lang === l.id ? "0 2px 8px rgba(0,0,0,0.15)" : "none" }}>
+                <span style={{ fontSize: 16 }}>{l.flag}</span><span>{l.native}</span>
+              </button>
+            ))}
+          </div>
+          {/* Card preview */}
+          <div className="rounded-3xl overflow-hidden shadow-2xl" style={{ background: "linear-gradient(180deg, #1a3a0f 0%, #1f4a12 50%, #0f2208 100%)", position: "relative" }}>
+            <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
+            <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", bottom: 60, left: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
+            <div className="flex flex-col items-center pt-6 pb-4 px-5" style={{ position: "relative", zIndex: 1 }}>
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg, #e07828, #b84f0a)", boxShadow: "0 0 0 3px rgba(224,120,40,0.3), 0 0 18px rgba(224,120,40,0.25)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+                <span style={{ color: "#fff", fontFamily: "serif", fontWeight: 900, fontSize: 26 }}>M</span>
+              </div>
+              <p style={{ color: "#ffffff", fontFamily: "serif", fontWeight: 700, fontSize: 18, letterSpacing: 0.5, marginBottom: 3 }}>{L.clinicName}</p>
+              <p style={{ color: "#d4a574", fontStyle: "italic", fontSize: 10, marginBottom: 10 }}>{L.doctor}</p>
+              <div className="flex items-center gap-2 w-full">
+                <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
+                <p style={{ color: "rgba(212,165,116,0.8)", fontSize: 7, letterSpacing: "1.5px", whiteSpace: "nowrap" }}>{L.tagline}</p>
+                <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
+              </div>
+            </div>
+            <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
+              <div style={{ height: 3, background: "linear-gradient(90deg, #c45e10, #e07828)" }} />
+              <div className="px-4 py-4" style={{ background: "#ffffff" }}>
+                <p style={{ textAlign: "center", fontSize: 8, fontWeight: 700, letterSpacing: "2px", color: "#7c3a0a", marginBottom: 10 }}>{L.patientCard}</p>
+                <div className="rounded-xl px-3 py-2.5 mb-4" style={{ background: "#fdf0e6" }}>
+                  <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1.5px", color: "#b8825a", marginBottom: 4 }}>{L.caseNo}</p>
+                  <p style={{ fontSize: 20, fontWeight: 900, fontFamily: "monospace", color: "#c45e10", letterSpacing: 1 }}>{caseNo}</p>
+                </div>
+                {[
+                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase() },
+                  { icon: "📍", label: L.address, value: patient.address || CLINIC_ADDRESS },
+                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}` },
+                ].map((row, i, arr) => (
+                  <div key={i}>
+                    <div className="flex items-center gap-2 py-2">
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>{row.icon}</div>
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{row.label}</p>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
+                      </div>
+                    </div>
+                    {i < arr.length - 1 && <div style={{ height: 1, background: "#f1f5f9" }} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="pb-4 px-4 flex flex-col items-center gap-0.5" style={{ position: "relative", zIndex: 1 }}>
+              <p style={{ fontSize: 8, fontWeight: 700, letterSpacing: "1.5px", color: "rgba(212,165,116,0.75)" }}>{L.footer}</p>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)" }}>{L.footerSub}</p>
+            </div>
+            <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
+          </div>
+          {shareError && (
+            <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
+              style={{ background: shareError.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)", color: shareError.startsWith("✅") ? "#15803d" : "#92400e", border: `1px solid ${shareError.startsWith("✅") ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.3)"}` }}>
+              {shareError}
+            </div>
+          )}
+          <AnimatePresence>
+            {showLangPicker && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                className="mt-3 rounded-2xl overflow-hidden shadow-xl" style={{ background: "#fff", border: "1px solid rgba(196,94,16,0.2)" }}>
+                <p style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#7c3a0a", padding: "10px 16px 6px", letterSpacing: "1px" }}>CHOOSE LANGUAGE TO SHARE</p>
+                {LANGS.map(l => (
+                  <button key={l.id} onClick={() => doShare(l.id)} className="w-full flex items-center gap-3 px-5 py-3 hover:bg-orange-50 transition-colors" style={{ borderTop: "1px solid #f1f5f9" }}>
+                    <span style={{ fontSize: 20 }}>{l.flag}</span>
+                    <div className="text-left">
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{l.label}</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8" }}>{l.native}</p>
+                    </div>
+                    <span style={{ marginLeft: "auto", fontSize: 13, color: "#c45e10" }}>→</span>
+                  </button>
+                ))}
+                <button onClick={() => setShowLangPicker(false)} className="w-full py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors" style={{ borderTop: "1px solid #f1f5f9" }}>Cancel</button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {!showLangPicker && (
+            <div className="mt-4 flex gap-3">
+              <button onClick={onClose} className="flex-1 py-3 rounded-2xl bg-white/90 backdrop-blur text-slate-600 font-semibold text-sm hover:bg-white transition-all shadow">Close</button>
+              <button onClick={() => setShowLangPicker(true)} disabled={sharing}
+                className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30 disabled:opacity-70">
+                {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                {sharing ? "Capturing…" : patientWaLabel}
+              </button>
+            </div>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 export default function DailyRegister() {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [stats, setStats] = useState<DailyStats | null>(null);
@@ -54,6 +263,7 @@ export default function DailyRegister() {
   const [showMonthly, setShowMonthly] = useState(false);
   const [allDates, setAllDates] = useState<{ date: string; count: number; totalFees: number }[]>([]);
   const [printPatient, setPrintPatient] = useState<Patient | null>(null);
+  const [cardPatient, setCardPatient] = useState<Patient | null>(null);
   const [filterType, setFilterType] = useState<"all" | "general" | "ayurvedic">("all");
   const [monthlyMonth, setMonthlyMonth] = useState(new Date().getMonth() + 1);
   const [monthlyYear, setMonthlyYear] = useState(new Date().getFullYear());
@@ -224,6 +434,7 @@ Manglam Hospital, Morbi`;
   return (
     <Layout>
       {printPatient && <PrintPrescription patient={printPatient} />}
+      {cardPatient && <PatientCardModal patient={cardPatient} onClose={() => setCardPatient(null)} />}
       <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleRestoreFile} />
       <input ref={excelImportRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportExcel} />
 
@@ -384,6 +595,11 @@ Manglam Hospital, Morbi`;
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => setCardPatient(p)}
+                            title="Send Patient Card"
+                            className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
+                            <WalletCards className="w-4 h-4" />
+                          </button>
                           <button onClick={() => { setPrintPatient(p); setTimeout(() => printPatientPrescription(p), 50); }}
                             className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
                             <Printer className="w-4 h-4" />
