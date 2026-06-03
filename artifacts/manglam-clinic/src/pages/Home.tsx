@@ -247,7 +247,33 @@ const emptyDefaults: PatientFormValues = {
 
 // ── Draw patient card — premium vertical visiting card style ────────────
 function drawPatientCard(patient: Patient): HTMLCanvasElement {
-  const W = 360, H = 580, scale = 3;
+  const W = 360, scale = 3;
+
+  // ── Measure content to compute exact height ──
+  const tmpC = document.createElement("canvas");
+  const tmpX = tmpC.getContext("2d")!;
+
+  // Heights of each section (logical px):
+  const AMBER_BAR   = 6;
+  const LOGO_SECT   = 14 + 68 + 14;  // top pad + logo dia + gap
+  const CLINIC_NAME = 24;
+  const DR_NAME     = 18;
+  const TAGLINE     = 20;
+  const PANEL_PAD_T = 14;  // panel top padding before stripe
+  const STRIPE      = 4;
+  const PC_LABEL    = 24;  // "✦ PATIENT CARD ✦"
+  const CASE_BOX    = 56 + 14; // case box + gap below
+  const ROW_H       = 30;  // each info row (icon+label+value+divider)
+  const INFO_ROWS   = 3;
+  const PANEL_PAD_B = 14;  // panel bottom padding
+  const FOOTER      = 36;
+  const AMBER_BAR_B = 6;
+
+  const panelInnerH = STRIPE + PC_LABEL + CASE_BOX + ROW_H * INFO_ROWS + PANEL_PAD_B;
+  const panelH = panelInnerH;
+  const panelY = AMBER_BAR + LOGO_SECT + CLINIC_NAME + DR_NAME + TAGLINE;
+  const H = panelY + PANEL_PAD_T + panelH + FOOTER + AMBER_BAR_B;
+
   const canvas = document.createElement("canvas");
   canvas.width = W * scale; canvas.height = H * scale;
   const ctx = canvas.getContext("2d")!;
@@ -263,182 +289,144 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
     ctx.closePath();
   };
 
-  // ── Full card background gradient (dark green → deep forest) ──
+  // ── Background gradient ──
   const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#1a3a0f");
-  bg.addColorStop(0.5, "#1f4a12");
-  bg.addColorStop(1, "#0f2208");
+  bg.addColorStop(0, "#1a3a0f"); bg.addColorStop(0.5, "#1f4a12"); bg.addColorStop(1, "#0f2208");
   rr(0, 0, W, H, 24); ctx.fillStyle = bg; ctx.fill();
   ctx.save(); ctx.clip();
 
-  // ── Decorative subtle circles (watermark feel) ──
+  // decorative circles
   ctx.save();
-  ctx.globalAlpha = 0.06;
-  ctx.fillStyle = "#ffffff";
+  ctx.globalAlpha = 0.06; ctx.fillStyle = "#ffffff";
   ctx.beginPath(); ctx.arc(W - 40, 60, 90, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(-20, H - 80, 110, 0, Math.PI * 2); ctx.fill();
-  ctx.globalAlpha = 0.04;
-  ctx.beginPath(); ctx.arc(W / 2, H / 2, 180, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-20, H - 60, 100, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 
-  // ── Top amber accent band ──
-  const topBand = ctx.createLinearGradient(0, 0, W, 0);
-  topBand.addColorStop(0, "#c45e10");
-  topBand.addColorStop(0.6, "#e07828");
-  topBand.addColorStop(1, "#c45e10");
-  ctx.fillStyle = topBand; ctx.fillRect(0, 0, W, 6);
+  // ── Top amber bar ──
+  const amberGrad = ctx.createLinearGradient(0, 0, W, 0);
+  amberGrad.addColorStop(0, "#c45e10"); amberGrad.addColorStop(0.6, "#e07828"); amberGrad.addColorStop(1, "#c45e10");
+  ctx.fillStyle = amberGrad; ctx.fillRect(0, 0, W, AMBER_BAR);
 
-  // ── Logo circle — centered ──
-  const logoX = W / 2, logoY = 68;
-  // outer glow ring
+  // ── Logo ──
+  const logoX = W / 2, logoY = AMBER_BAR + 14 + 34; // center of 68px logo
   ctx.save();
-  ctx.shadowColor = "#e07828"; ctx.shadowBlur = 18;
-  ctx.strokeStyle = "rgba(224,120,40,0.5)"; ctx.lineWidth = 1.5;
+  ctx.shadowColor = "#e07828"; ctx.shadowBlur = 16;
+  ctx.strokeStyle = "rgba(224,120,40,0.45)"; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(logoX, logoY, 38, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
-  // filled circle
-  const logoGrad = ctx.createRadialGradient(logoX - 8, logoY - 8, 5, logoX, logoY, 34);
-  logoGrad.addColorStop(0, "#e07828");
-  logoGrad.addColorStop(1, "#b84f0a");
+  const logoGrad = ctx.createRadialGradient(logoX - 8, logoY - 8, 4, logoX, logoY, 34);
+  logoGrad.addColorStop(0, "#e07828"); logoGrad.addColorStop(1, "#b84f0a");
   ctx.fillStyle = logoGrad;
   ctx.beginPath(); ctx.arc(logoX, logoY, 34, 0, Math.PI * 2); ctx.fill();
-  // M letter
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `900 28px serif`;
+  ctx.fillStyle = "#fff"; ctx.font = `900 26px serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("M", logoX, logoY + 1);
 
-  // ── Clinic Name ──
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `bold 22px serif`;
+  // ── Clinic name ──
+  let cy = AMBER_BAR + LOGO_SECT;
+  ctx.fillStyle = "#ffffff"; ctx.font = `bold 20px serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("Manglam Clinic", W / 2, 128);
+  ctx.fillText("Manglam Clinic", W / 2, cy);
+  cy += CLINIC_NAME;
 
   // Doctor name
-  ctx.fillStyle = "#d4a574";
-  ctx.font = `italic 11px serif`;
-  ctx.fillText("Dr. Vijay Girglani  |  B.A.M.S.", W / 2, 148);
+  ctx.fillStyle = "#d4a574"; ctx.font = `italic 10px serif`;
+  ctx.fillText("Dr. Vijay Girglani  |  B.A.M.S.", W / 2, cy);
+  cy += DR_NAME;
 
-  // Tagline with decorative lines
-  const tlY = 168;
+  // Tagline
   ctx.strokeStyle = "rgba(212,165,116,0.4)"; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(24, tlY); ctx.lineTo(W / 2 - 70, tlY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(W / 2 + 70, tlY); ctx.lineTo(W - 24, tlY); ctx.stroke();
-  ctx.fillStyle = "rgba(212,165,116,0.8)"; ctx.font = `7.5px sans-serif`;
-  ctx.letterSpacing = "2px";
-  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, tlY + 4);
+  ctx.beginPath(); ctx.moveTo(24, cy - 4); ctx.lineTo(W / 2 - 68, cy - 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W / 2 + 68, cy - 4); ctx.lineTo(W - 24, cy - 4); ctx.stroke();
+  ctx.fillStyle = "rgba(212,165,116,0.8)"; ctx.font = `7px sans-serif`;
+  ctx.letterSpacing = "1.8px";
+  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, cy);
   ctx.letterSpacing = "0px";
+  cy += TAGLINE;
 
-  // ── White "frosted" card panel ──
-  const panelY = 190, panelH = 318;
+  // ── White panel — tightly sized ──
+  const pY = cy + PANEL_PAD_T;
+  const pW = W - 36;
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 20; ctx.shadowOffsetY = 4;
-  rr(18, panelY, W - 36, panelH, 18);
-  ctx.fillStyle = "#ffffff"; ctx.fill();
+  ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 16; ctx.shadowOffsetY = 3;
+  rr(18, pY, pW, panelH, 16); ctx.fillStyle = "#ffffff"; ctx.fill();
   ctx.restore();
-  ctx.save(); rr(18, panelY, W - 36, panelH, 18); ctx.clip();
+  ctx.save(); rr(18, pY, pW, panelH, 16); ctx.clip();
 
-  // panel top accent stripe
-  const stripe = ctx.createLinearGradient(18, panelY, W - 18, panelY);
-  stripe.addColorStop(0, "#c45e10"); stripe.addColorStop(1, "#e07828");
-  ctx.fillStyle = stripe; ctx.fillRect(18, panelY, W - 36, 4);
+  // stripe
+  ctx.fillStyle = amberGrad; ctx.fillRect(18, pY, pW, STRIPE);
 
-  // PATIENT CARD label inside panel
-  ctx.fillStyle = "#7c3a0a"; ctx.font = `bold 8px sans-serif`;
+  // ✦ PATIENT CARD ✦
+  ctx.fillStyle = "#7c3a0a"; ctx.font = `bold 7.5px sans-serif`;
   ctx.letterSpacing = "2.5px"; ctx.textAlign = "center";
-  ctx.fillText("✦  PATIENT CARD  ✦", W / 2, panelY + 22);
+  ctx.fillText("\u2756  PATIENT CARD  \u2756", W / 2, pY + STRIPE + 16);
   ctx.letterSpacing = "0px";
 
-  // ── Case Number section ──
-  const cnY = panelY + 34;
-  ctx.fillStyle = "#fdf0e6";
-  rr(30, cnY, W - 60, 56, 12); ctx.fill();
-  // label
-  ctx.fillStyle = "#b8825a"; ctx.font = `bold 7px sans-serif`;
+  // Case number box
+  const cnY = pY + STRIPE + PC_LABEL;
+  ctx.fillStyle = "#fdf0e6"; rr(30, cnY, W - 60, 52, 12); ctx.fill();
+  ctx.fillStyle = "#b8825a"; ctx.font = `bold 6.5px sans-serif`;
   ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
-  ctx.fillText("CASE NO.", 44, cnY + 16);
+  ctx.fillText("CASE NO.", 44, cnY + 15);
   ctx.letterSpacing = "0px";
-  // number
   const rawD = patient.mobile.replace(/\D/g, "");
   const caseNo = rawD.padStart(10, "0");
-  ctx.fillStyle = "#c45e10"; ctx.font = `900 24px monospace`;
-  ctx.fillText(caseNo, 44, cnY + 42);
-  // small card icon on right
-  ctx.fillStyle = "#c45e10"; ctx.globalAlpha = 0.15;
-  rr(W - 72, cnY + 10, 34, 34, 8); ctx.fill();
+  ctx.fillStyle = "#c45e10"; ctx.font = `900 22px monospace`;
+  ctx.fillText(caseNo, 44, cnY + 40);
+  // card icon
+  ctx.fillStyle = "#c45e10"; ctx.globalAlpha = 0.12;
+  rr(W - 70, cnY + 9, 32, 32, 8); ctx.fill();
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.5;
-  rr(W - 66, cnY + 17, 22, 17, 4); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(W - 66, cnY + 22); ctx.lineTo(W - 44, cnY + 22); ctx.stroke();
+  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.4;
+  rr(W - 64, cnY + 16, 20, 16, 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W - 64, cnY + 21); ctx.lineTo(W - 44, cnY + 21); ctx.stroke();
 
-  // ── Info rows ──
-  let ry = cnY + 56 + 16;
+  // Info rows
+  let ry = cnY + 52 + 8;
   const PX = 30, PXR = W - 30;
 
-  const infoRow = (icon: string, label: string, value: string) => {
-    // icon circle
+  const infoRow = (emoji: string, label: string, value: string) => {
+    // icon bubble
     ctx.fillStyle = "#fdf0e6";
-    ctx.beginPath(); ctx.arc(PX + 8, ry + 1, 8, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#c45e10"; ctx.font = `8px sans-serif`;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(icon, PX + 8, ry + 1);
+    ctx.beginPath(); ctx.arc(PX + 8, ry + 7, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.font = `9px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(emoji, PX + 8, ry + 7);
     // label
-    ctx.fillStyle = "#94a3b8"; ctx.font = `bold 7px sans-serif`;
+    ctx.fillStyle = "#94a3b8"; ctx.font = `bold 6.5px sans-serif`;
     ctx.letterSpacing = "1px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.fillText(label, PX + 22, ry - 3);
+    ctx.fillText(label, PX + 22, ry + 3);
     ctx.letterSpacing = "0px";
-    // value
-    ctx.fillStyle = "#1e293b"; ctx.font = `bold 11.5px sans-serif`;
+    // value — truncate if too long
+    ctx.fillStyle = "#1e293b"; ctx.font = `bold 11px sans-serif`;
     ctx.textAlign = "right";
-    ctx.fillText(value, PXR, ry + 6);
-    // divider
-    ry += 18;
-    ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.8;
+    let v = value;
+    const maxW = PXR - (PX + 70);
+    while (ctx.measureText(v).width > maxW && v.length > 3) v = v.slice(0, -1);
+    if (v !== value) v = v.trimEnd() + "…";
+    ctx.fillText(v, PXR, ry + 14);
+    ry += ROW_H - 4;
+    ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.7;
     ctx.beginPath(); ctx.moveTo(PX, ry); ctx.lineTo(PXR, ry); ctx.stroke();
-    ry += 12;
+    ry += 4;
   };
 
   infoRow("👤", "PATIENT NAME", patient.name.toUpperCase());
-
-  // address — may wrap
-  const addrVal = patient.address || "—";
-  ctx.fillStyle = "#fdf0e6";
-  ctx.beginPath(); ctx.arc(PX + 8, ry + 1, 8, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#c45e10"; ctx.font = `8px sans-serif`;
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("📍", PX + 8, ry + 1);
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold 7px sans-serif`;
-  ctx.letterSpacing = "1px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("ADDRESS", PX + 22, ry - 3);
-  ctx.letterSpacing = "0px";
-  ctx.fillStyle = "#1e293b"; ctx.font = `bold 11.5px sans-serif`;
-  ctx.textAlign = "right";
-  // simple single-line truncate for address
-  const maxAW = PXR - (PX + 22) - 4;
-  let dispAddr = addrVal;
-  while (ctx.measureText(dispAddr).width > maxAW && dispAddr.length > 4) dispAddr = dispAddr.slice(0, -1);
-  if (dispAddr !== addrVal) dispAddr = dispAddr.trimEnd() + "…";
-  ctx.fillText(dispAddr, PXR, ry + 6);
-  ry += 18;
-  ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(PX, ry); ctx.lineTo(PXR, ry); ctx.stroke();
-  ry += 12;
-
+  infoRow("📍", "ADDRESS", patient.address || "—");
   infoRow("📞", "CLINIC PHONE", "+91 96381 81875");
 
   ctx.restore(); // end panel clip
 
-  // ── Bottom footer area ──
-  const footY = panelY + panelH + 12;
-  ctx.fillStyle = "rgba(212,165,116,0.7)"; ctx.font = `bold 8px sans-serif`;
+  // ── Footer ──
+  const fY = pY + panelH + 8;
+  ctx.fillStyle = "rgba(212,165,116,0.7)"; ctx.font = `bold 7px sans-serif`;
   ctx.letterSpacing = "1.5px"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("MANGLAM HOSPITAL  •  MORBI, GUJARAT", W / 2, footY + 14);
+  ctx.fillText("MANGLAM HOSPITAL  \u2022  MORBI, GUJARAT", W / 2, fY + 14);
   ctx.letterSpacing = "0px";
-  ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.font = `9px sans-serif`;
-  ctx.fillText("Show this card on your next visit", W / 2, footY + 30);
+  ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.font = `8.5px sans-serif`;
+  ctx.fillText("Show this card on your next visit", W / 2, fY + 28);
 
-  // ── Bottom amber accent ──
-  ctx.fillStyle = topBand; ctx.fillRect(0, H - 6, W, 6);
+  // ── Bottom amber bar ──
+  ctx.fillStyle = amberGrad; ctx.fillRect(0, H - AMBER_BAR_B, W, AMBER_BAR_B);
 
   ctx.restore();
   return canvas;
