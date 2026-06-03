@@ -292,191 +292,228 @@ const CARD_LABELS: Record<CardLang, {
   },
 };
 
-// ── Draw patient card — premium vertical visiting card style ────────────
+// ── Draw patient card — exactly mirrors the HTML preview ────────────────
 function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasElement {
   const L = CARD_LABELS[lang];
-  const W = 360, scale = 3;
+  const scale = 3;
 
-  // ── Measure content to compute exact height ──
-  const tmpC = document.createElement("canvas");
-  const tmpX = tmpC.getContext("2d")!;
+  // ── Layout constants (logical px) — match HTML exactly ──
+  const W = 360;
+  const AMBER_H    = 5;   // top/bottom amber bar
+  const HDR_PT     = 24;  // header paddingTop
+  const LOGO_D     = 64;  // logo circle diameter
+  const LOGO_MB    = 10;  // margin below logo
+  const CNAME_H    = 22;  // clinic name line height
+  const CNAME_MB   = 3;   // margin after clinic name
+  const DR_H       = 14;  // doctor line height
+  const DR_MB      = 10;  // margin after doctor
+  const DIV_H      = 12;  // divider row height
+  const HDR_PB     = 16;  // header paddingBottom
+  const PANEL_MX   = 16;  // panel horizontal margin
+  const PANEL_MB   = 16;  // panel margin bottom
+  const STRIPE_H   = 3;   // panel top stripe
+  const PANEL_PX   = 16;  // panel inner padding x
+  const PANEL_PT   = 16;  // panel inner padding top
+  const PC_LABEL_H = 18;  // "✦ PATIENT CARD ✦" + mb
+  const CASE_PT    = 10;  // case box padding top
+  const CASE_LABEL = 12;  // case label line
+  const CASE_NUM   = 28;  // case number line
+  const CASE_PB    = 10;  // case box padding bottom
+  const CASE_MB    = 16;  // case box margin bottom
+  const ROW_H      = 40;  // each info row height
+  const PANEL_PB   = 16;  // panel inner padding bottom
+  const FTR_PB     = 16;  // footer padding bottom
+  const FTR_L1     = 14;  // footer line 1 height
+  const FTR_L2     = 14;  // footer line 2 height
 
-  // Heights of each section (logical px):
-  const AMBER_BAR   = 6;
-  const LOGO_SECT   = 14 + 68 + 14;  // top pad + logo dia + gap
-  const CLINIC_NAME = 24;
-  const DR_NAME     = 18;
-  const TAGLINE     = 20;
-  const PANEL_PAD_T = 14;  // panel top padding before stripe
-  const STRIPE      = 4;
-  const PC_LABEL    = 24;  // "✦ PATIENT CARD ✦"
-  const CASE_BOX    = 56 + 14; // case box + gap below
-  const ROW_H       = 30;  // each info row (icon+label+value+divider)
-  const INFO_ROWS   = 3;
-  const PANEL_PAD_B = 14;  // panel bottom padding
-  const FOOTER      = 36;
-  const AMBER_BAR_B = 6;
-
-  const panelInnerH = STRIPE + PC_LABEL + CASE_BOX + ROW_H * INFO_ROWS + PANEL_PAD_B;
-  const panelH = panelInnerH;
-  const panelY = AMBER_BAR + LOGO_SECT + CLINIC_NAME + DR_NAME + TAGLINE;
-  const H = panelY + PANEL_PAD_T + panelH + FOOTER + AMBER_BAR_B;
+  const caseBoxH = CASE_PT + CASE_LABEL + CASE_NUM + CASE_PB;
+  const panelInnerH = STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H * 3 + PANEL_PB;
+  const hdrH = HDR_PT + LOGO_D + LOGO_MB + CNAME_H + CNAME_MB + DR_H + DR_MB + DIV_H + HDR_PB;
+  const ftrH = FTR_L1 + FTR_L2 + FTR_PB + 4;
+  const H = AMBER_H + hdrH + panelInnerH + PANEL_MB + ftrH + AMBER_H;
 
   const canvas = document.createElement("canvas");
-  canvas.width = W * scale; canvas.height = H * scale;
+  canvas.width  = W * scale;
+  canvas.height = H * scale;
   const ctx = canvas.getContext("2d")!;
   ctx.scale(scale, scale);
 
-  const rr = (x: number, y: number, w: number, h: number, rad: number) => {
+  // ── helpers ──
+  const rr = (x: number, y: number, w: number, h: number, r: number) => {
     ctx.beginPath();
-    ctx.moveTo(x + rad, y);
-    ctx.lineTo(x + w - rad, y); ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
-    ctx.lineTo(x + w, y + h - rad); ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
-    ctx.lineTo(x + rad, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
-    ctx.lineTo(x, y + rad); ctx.quadraticCurveTo(x, y, x + rad, y);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
     ctx.closePath();
   };
 
-  // ── Background gradient ──
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#1a3a0f"); bg.addColorStop(0.5, "#1f4a12"); bg.addColorStop(1, "#0f2208");
-  rr(0, 0, W, H, 24); ctx.fillStyle = bg; ctx.fill();
-  ctx.save(); ctx.clip();
+  // ── Amber gradient (reused) ──
+  const amberGrad = ctx.createLinearGradient(0, 0, W, 0);
+  amberGrad.addColorStop(0, "#c45e10"); amberGrad.addColorStop(0.5, "#e07828"); amberGrad.addColorStop(1, "#c45e10");
+
+  // ── Card background (dark green rounded rect) ──
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, "#1a3a0f"); bgGrad.addColorStop(0.5, "#1f4a12"); bgGrad.addColorStop(1, "#0f2208");
+  rr(0, 0, W, H, 24); ctx.fillStyle = bgGrad; ctx.fill();
+  ctx.save(); ctx.clip(); // clip everything to rounded card
 
   // decorative circles
-  ctx.save();
-  ctx.globalAlpha = 0.06; ctx.fillStyle = "#ffffff";
-  ctx.beginPath(); ctx.arc(W - 40, 60, 90, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(-20, H - 60, 100, 0, Math.PI * 2); ctx.fill();
+  ctx.save(); ctx.globalAlpha = 0.05; ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.arc(W - 30, 50, 100, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-20, H - 50, 110, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 
   // ── Top amber bar ──
-  const amberGrad = ctx.createLinearGradient(0, 0, W, 0);
-  amberGrad.addColorStop(0, "#c45e10"); amberGrad.addColorStop(0.6, "#e07828"); amberGrad.addColorStop(1, "#c45e10");
-  ctx.fillStyle = amberGrad; ctx.fillRect(0, 0, W, AMBER_BAR);
+  ctx.fillStyle = amberGrad; ctx.fillRect(0, 0, W, AMBER_H);
 
-  // ── Logo ──
-  const logoX = W / 2, logoY = AMBER_BAR + 14 + 34; // center of 68px logo
-  ctx.save();
-  ctx.shadowColor = "#e07828"; ctx.shadowBlur = 16;
-  ctx.strokeStyle = "rgba(224,120,40,0.45)"; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(logoX, logoY, 38, 0, Math.PI * 2); ctx.stroke();
+  // ── Header ──
+  let cy = AMBER_H + HDR_PT;
+
+  // Logo circle — centered
+  const logoX = W / 2, logoY = cy + LOGO_D / 2;
+  // glow ring
+  ctx.save(); ctx.shadowColor = "rgba(224,120,40,0.5)"; ctx.shadowBlur = 14;
+  ctx.strokeStyle = "rgba(224,120,40,0.4)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(logoX, logoY, LOGO_D / 2 + 3, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
-  const logoGrad = ctx.createRadialGradient(logoX - 8, logoY - 8, 4, logoX, logoY, 34);
+  // fill
+  const logoGrad = ctx.createRadialGradient(logoX - 10, logoY - 10, 4, logoX, logoY, LOGO_D / 2);
   logoGrad.addColorStop(0, "#e07828"); logoGrad.addColorStop(1, "#b84f0a");
   ctx.fillStyle = logoGrad;
-  ctx.beginPath(); ctx.arc(logoX, logoY, 34, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#fff"; ctx.font = `900 26px serif`;
+  ctx.beginPath(); ctx.arc(logoX, logoY, LOGO_D / 2, 0, Math.PI * 2); ctx.fill();
+  // M letter
+  ctx.fillStyle = "#ffffff"; ctx.font = `900 28px serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("M", logoX, logoY + 1);
 
-  // ── Clinic name ──
-  let cy = AMBER_BAR + LOGO_SECT;
+  cy += LOGO_D + LOGO_MB;
+
+  // Clinic name
   ctx.fillStyle = "#ffffff"; ctx.font = `bold 20px serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-  ctx.fillText(L.clinicName, W / 2, cy);
-  cy += CLINIC_NAME;
+  ctx.fillText(L.clinicName, W / 2, cy + CNAME_H - 4);
+  cy += CNAME_H + CNAME_MB;
 
   // Doctor name
-  ctx.fillStyle = "#d4a574"; ctx.font = `italic 10px serif`;
-  ctx.fillText(L.doctor, W / 2, cy);
-  cy += DR_NAME;
+  ctx.fillStyle = "#d4a574"; ctx.font = `italic 10.5px serif`;
+  ctx.fillText(L.doctor, W / 2, cy + DR_H - 3);
+  cy += DR_H + DR_MB;
 
-  // Tagline
-  ctx.strokeStyle = "rgba(212,165,116,0.4)"; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(24, cy - 4); ctx.lineTo(W / 2 - 68, cy - 4); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(W / 2 + 68, cy - 4); ctx.lineTo(W - 24, cy - 4); ctx.stroke();
-  ctx.fillStyle = "rgba(212,165,116,0.8)"; ctx.font = `7px sans-serif`;
-  ctx.letterSpacing = "1.8px";
-  ctx.fillText(L.tagline, W / 2, cy);
-  ctx.letterSpacing = "0px";
-  cy += TAGLINE;
+  // Tagline divider row
+  const lineY = cy + DIV_H / 2;
+  ctx.strokeStyle = "rgba(212,165,116,0.3)"; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(20, lineY); ctx.lineTo(W / 2 - 62, lineY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W / 2 + 62, lineY); ctx.lineTo(W - 20, lineY); ctx.stroke();
+  ctx.fillStyle = "rgba(212,165,116,0.8)"; ctx.font = `600 7px sans-serif`;
+  ctx.textBaseline = "middle";
+  ctx.fillText(L.tagline, W / 2, lineY);
+  cy += DIV_H + HDR_PB;
 
-  // ── White panel — tightly sized ──
-  const pY = cy + PANEL_PAD_T;
-  const pW = W - 36;
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 16; ctx.shadowOffsetY = 3;
-  rr(18, pY, pW, panelH, 16); ctx.fillStyle = "#ffffff"; ctx.fill();
+  // ── White panel ──
+  const pX = PANEL_MX, pW = W - PANEL_MX * 2;
+  const pY = cy;
+
+  // panel shadow + fill
+  ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 4;
+  rr(pX, pY, pW, panelInnerH, 16); ctx.fillStyle = "#ffffff"; ctx.fill();
   ctx.restore();
-  ctx.save(); rr(18, pY, pW, panelH, 16); ctx.clip();
+
+  // clip to panel
+  ctx.save(); rr(pX, pY, pW, panelInnerH, 16); ctx.clip();
 
   // stripe
-  ctx.fillStyle = amberGrad; ctx.fillRect(18, pY, pW, STRIPE);
+  ctx.fillStyle = amberGrad; ctx.fillRect(pX, pY, pW, STRIPE_H);
+
+  let py = pY + STRIPE_H + PANEL_PT;
 
   // ✦ PATIENT CARD ✦
-  ctx.fillStyle = "#7c3a0a"; ctx.font = `bold 7.5px sans-serif`;
-  ctx.letterSpacing = "2.5px"; ctx.textAlign = "center";
-  ctx.fillText(L.patientCard, W / 2, pY + STRIPE + 16);
+  ctx.fillStyle = "#7c3a0a"; ctx.font = `700 7.5px sans-serif`;
+  ctx.letterSpacing = "2px"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.patientCard, W / 2, py + 10);
   ctx.letterSpacing = "0px";
+  py += PC_LABEL_H;
 
   // Case number box
-  const cnY = pY + STRIPE + PC_LABEL;
-  ctx.fillStyle = "#fdf0e6"; rr(30, cnY, W - 60, 52, 12); ctx.fill();
-  ctx.fillStyle = "#b8825a"; ctx.font = `bold 6.5px sans-serif`;
-  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
-  ctx.fillText(L.caseNo, 44, cnY + 15);
+  const cBX = pX + 12, cBW = pW - 24;
+  rr(cBX, py, cBW, caseBoxH, 10); ctx.fillStyle = "#fdf0e6"; ctx.fill();
+  // label
+  ctx.fillStyle = "#b8825a"; ctx.font = `700 6.5px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.caseNo, cBX + 14, py + CASE_PT + CASE_LABEL - 2);
   ctx.letterSpacing = "0px";
+  // number
   const rawD = patient.mobile.replace(/\D/g, "");
   const caseNo = rawD.padStart(10, "0");
   ctx.fillStyle = "#c45e10"; ctx.font = `900 22px monospace`;
-  ctx.fillText(caseNo, 44, cnY + 40);
-  // card icon
-  ctx.fillStyle = "#c45e10"; ctx.globalAlpha = 0.12;
-  rr(W - 70, cnY + 9, 32, 32, 8); ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.4;
-  rr(W - 64, cnY + 16, 20, 16, 3); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(W - 64, cnY + 21); ctx.lineTo(W - 44, cnY + 21); ctx.stroke();
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(caseNo, cBX + 14, py + CASE_PT + CASE_LABEL + CASE_NUM - 4);
+  // card icon (right side of box)
+  const icX = cBX + cBW - 46, icY = py + caseBoxH / 2 - 14;
+  ctx.fillStyle = "rgba(196,94,16,0.1)"; rr(icX, icY, 28, 28, 7); ctx.fill();
+  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.5;
+  rr(icX + 4, icY + 6, 20, 16, 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(icX + 4, icY + 11); ctx.lineTo(icX + 24, icY + 11); ctx.stroke();
+  py += caseBoxH + CASE_MB;
 
-  // Info rows
-  let ry = cnY + 52 + 8;
-  const PX = 30, PXR = W - 30;
+  // ── Info rows (icon circle LEFT + label top + value bottom — matches HTML) ──
+  const rowPX = pX + 12; // left padding inside panel
+  const rowPXR = pX + pW - 12; // right edge
 
-  const infoRow = (emoji: string, label: string, value: string) => {
+  const infoRow = (emoji: string, label: string, value: string, isLast: boolean) => {
+    const rowMid = py + ROW_H / 2;
     // icon bubble
+    const iBubR = 11;
     ctx.fillStyle = "#fdf0e6";
-    ctx.beginPath(); ctx.arc(PX + 8, ry + 7, 8, 0, Math.PI * 2); ctx.fill();
-    ctx.font = `9px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(emoji, PX + 8, ry + 7);
-    // label
-    ctx.fillStyle = "#94a3b8"; ctx.font = `bold 6.5px sans-serif`;
-    ctx.letterSpacing = "1px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.fillText(label, PX + 22, ry + 3);
+    ctx.beginPath(); ctx.arc(rowPX + iBubR, rowMid, iBubR, 0, Math.PI * 2); ctx.fill();
+    ctx.font = `11px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(emoji, rowPX + iBubR, rowMid);
+
+    const textX = rowPX + iBubR * 2 + 8;
+    // label (small, above)
+    ctx.fillStyle = "#94a3b8"; ctx.font = `700 7px sans-serif`;
+    ctx.letterSpacing = "0.8px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(label, textX, rowMid - 2);
     ctx.letterSpacing = "0px";
-    // value — truncate if too long
-    ctx.fillStyle = "#1e293b"; ctx.font = `bold 11px sans-serif`;
-    ctx.textAlign = "right";
+    // value (larger, below)
+    ctx.fillStyle = "#1e293b"; ctx.font = `700 11px sans-serif`;
+    ctx.textBaseline = "alphabetic";
+    // truncate if needed
     let v = value;
-    const maxW = PXR - (PX + 70);
-    while (ctx.measureText(v).width > maxW && v.length > 3) v = v.slice(0, -1);
+    const maxW = rowPXR - textX - 4;
+    ctx.font = `700 11px sans-serif`;
+    while (ctx.measureText(v).width > maxW && v.length > 2) v = v.slice(0, -1);
     if (v !== value) v = v.trimEnd() + "…";
-    ctx.fillText(v, PXR, ry + 14);
-    ry += ROW_H - 4;
-    ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.7;
-    ctx.beginPath(); ctx.moveTo(PX, ry); ctx.lineTo(PXR, ry); ctx.stroke();
-    ry += 4;
+    ctx.fillText(v, textX, rowMid + 12);
+
+    py += ROW_H;
+    // divider
+    if (!isLast) {
+      ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(rowPX, py); ctx.lineTo(rowPXR, py); ctx.stroke();
+    }
   };
 
-  infoRow("👤", L.patientName, patient.name.toUpperCase());
-  infoRow("📍", L.address, patient.address || "—");
-  infoRow("📞", L.clinicPhone, "+91 96381 81875");
+  infoRow("👤", L.patientName, patient.name.toUpperCase(), false);
+  infoRow("📍", L.address, patient.address || "Pipaliya Char Rasta", false);
+  infoRow("📞", L.clinicPhone, "+91 96381 81875", true);
 
   ctx.restore(); // end panel clip
 
   // ── Footer ──
-  const fY = pY + panelH + 8;
-  ctx.fillStyle = "rgba(212,165,116,0.7)"; ctx.font = `bold 7px sans-serif`;
+  const fY = pY + panelInnerH + PANEL_MB;
+  ctx.fillStyle = "rgba(212,165,116,0.75)"; ctx.font = `700 8px sans-serif`;
   ctx.letterSpacing = "1.5px"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-  ctx.fillText(L.footer, W / 2, fY + 14);
+  ctx.fillText(L.footer, W / 2, fY + FTR_L1);
   ctx.letterSpacing = "0px";
-  ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.font = `8.5px sans-serif`;
-  ctx.fillText(L.footerSub, W / 2, fY + 28);
+  ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.font = `9px sans-serif`;
+  ctx.fillText(L.footerSub, W / 2, fY + FTR_L1 + FTR_L2 + 2);
 
   // ── Bottom amber bar ──
-  ctx.fillStyle = amberGrad; ctx.fillRect(0, H - AMBER_BAR_B, W, AMBER_BAR_B);
+  ctx.fillStyle = amberGrad; ctx.fillRect(0, H - AMBER_H, W, AMBER_H);
 
-  ctx.restore();
+  ctx.restore(); // end card clip
   return canvas;
 }
 
