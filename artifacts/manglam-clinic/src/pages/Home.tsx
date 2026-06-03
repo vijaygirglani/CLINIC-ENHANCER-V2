@@ -798,9 +798,6 @@ export default function Home() {
   const [showNameDropdown, setShowNameDropdown] = useState(false);
   const [pendingFees, setPendingFees] = useState<PendingEntry[]>(() => getPendingFees());
   const [feesMarkedPending, setFeesMarkedPending] = useState(false);
-  const [pendingAmount, setPendingAmount] = useState<string>("");
-  const [showPendingModal, setShowPendingModal] = useState(false);
-  const [pendingAlert, setPendingAlert] = useState<PendingEntry | null>(null);
   const refreshPending = () => setPendingFees(getPendingFees());
 
   // ── Loose Medicine Sales state ──
@@ -870,7 +867,6 @@ export default function Home() {
   const nameValue = form.watch("name");
   const complaintValue = form.watch("complaint");
   const paymentModeValue = form.watch("paymentMode");
-  const feesValue = form.watch("fees");
 
   // Live dropdown: watch name field, search on every keystroke
   useEffect(() => {
@@ -933,10 +929,6 @@ export default function Home() {
     setPatientHistory(result.history);
     setFilterMode("history");
     setIsLookingUp(false);
-    if (result.latestInfo) {
-      const match = getPendingFees().find(e => e.mobile.replace(/\D/g,"") === mobile.replace(/\D/g,""));
-      if (match) setPendingAlert(match);
-    }
   }, [form, toast]);
 
   const runNameLookup = useCallback(() => {
@@ -961,10 +953,6 @@ export default function Home() {
     setPatientHistory(result.history);
     setFilterMode("history");
     setIsLookingUp(false);
-    if (result.latestInfo) {
-      const match = getPendingFees().find(e => e.mobile.replace(/\D/g,"") === result.latestInfo!.mobile.replace(/\D/g,""));
-      if (match) setPendingAlert(match);
-    }
   }, [form, toast]);
 
   // When user clicks a suggestion: autofill all fields + load history
@@ -984,8 +972,6 @@ export default function Home() {
     setHistoryMobile(s.mobile);
     setFilterMode("history");
     toast({ title: "Patient found", description: `${s.visitCount} visit(s) found.` });
-    const match = getPendingFees().find(e => e.mobile.replace(/\D/g,"") === s.mobile.replace(/\D/g,""));
-    if (match) setPendingAlert(match);
   }, [form, toast]);
 
   // ── Google Sheet handlers ──
@@ -1092,14 +1078,11 @@ export default function Home() {
       attachments, registerType, visitDate,
     });
     if (feesMarkedPending && saved.fees > 0) {
-      const pendingVal = pendingAmount.trim() !== "" ? Number(pendingAmount) : saved.fees;
-      const finalPending = (!isNaN(pendingVal) && pendingVal > 0) ? pendingVal : saved.fees;
-      addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: finalPending, date: visitDate, markedAt: new Date().toISOString() });
+      addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: saved.fees, date: visitDate, markedAt: new Date().toISOString() });
       refreshPending();
     }
     setLastSaved(saved);
     setFeesMarkedPending(false);
-    setPendingAmount("");
     toast({
       title: "Saved!",
       description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
@@ -1128,88 +1111,61 @@ export default function Home() {
       {lastSaved && <PrintPrescription patient={lastSaved} />}
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
 
-      <style>{`
-        body { background-color: #ede8dc !important; }
-        .mc-bg {
-          background-color: #ede8dc;
-          background-image:
-            repeating-linear-gradient(45deg, rgba(160,140,100,0.12) 0, rgba(160,140,100,0.12) 1px, transparent 0, transparent 50%),
-            repeating-linear-gradient(-45deg, rgba(160,140,100,0.12) 0, rgba(160,140,100,0.12) 1px, transparent 0, transparent 50%);
-          background-size: 20px 20px;
-        }
-        .mc-card { background: #fff; border-radius: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e8e4da; }
-        .mc-input {
-          width: 100%; padding: 9px 12px; border-radius: 10px;
-          background: #fff; border: 1.5px solid #ddd8cc;
-          font-size: 13px; color: #1a2010; outline: none; transition: border 0.15s;
-        }
-        .mc-input:focus { border-color: #2d5a27; box-shadow: 0 0 0 3px rgba(45,90,39,0.1); }
-        .mc-label {
-          font-size: 10px; font-weight: 700; text-transform: uppercase;
-          letter-spacing: 0.08em; color: #6b7a5a; display: flex; align-items: center; gap: 4px;
-          margin-bottom: 4px;
-        }
-        .mc-section-title {
-          font-size: 9px; font-weight: 800; text-transform: uppercase;
-          letter-spacing: 0.12em; color: #8b5e00; margin-bottom: 10px;
-        }
-        .mc-btn-green {
-          background: linear-gradient(135deg, #1f7a4a, #2d9a5a);
-          color: white; border: none; border-radius: 10px;
-          padding: 9px 16px; font-size: 13px; font-weight: 600;
-          cursor: pointer; display: flex; align-items: center; gap: 6px;
-        }
-        .mc-btn-dark {
-          background: linear-gradient(135deg, #1a2a10, #2d3a1e);
-          color: white; border: none; border-radius: 10px;
-          padding: 9px 16px; font-size: 13px; font-weight: 600;
-          cursor: pointer; display: flex; align-items: center; gap: 6px;
-        }
-        .mc-btn-blue {
-          background: #1a6fd4; color: white; border: none; border-radius: 10px;
-          padding: 9px 16px; font-size: 13px; font-weight: 600;
-          cursor: pointer; display: flex; align-items: center; gap: 6px;
-        }
-        .mc-btn-orange {
-          background: linear-gradient(135deg, #e06010, #c04a00);
-          color: white; border: none; border-radius: 10px;
-          padding: 9px 16px; font-size: 13px; font-weight: 600;
-          cursor: pointer; display: flex; align-items: center; gap: 6px;
-        }
-      `}</style>
-
-      <div className="mc-bg" style={{margin:"-16px -16px -32px", padding:"16px", minHeight:"calc(100vh - 80px)"}}>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* ── LEFT COLUMN: Patient Info ── */}
-        <div className="lg:col-span-3">
-          {/* Sheet connected banner */}
-          {sheetConnected && (
-            <div className="mc-card mb-3 flex items-center gap-2 px-3 py-2.5 text-xs" style={{borderLeft:"4px solid #1f7a4a"}}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse inline-block" style={{background:"#1f7a4a"}} />
-              <span style={{color:"#1f7a4a"}}><strong>Google Sheet connected.</strong> Press "Sync from Sheet"</span>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* ── MAIN FORM ── */}
+        <div className="lg:col-span-8 space-y-6">
+          <div className="medical-card p-6 md:p-8 border-l-4 border-l-primary shadow-md">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-blue-400 flex items-center justify-center text-white shadow-md shadow-primary/30">
+                <User className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-display bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">Patient Registration</h2>
+                <p className="text-slate-500 text-sm">Register a new visit and view medical history.</p>
+              </div>
+              {/* Sheet action buttons */}
+              <div className="ml-auto flex items-center gap-2">
+                <button type="button" onClick={handleSync}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all shadow-md shadow-emerald-200">
+                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Sync from Sheet
+                </button>
+                <button type="button" onClick={() => { setSheetInput(sheetUrl); setShowSheetModal(true); }}
+                  title="Connect Google Sheet"
+                  className="p-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-all">
+                  <Sheet className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          )}
-          <div className="mc-card p-4">
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-0">
-              <div className="space-y-3">
-                <p className="mc-section-title">Patient Information</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="mc-label">
-                      <Calendar className="w-3 h-3 text-stone-400" /> Visit Date
+
+            {/* Sheet connected banner */}
+            {sheetConnected && (
+              <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-700 text-sm shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                <span><strong>Google Sheet connected.</strong> Press "Sync from Sheet" to load today's patients.</span>
+              </div>
+            )}
+
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              {/* Visit Date */}
+              <div className="bg-gradient-to-br from-blue-50/60 to-slate-50/40 p-6 rounded-2xl border border-blue-100 border-l-4 border-l-blue-400 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-slate-400" /> Visit Date
                     </label>
                     <input type="date" {...form.register("visitDate")}
-                      className="mc-input" />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" />
                   </div>
                 </div>
 
                 {/* Mobile / Case No */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="mc-label">
-                      <Phone className="w-3 h-3 text-stone-400" /> Mobile / Case No. <span className="text-red-500">*</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-slate-400" /> Mobile / Case No. <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-2">
                       <div className="relative flex-1">
                         <input
                           {...mobileRest}
@@ -1220,33 +1176,33 @@ export default function Home() {
                           onKeyDown={e => {
                             if (e.key === "Enter") { e.preventDefault(); runMobileLookup(); }
                           }}
-                          className="mc-input" style={{fontFamily:"monospace"}}
+                          className="w-full pl-4 pr-10 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800 font-mono"
                           placeholder="Mobile or Case No."
                         />
-                        {isLookingUp && <Loader2 className="w-3.5 h-3.5 absolute right-2.5 top-3 animate-spin text-stone-400" />}
+                        {isLookingUp && <Loader2 className="w-4 h-4 absolute right-3 top-3.5 animate-spin text-slate-400" />}
                       </div>
                       <button type="button" onClick={runMobileLookup}
-                        className="flex items-center justify-center px-2.5 py-2 rounded-lg border transition-all" style={{background:"#f0ebe0",border:"1.5px solid #ddd8cc",color:"#6b7a5a"}} title="Search">
-                        <Search className="w-3.5 h-3.5" />
+                        className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary hover:border-primary/20 transition-all" title="Search">
+                        <Search className="w-4 h-4" />
                       </button>
                       <button type="button" onClick={handleAutoCase} title="Auto-generate case number"
-                        className="px-2.5 py-2 rounded-lg text-white font-semibold text-xs flex items-center gap-1 shadow-sm whitespace-nowrap" style={{background:"#1a6fd4"}}>
-                        <Zap className="w-3 h-3" /> Auto
+                        className="px-3 py-2 rounded-xl bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 transition-all flex items-center gap-1 shadow whitespace-nowrap">
+                        <Zap className="w-3.5 h-3.5" /> Auto
                       </button>
                     </div>
                     {form.formState.errors.mobile && <p className="text-destructive text-xs">{form.formState.errors.mobile.message}</p>}
-                    <p className="text-[10px] text-stone-400">
-                      Case format: <span className="font-mono text-purple-500">00{format(new Date(visitDateValue || todayStr), "ddMMyy")}01</span>
-                      &nbsp;· Press <kbd className="px-1 py-0.5 bg-stone-100 rounded text-[9px]">Enter</kbd> or <Search className="w-2.5 h-2.5 inline" /> to search
+                    <p className="text-xs text-slate-400">
+                      Case format: <span className="font-mono text-purple-600">00{format(new Date(visitDateValue || todayStr), "ddMMyy")}01</span>
+                      &nbsp;· Press <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[10px]">Enter</kbd> or <Search className="w-3 h-3 inline" /> to search
                     </p>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="mc-label">
-                      <User className="w-3 h-3 text-stone-400" /> Patient Name <span className="text-red-500">*</span>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                      <User className="w-4 h-4 text-slate-400" /> Patient Name <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-2">
                         <input
                           {...nameRest}
                           ref={(el) => {
@@ -1258,21 +1214,21 @@ export default function Home() {
                             if (e.key === "Escape") setShowNameDropdown(false);
                           }}
                           onBlur={() => setTimeout(() => setShowNameDropdown(false), 200)}
-                          className="mc-input"
-                          placeholder="Patient Name"
+                          className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800"
+                          placeholder="Full Name"
                         />
                         <button type="button" onClick={runNameLookup}
-                          className="flex items-center justify-center px-2.5 py-2 rounded-lg border transition-all" style={{background:"#f0ebe0",border:"1.5px solid #ddd8cc",color:"#6b7a5a"}} title="Search by name">
-                          <Search className="w-3.5 h-3.5" />
+                          className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary hover:border-primary/20 transition-all" title="Search by name">
+                          <Search className="w-4 h-4" />
                         </button>
                       </div>
 
                       {/* Live patient suggestions dropdown */}
                       {showNameDropdown && nameSuggestions.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl overflow-y-auto" style={{zIndex:9999,maxHeight:"280px",border:"1px solid #e0dbd0"}} style={{ zIndex: 9999, maxHeight: "280px" }}>
-                          <div className="px-3 py-2 border-b border-stone-100 bg-stone-50 flex items-center gap-2">
-                            <Search className="w-3 h-3 text-stone-400" />
-                            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-y-auto" style={{ zIndex: 9999, maxHeight: "280px" }}>
+                          <div className="px-3 py-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+                            <Search className="w-3 h-3 text-slate-400" />
+                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                               {nameSuggestions.length} patient{nameSuggestions.length > 1 ? "s" : ""} found
                             </span>
                           </div>
@@ -1281,32 +1237,32 @@ export default function Home() {
                               key={i}
                               type="button"
                               onMouseDown={e => { e.preventDefault(); handleSelectSuggestion(s); }}
-                              className="w-full px-3 py-2.5 hover:bg-teal-50 transition-colors text-left border-b border-stone-50 last:border-0"
+                              className="w-full px-4 py-3 hover:bg-blue-50 transition-colors text-left border-b border-slate-50 last:border-0"
                             >
-                              <div className="flex items-start gap-2.5">
-                                <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600 shrink-0 mt-0.5">
-                                  <User className="w-3 h-3" />
+                              <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
+                                  <User className="w-3.5 h-3.5" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <span className="font-bold text-stone-900 text-sm truncate">{s.name}</span>
-                                    <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded shrink-0">
+                                    <span className="font-bold text-slate-900 text-sm truncate">{s.name}</span>
+                                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full shrink-0">
                                       {s.visitCount} visit{s.visitCount > 1 ? "s" : ""}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-xs font-mono text-stone-400">{s.mobile}</span>
-                                    {s.age > 0 && <span className="text-xs text-stone-400">{s.age}y</span>}
-                                    {s.address && <span className="text-xs text-stone-400 truncate max-w-[100px]">· {s.address}</span>}
+                                    <span className="text-xs font-mono text-slate-500">{s.mobile}</span>
+                                    {s.age > 0 && <span className="text-xs text-slate-400">{s.age}y</span>}
+                                    {s.address && <span className="text-xs text-slate-400 truncate max-w-[100px]">· {s.address}</span>}
                                   </div>
                                   {s.recentVisits[0] && (
-                                    <div className="mt-1 text-[10px] text-stone-400">
-                                      <span className="font-semibold text-stone-500">{format(new Date(s.recentVisits[0].visitDate), "dd MMM yyyy")}</span>
+                                    <div className="mt-1 text-[10px] text-slate-400">
+                                      <span className="font-semibold text-slate-500">{format(new Date(s.recentVisits[0].visitDate), "dd MMM yyyy")}</span>
                                       {s.recentVisits[0].complaint && <span className="ml-1">· {s.recentVisits[0].complaint.slice(0, 40)}</span>}
                                     </div>
                                   )}
                                 </div>
-                                <span className="text-[10px] text-teal-500 font-bold shrink-0 mt-1">Fill →</span>
+                                <span className="text-[10px] text-primary font-bold shrink-0 mt-1">Fill →</span>
                               </div>
                             </button>
                           ))}
@@ -1318,163 +1274,110 @@ export default function Home() {
                 </div>
 
                 {/* Age + Weight + Address */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="mc-label">Age <span className="text-stone-400 text-[10px]">(optional)</span></label>
-                    <div className="flex gap-1.5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Age <span className="text-slate-400 text-xs">(optional)</span></label>
+                    <div className="flex gap-2">
                       <div className="flex-1 relative">
                         <input type="number" {...form.register("age")} min={0}
-                          className="mc-input" placeholder="0" />
-                        <span className="absolute right-2 top-3 text-[10px] text-stone-400">yrs</span>
+                          className="w-full px-3 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="0" />
+                        <span className="absolute right-2 top-3.5 text-xs text-slate-400">yrs</span>
                       </div>
-                      <div className="w-16 relative">
+                      <div className="w-20 relative">
                         <input type="number" {...form.register("ageMonths")} min={0} max={11}
-                          className="mc-input" placeholder="0" />
-                        <span className="absolute right-1.5 top-3 text-[10px] text-stone-400">mo</span>
+                          className="w-full px-2 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="0" />
+                        <span className="absolute right-2 top-3.5 text-xs text-slate-400">mo</span>
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="mc-label">
-                      <Weight className="w-3 h-3 text-stone-400" /> Weight
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                      <Weight className="w-4 h-4 text-slate-400" /> Weight
                     </label>
                     <input {...form.register("weight")}
-                      className="mc-input" placeholder="e.g. 65 kg" />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="e.g. 65 kg" />
                   </div>
-                  <div className="space-y-1">
-                    <label className="mc-label">
-                      <MapPin className="w-3 h-3 text-stone-400" /> Address
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-slate-400" /> Address
                     </label>
                     <input {...form.register("address")}
-                      className="mc-input" placeholder="City / Area" />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="City / Area" />
                   </div>
                 </div>
               </div>
 
-              {/* Left Column Action Buttons */}
-              <div className="flex flex-col gap-2 mt-4">
-                {lastSaved && (
-                  <button type="button" onClick={() => printPatientPrescription(lastSaved)}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm" style={{background:"#fff",border:"1.5px solid #ddd8cc",color:"#3a4a2a"}}>
-                    <Printer style={{width:16,height:16}} /> Print
-                  </button>
-                )}
-                {lastSaved && (
-                  <button type="button" onClick={() => setShowCard(true)}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm mc-btn-orange">
-                    <WalletCards style={{width:16,height:16}} /> Patient Card
-                  </button>
-                )}
-              </div>
-
               {/* Medical Details */}
-              </div>
-            </form>
-          </div>
-        </div>
-
-        {/* ── CENTER COLUMN: Clinical Details ── */}
-        <div className="lg:col-span-5">
-          <div className="mc-card p-4 space-y-3">
-            <p className="mc-section-title" style={{color:"#2d5a27"}}>Clinical Details</p>
-            <form onSubmit={form.handleSubmit(onSubmit)} id="clinical-form">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="mc-label">
-                      <Activity className="w-3 h-3 text-stone-400" /> Complaint Code
+              <div className="bg-gradient-to-br from-emerald-50/50 to-blue-50/20 p-6 rounded-2xl border border-emerald-100 border-l-4 border-l-emerald-400 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-slate-400" /> Complaint Code
                     </label>
                     <input {...form.register("complaintCode")}
-                      className="mc-input" style={{textTransform:"uppercase"}}
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 uppercase transition-all text-slate-800"
                       placeholder="E.G. CCF" />
                   </div>
-                  <div className="space-y-1">
-                    <label className="mc-label">Consultation Fees (₹)</label>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Consultation Fees (₹)</label>
                     {/* Preset buttons */}
-                    <div className="flex gap-1 mb-1">
+                    <div className="flex gap-1.5 mb-1">
                       {[200, 250, 550].map(preset => (
                         <button key={preset} type="button"
                           onClick={() => form.setValue("fees", preset)}
-                          className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all" style={{background:"#e0f0e8",color:"#1f7a4a",border:"1px solid #b8d8c0"}}>
+                          className="px-3 py-1 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-all border border-primary/20">
                           ₹{preset}
                         </button>
                       ))}
                     </div>
                     {/* Row 1: Amount input */}
                     <input type="number" {...form.register("fees")} min={0}
-                      className="mc-input" style={{fontWeight:"600"}} placeholder="Amount" />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all font-semibold text-slate-900" placeholder="Amount" />
                     {/* Row 2: Cash/Online toggle + Mark Pending */}
                     <div className="flex gap-2 items-center">
-                      <div className="flex rounded-lg border border-stone-200 overflow-hidden shrink-0">
+                      <div className="flex rounded-xl border border-slate-200 overflow-hidden shrink-0">
                         <button type="button"
                           onClick={() => form.setValue("paymentMode", "cash")}
-                          className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold transition-all ${
+                          className={`flex items-center gap-1 px-3 py-2 text-xs font-bold transition-all ${
                             paymentModeValue !== "online"
-                              ? ""
-                              : ""
-                          } style={paymentModeValue !== "online" ? {background:"#1f7a4a",color:"white"} : {background:"white",color:"#aaa"}}`}>
+                              ? "bg-emerald-500 text-white shadow-inner"
+                              : "bg-white text-slate-400 hover:bg-slate-50"
+                          }`}>
                           💵 Cash
                         </button>
                         <button type="button"
                           onClick={() => form.setValue("paymentMode", "online")}
-                          className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold transition-all border-l border-stone-200 ${
+                          className={`flex items-center gap-1 px-3 py-2 text-xs font-bold transition-all border-l border-slate-200 ${
                             paymentModeValue === "online"
-                              ? ""
-                              : ""
-                          } style={paymentModeValue === "online" ? {background:"#1a6fd4",color:"white"} : {background:"white",color:"#aaa"}}`}>
+                              ? "bg-blue-500 text-white shadow-inner"
+                              : "bg-white text-slate-400 hover:bg-slate-50"
+                          }`}>
                           📱 Online
                         </button>
                       </div>
                       <button type="button"
-                        onClick={() => { setFeesMarkedPending(p => !p); setPendingAmount(""); }}
+                        onClick={() => setFeesMarkedPending(p => !p)}
                         title={feesMarkedPending ? "Click to unmark pending" : "Mark fees as pending"}
-                        className={`flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border font-semibold text-xs transition-all ${
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border font-semibold text-xs transition-all ${
                           feesMarkedPending
-                            ? "bg-amber-100 border-amber-400 text-amber-700"
-                            : "bg-white border-stone-200 text-stone-400 hover:border-amber-300 hover:text-amber-500"
+                            ? "bg-amber-100 border-amber-400 text-amber-700 shadow-inner"
+                            : "bg-white border-slate-200 text-slate-400 hover:border-amber-300 hover:text-amber-500"
                         }`}>
-                        <Hourglass className="w-3 h-3" />
+                        <Hourglass className="w-3.5 h-3.5" />
                         {feesMarkedPending ? "Pending ✓" : "Mark Pending"}
                       </button>
                     </div>
                     {feesMarkedPending && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
-                          <Hourglass className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">Pending Amount (₹)</p>
-                            <div className="relative">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 font-bold text-xs">₹</span>
-                              <input
-                                type="number" min={0}
-                                value={pendingAmount}
-                                onChange={e => setPendingAmount(e.target.value)}
-                                placeholder={`Full (₹${feesValue || 0})`}
-                                className="w-full pl-6 pr-3 py-1.5 rounded-lg border border-amber-300 bg-white text-sm font-bold text-amber-800 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 placeholder:text-amber-300 placeholder:font-normal"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        {pendingAmount.trim() !== "" && Number(pendingAmount) > 0 && Number(feesValue) > 0 ? (
-                          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs">
-                            <span className="flex items-center gap-1 text-emerald-600 font-bold">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Paid: ₹{Math.max(0, Number(feesValue) - Number(pendingAmount))}
-                            </span>
-                            <span className="text-slate-300">|</span>
-                            <span className="flex items-center gap-1 text-amber-600 font-bold">
-                              <Hourglass className="w-3.5 h-3.5" /> Pending: ₹{Number(pendingAmount)}
-                            </span>
-                          </div>
-                        ) : (
-                          <p className="text-[10px] text-amber-500 px-1">Leave blank to mark full amount (₹{feesValue || 0}) as pending</p>
-                        )}
-                      </div>
+                      <p className="text-xs text-amber-600 flex items-center gap-1">
+                        <Hourglass className="w-3 h-3" /> Fees will be saved as pending after form submission
+                      </p>
                     )}
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="mc-label">Presenting Complaints</label>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Presenting Complaints</label>
                   <textarea {...form.register("complaint")} rows={2}
-                    className="mc-input" style={{resize:"none"}} placeholder="Describe the symptoms..." />
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Describe the symptoms..." />
                 </div>
 
                 {/* ── Pathya-Apathya Disease Suggest Panel ── */}
@@ -1484,22 +1387,22 @@ export default function Home() {
                       initial={{ opacity: 0, y: -8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
-                      className="rounded-xl border border-emerald-200 bg-emerald-50/60 overflow-hidden"
+                      className="rounded-2xl border border-emerald-200 bg-emerald-50/60 overflow-hidden"
                     >
                       {/* Header */}
-                      <div className="flex items-center gap-2 px-3 py-2.5">
+                      <div className="flex items-center gap-2 px-4 py-3">
                         <button
                           type="button"
                           onClick={() => setShowPAPanel(p => !p)}
                           className="flex items-center gap-2 flex-1 min-w-0"
                         >
-                          <div className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center shrink-0">
+                          <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
                             <Leaf className="w-3.5 h-3.5 text-white" />
                           </div>
-                          <span className="text-xs font-bold text-emerald-800">
+                          <span className="text-sm font-bold text-emerald-800">
                             Pathya-Apathya Suggestions
                           </span>
-                          <span className="text-[10px] font-semibold bg-emerald-200 text-emerald-700 px-1.5 py-0.5 rounded ml-1 shrink-0">
+                          <span className="text-xs font-semibold bg-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full ml-1 shrink-0">
                             {paMatches.length} match{paMatches.length > 1 ? "es" : ""}
                           </span>
                         </button>
@@ -1551,17 +1454,17 @@ export default function Home() {
                                           toast({ title: "Open Pathya-Apathya tab", description: `"${name}" data is in the Pathya-Apathya section. Import it to send via WhatsApp.` });
                                         }
                                       }}
-                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
                                         isSelected
-                                          ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                          ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
                                           : hasFullData
                                           ? "bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-100"
-                                          : "bg-white text-stone-500 border-stone-200 hover:bg-stone-50"
+                                          : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
                                       }`}
                                     >
                                       <Stethoscope className="w-3 h-3" />
                                       {name}
-                                      {!hasFullData && <span className="text-[9px] text-stone-400 ml-0.5">(built-in)</span>}
+                                      {!hasFullData && <span className="text-[9px] text-slate-400 ml-0.5">(built-in)</span>}
                                     </button>
                                   );
                                 })}
@@ -1600,22 +1503,22 @@ export default function Home() {
                                             {pathyaList.length > 0 && (
                                               <div>
                                                 <p className="font-bold text-emerald-700 mb-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> {pathyaLabel}</p>
-                                                <ul className="space-y-0.5 text-stone-600">
+                                                <ul className="space-y-0.5 text-slate-600">
                                                   {pathyaList.slice(0, 5).map((p, i) => (
                                                     <li key={i} className="flex gap-1"><span className="text-emerald-500 shrink-0">•</span>{p}</li>
                                                   ))}
-                                                  {pathyaList.length > 5 && <li className="text-stone-400">+{pathyaList.length - 5} more...</li>}
+                                                  {pathyaList.length > 5 && <li className="text-slate-400">+{pathyaList.length - 5} more...</li>}
                                                 </ul>
                                               </div>
                                             )}
                                             {apathyaList.length > 0 && (
                                               <div>
                                                 <p className="font-bold text-red-600 mb-1 flex items-center gap-1"><X className="w-3 h-3" /> {apathyaLabel}</p>
-                                                <ul className="space-y-0.5 text-stone-600">
+                                                <ul className="space-y-0.5 text-slate-600">
                                                   {apathyaList.slice(0, 4).map((a, i) => (
                                                     <li key={i} className="flex gap-1"><span className="text-red-400 shrink-0">•</span>{a}</li>
                                                   ))}
-                                                  {apathyaList.length > 4 && <li className="text-stone-400">+{apathyaList.length - 4} more...</li>}
+                                                  {apathyaList.length > 4 && <li className="text-slate-400">+{apathyaList.length - 4} more...</li>}
                                                 </ul>
                                               </div>
                                             )}
@@ -1625,11 +1528,11 @@ export default function Home() {
                                     </div>
 
                                     {/* WhatsApp send bar */}
-                                    <div className="px-3 py-2.5 bg-stone-50 border-t border-stone-100 flex items-center gap-2">
+                                    <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex items-center gap-3">
                                       <div className="flex-1 min-w-0">
-                                        <p className="text-xs text-stone-500">
+                                        <p className="text-xs text-slate-500">
                                           {form.getValues("mobile")
-                                            ? <span>Will send to <strong className="text-stone-700 font-mono">{form.getValues("mobile")}</strong></span>
+                                            ? <span>Will send to <strong className="text-slate-700 font-mono">{form.getValues("mobile")}</strong></span>
                                             : <span className="text-amber-600">Fill mobile number to send directly</span>
                                           }
                                         </p>
@@ -1657,48 +1560,45 @@ export default function Home() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-                <div className="space-y-1">
-                  <label className="mc-label">Treatment Plan</label>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Treatment Plan</label>
                   <textarea {...form.register("treatment")} rows={2}
-                    className="mc-input" style={{resize:"none"}} placeholder="Prescribed medicines..." />
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Prescribed medicines..." />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="mc-label">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
                       Advice / Notes
-                      <span className="text-stone-400 font-normal ml-2">— F5 = follow-up after 5 days</span>
+                      <span className="text-slate-400 font-normal text-xs ml-2">— F5 = follow-up after 5 days</span>
                     </label>
                     <textarea {...form.register("advice")} rows={2}
-                      className="mc-input" style={{resize:"none"}} placeholder="F5 · Rest, diet..." />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="F5 · Rest, diet..." />
                   </div>
-                  <div className="space-y-1">
-                    <label className="mc-label">Reports Required</label>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Reports Required</label>
                     <textarea {...form.register("reports")} rows={2}
-                      className="mc-input" style={{resize:"none"}} placeholder="Blood test, X-ray..." />
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Blood test, X-ray..." />
                   </div>
                 </div>
                 {/* Attachments */}
-                <div className="space-y-1">
-                  <label className="mc-label">
-                    <Paperclip className="w-3 h-3 text-stone-400" /> Attach Report Images
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 text-slate-400" /> Attach Report Images
                   </label>
-                  <div className="border-2 border-dashed border-stone-200 rounded-lg p-4 flex flex-col items-center gap-1.5 cursor-pointer hover:border-teal-300 hover:bg-teal-50/30 transition-all"
+                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 flex flex-col items-center gap-2 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all"
                     onClick={() => fileInputRef.current?.click()}>
-                    <div className="flex items-center gap-3 text-stone-300">
-                      <Paperclip className="w-5 h-5" />
-                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    </div>
-                    <p className="text-xs text-stone-400">Click to upload image reports</p>
+                    <Paperclip className="w-6 h-6 text-slate-300" />
+                    <p className="text-sm text-slate-400">Click to upload image reports</p>
                   </div>
                   <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileUpload} />
                   {attachments.length > 0 && (
                     <div className="flex flex-wrap gap-3 mt-2">
                       {attachments.map((src, i) => (
                         <div key={i} className="relative group">
-                          <img src={src} className="w-16 h-16 object-cover rounded-lg border border-stone-200" alt={`Report ${i + 1}`} />
+                          <img src={src} className="w-20 h-20 object-cover rounded-xl border border-slate-200" alt={`Report ${i + 1}`} />
                           <button type="button" onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
-                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <X className="w-2.5 h-2.5" />
+                            className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X className="w-3 h-3" />
                           </button>
                         </div>
                       ))}
@@ -1707,63 +1607,61 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Action Buttons for clinical form */}
-              <div className="flex gap-2 mt-2">
-                <button type="button" onClick={onSaveAyurvedic} className="mc-btn-green flex-1">
-                  <Leaf style={{width:16,height:16}} /> Save Ayurvedic
+              {/* Action Buttons */}
+              <div className="flex flex-wrap justify-end gap-3 pt-2">
+                {lastSaved && (
+                  <button type="button" onClick={() => printPatientPrescription(lastSaved)}
+                    className="px-5 py-3 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-2">
+                    <Printer className="w-5 h-5" /> Print Last
+                  </button>
+                )}
+                {lastSaved && (
+                  <button type="button" onClick={() => setShowCard(true)}
+                    className="px-5 py-3 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-400/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
+                    <WalletCards className="w-5 h-5" /> Share Card
+                  </button>
+                )}
+                <button type="button" onClick={onSaveAyurvedic}
+                  className="px-5 py-3 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
+                  <Leaf className="w-5 h-5" /> Save Ayurvedic
                 </button>
-                <button type="submit" className="mc-btn-dark flex-1">
-                  <Save style={{width:16,height:16}} /> Save General
+                <button type="submit"
+                  className="px-7 py-3 rounded-xl font-semibold bg-gradient-to-r from-primary via-blue-500 to-indigo-600 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
+                  <Save className="w-5 h-5" /> Save General
                 </button>
               </div>
             </form>
           </div>
         </div>
 
-        {/* ── RIGHT SIDEBAR ── */}
+        {/* ── SIDEBAR ── */}
         <div className="lg:col-span-4">
-          <div className="sticky top-24 space-y-3">
-            {/* Sync from Sheet button - top of sidebar */}
-            <div className="flex gap-2 mb-1">
-              <button type="button" onClick={handleSync}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-white text-xs font-semibold"
-                style={{background:"#1f9080"}}>
-                {isSyncing ? <Loader2 style={{width:14,height:14}} className="animate-spin" /> : <RefreshCw style={{width:14,height:14}} />}
-                Sync from Sheet
-              </button>
-              <button type="button" onClick={() => { setSheetInput(sheetUrl); setShowSheetModal(true); }}
-                title="Connect Google Sheet"
-                className="px-3 py-2 rounded-xl border text-xs font-semibold"
-                style={{background:"#fff",border:"1.5px solid #ddd8cc",color:"#6b7a5a"}}>
-                <Sheet style={{width:14,height:14}} />
-              </button>
-            </div>
+          <div className="sticky top-24 space-y-4">
             {/* Filter Mode Selector */}
-            <div className="mc-card p-3">
-              <div className="h-0.5 w-full rounded-full mb-3" style={{background:"linear-gradient(90deg,#1f9080,#2d5a27)"}} />
-              <div className="flex gap-1 rounded-xl p-1" style={{background:"#ede8dc"}}>
+            <div className="medical-card p-3">
+              <div className="flex gap-1 bg-slate-100 rounded-2xl p-1">
                 <button onClick={() => setFilterMode("history")}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "history" ? "bg-white shadow-sm" : ""}`}>
+                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "history" ? "bg-white shadow text-primary" : "text-slate-500 hover:text-slate-700"}`}>
                   <RefreshCw className="w-3 h-3" /> History
                 </button>
                 <button onClick={() => setFilterMode("complaint")}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "complaint" ? "bg-white shadow-sm" : ""}`}>
+                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "complaint" ? "bg-white shadow text-primary" : "text-slate-500 hover:text-slate-700"}`}>
                   <Activity className="w-3 h-3" /> Complaint
                 </button>
                 <button onClick={() => setFilterMode("address")}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "address" ? "bg-white shadow-sm" : ""}`}>
+                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "address" ? "bg-white shadow text-primary" : "text-slate-500 hover:text-slate-700"}`}>
                   <MapPin className="w-3 h-3" /> Village
                 </button>
               </div>
 
               {(filterMode === "complaint" || filterMode === "address") && (
                 <div className="mt-2 relative">
-                  <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     value={filterQuery}
                     onChange={e => setFilterQuery(e.target.value)}
                     placeholder={filterMode === "complaint" ? "Search complaint or code..." : "Search village / city..."}
-                    className="mc-input" style={{paddingLeft:"28px",fontSize:"12px"}}
+                    className="w-full pl-8 pr-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary text-sm"
                     autoFocus
                   />
                 </div>
@@ -1775,47 +1673,47 @@ export default function Home() {
               {/* ── HISTORY MODE ── */}
               {filterMode === "history" && (
                 <motion.div key="history" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="mc-card overflow-hidden flex flex-col" style={{maxHeight:"calc(100vh - 220px)"}}>
+                  className="medical-card overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
                   {patientHistory.length > 0 ? (
                     <>
                       {/* Patient identity header */}
-                      <div className="px-4 py-3 shrink-0" style={{borderBottom:"1px solid #e8e4da",background:"#f8f6f0"}}>
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{background:"#e0f0e8",color:"#1f7a4a"}}>
-                            <User className="w-3.5 h-3.5" />
+                      <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-primary/10 to-blue-50 shrink-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                            <User className="w-4 h-4" />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-bold truncate text-sm" style={{color:"#1a2010"}}>{historyName || patientHistory[0]?.name}</p>
-                            <p className="text-[10px] font-mono text-stone-500">{historyMobile || patientHistory[0]?.mobile}</p>
+                            <p className="font-bold text-slate-900 truncate">{historyName || patientHistory[0]?.name}</p>
+                            <p className="text-xs font-mono text-slate-500">{historyMobile || patientHistory[0]?.mobile}</p>
                           </div>
-                          <span className="ml-auto text-[10px] text-stone-400 shrink-0 bg-stone-100 px-1.5 py-0.5 rounded">{patientHistory.length} visits</span>
+                          <span className="ml-auto text-xs text-slate-400 shrink-0">{patientHistory.length} visits</span>
                         </div>
                       </div>
-                      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                      <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         {patientHistory.map((visit, i) => (
-                          <div key={i} className="p-2.5 rounded-lg transition-all" style={{border:"1px solid #e8e4da",background:"#fafaf7"}}>
-                            <div className="flex justify-between items-center mb-1.5">
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-stone-100 rounded text-stone-600">
+                          <div key={i} className="p-3 rounded-xl border border-slate-100 bg-white hover:bg-gradient-to-r hover:from-blue-50/60 hover:to-slate-50 transition-all hover:border-blue-100 hover:shadow-sm">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-xs font-bold px-2 py-1 bg-white rounded-md border border-slate-200 text-slate-600">
                                 {format(new Date(visit.visitDate), "dd MMM yyyy")}
                               </span>
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1.5">
                                 {visit.registerType === "ayurvedic" && (
-                                  <span className="text-[9px] font-bold px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">AYU</span>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">AYU</span>
                                 )}
                                 {visit.fees > 0 && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{color:"#1f7a4a",background:"#e0f0e8"}}>₹{visit.fees}</span>
+                                  <span className="text-xs font-bold text-primary bg-primary/5 px-2 py-1 rounded-md">₹{visit.fees}</span>
                                 )}
                               </div>
                             </div>
-                            <div className="space-y-0.5">
-                              {visit.complaint && <p className="text-[11px] text-stone-700"><span className="text-[9px] uppercase text-stone-400 font-bold">Complaint: </span>{visit.complaint}</p>}
-                              {visit.treatment && <p className="text-[11px] text-stone-600"><span className="text-[9px] uppercase text-stone-400 font-bold">Treatment: </span>{visit.treatment}</p>}
-                              {visit.advice && <p className="text-[11px] text-stone-500"><span className="text-[9px] uppercase text-stone-400 font-bold">Advice: </span>{visit.advice}</p>}
+                            <div className="space-y-1">
+                              {visit.complaint && <p className="text-xs text-slate-700"><span className="text-[10px] uppercase text-slate-400 font-bold">Complaint: </span>{visit.complaint}</p>}
+                              {visit.treatment && <p className="text-xs text-slate-600"><span className="text-[10px] uppercase text-slate-400 font-bold">Treatment: </span>{visit.treatment}</p>}
+                              {visit.advice && <p className="text-xs text-slate-500"><span className="text-[10px] uppercase text-slate-400 font-bold">Advice: </span>{visit.advice}</p>}
                             </div>
-                            <div className="mt-1.5 flex justify-end">
+                            <div className="mt-2 flex justify-end">
                               <button type="button" onClick={() => printPatientPrescription(visit)}
-                                className="flex items-center gap-1 text-[10px] text-stone-400 hover:text-teal-600 transition-colors">
-                                <Printer className="w-2.5 h-2.5" /> Print
+                                className="flex items-center gap-1 text-xs text-slate-400 hover:text-primary transition-colors">
+                                <Printer className="w-3 h-3" /> Print
                               </button>
                             </div>
                           </div>
@@ -1823,10 +1721,10 @@ export default function Home() {
                       </div>
                     </>
                   ) : (
-                    <div className="p-8 flex flex-col items-center justify-center text-center text-stone-400 h-64">
-                      <FileText className="w-10 h-10 mb-3 text-stone-200" />
-                      <p className="font-medium text-sm">No history yet</p>
-                      <p className="text-xs mt-1.5">Type mobile / case no. then press<br /><kbd className="px-1.5 py-0.5 bg-stone-200 rounded text-[10px] mx-1">Enter</kbd>or click <Search className="w-2.5 h-2.5 inline mx-1" /></p>
+                    <div className="p-8 flex flex-col items-center justify-center text-center text-slate-400 h-64">
+                      <FileText className="w-12 h-12 mb-4 text-slate-300" />
+                      <p className="font-medium">No history yet</p>
+                      <p className="text-sm mt-2">Type mobile / case no. then press<br /><kbd className="px-1.5 py-0.5 bg-slate-200 rounded text-xs mx-1">Enter</kbd>or click <Search className="w-3 h-3 inline mx-1" /></p>
                     </div>
                   )}
                 </motion.div>
@@ -1835,27 +1733,27 @@ export default function Home() {
               {/* ── COMPLAINT / VILLAGE MODE ── compact list ── */}
               {(filterMode === "complaint" || filterMode === "address") && (
                 <motion.div key="filter" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="mc-card overflow-hidden flex flex-col" style={{maxHeight:"calc(100vh - 220px)"}}>
+                  className="medical-card overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
                   {filterResults.length > 0 ? (
                     <>
-                      <div className="px-3 py-2.5 border-b border-stone-100 bg-stone-50/60 shrink-0 flex items-center gap-2">
-                        <SlidersHorizontal className="w-3.5 h-3.5 text-teal-500" />
-                        <span className="font-semibold text-xs text-stone-700">
+                      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 shrink-0 flex items-center gap-2">
+                        <SlidersHorizontal className="w-4 h-4 text-primary" />
+                        <span className="font-semibold text-sm text-slate-800">
                           {filterMode === "complaint" ? "By Complaint" : "By Village"}
                         </span>
-                        <span className="ml-auto text-[10px] font-bold text-stone-500 bg-stone-200 px-1.5 py-0.5 rounded-full">
+                        <span className="ml-auto text-xs font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
                           {filterResults.length} patients
                         </span>
                       </div>
-                      <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
+                      <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
                         {filterResults.map((p, i) => (
-                          <div key={i} className="flex items-center gap-2.5 px-3 py-2 hover:bg-stone-50 transition-colors">
-                            <span className="text-[10px] text-stone-400 font-medium w-4 shrink-0">{i + 1}</span>
+                          <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
+                            <span className="text-xs text-slate-400 font-medium w-5 shrink-0">{i + 1}</span>
                             <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-stone-900 text-xs truncate">{p.name}</p>
-                              <p className="text-[10px] font-mono text-stone-400">{p.mobile}</p>
+                              <p className="font-semibold text-slate-900 text-sm truncate">{p.name}</p>
+                              <p className="text-xs font-mono text-slate-400">{p.mobile}</p>
                             </div>
-                            <span className="text-[10px] text-stone-400 shrink-0">
+                            <span className="text-xs text-slate-400 shrink-0">
                               {format(new Date(p.visitDate), "dd/MM/yy")}
                             </span>
                           </div>
@@ -1863,9 +1761,9 @@ export default function Home() {
                       </div>
                     </>
                   ) : (
-                    <div className="p-6 flex flex-col items-center justify-center text-center text-stone-400 h-40">
-                      {filterMode === "complaint" ? <Activity className="w-8 h-8 mb-2.5 text-stone-200" /> : <MapPin className="w-8 h-8 mb-2.5 text-stone-200" />}
-                      <p className="text-xs font-medium">{filterQuery.length < 2 ? "Type to search..." : "No results found"}</p>
+                    <div className="p-8 flex flex-col items-center justify-center text-center text-slate-400 h-48">
+                      {filterMode === "complaint" ? <Activity className="w-10 h-10 mb-3 text-slate-300" /> : <MapPin className="w-10 h-10 mb-3 text-slate-300" />}
+                      <p className="text-sm font-medium">{filterQuery.length < 2 ? "Type to search..." : "No results found"}</p>
                     </div>
                   )}
                 </motion.div>
@@ -1873,31 +1771,30 @@ export default function Home() {
             </AnimatePresence>
 
             {/* ── LOOSE MEDICINE SALES ── */}
-            <div className="mc-card overflow-hidden">
-              <div className="h-0.5 w-full bg-gradient-to-r from-violet-500 to-purple-600 rounded-t-full" />
-              <div className="px-3 py-2.5 flex items-center justify-between" style={{background:"linear-gradient(135deg,#7c3558,#9a3d6e)"}}>
+            <div className="medical-card overflow-hidden">
+              <div className="px-4 py-3 bg-gradient-to-r from-violet-600 to-purple-600 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ShoppingBag className="w-3.5 h-3.5 text-white" />
-                  <span className="text-xs font-bold text-white">Loose Medicine Sales</span>
+                  <ShoppingBag className="w-4 h-4 text-white" />
+                  <span className="text-sm font-bold text-white">Loose Medicine Sales</span>
                 </div>
                 {looseTodayTotal > 0 && (
-                  <span className="text-[10px] font-bold text-violet-700 bg-white px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                    <IndianRupee className="w-2.5 h-2.5" />{looseTodayTotal.toLocaleString("en-IN")}
+                  <span className="text-xs font-bold text-violet-700 bg-white px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <IndianRupee className="w-3 h-3" />{looseTodayTotal.toLocaleString("en-IN")}
                   </span>
                 )}
               </div>
               {/* Add Entry Form */}
-              <div className="p-3 border-b border-violet-50 bg-white space-y-1.5">
+              <div className="p-3 border-b border-violet-50 bg-white space-y-2">
                 <input
                   value={looseProduct}
                   onChange={e => setLooseProduct(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); document.getElementById("loose-amount-input")?.focus(); } }}
                   placeholder="Product name (e.g. Triphala Churna)"
-                  className="mc-input" style={{fontSize:"12px"}}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm transition-all"
                 />
-                <div className="flex gap-1.5">
+                <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 text-xs font-bold">₹</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₹</span>
                     <input
                       id="loose-amount-input"
                       type="number"
@@ -1906,49 +1803,97 @@ export default function Home() {
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddLooseSale(); } }}
                       placeholder="Amount"
                       min={0}
-                      className="mc-input" style={{paddingLeft:"24px",fontSize:"12px",fontFamily:"monospace"}}
+                      className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm font-mono transition-all"
                     />
                   </div>
                   <button
                     onClick={handleAddLooseSale}
                     disabled={!looseProduct.trim() || !looseAmount || Number(looseAmount) <= 0}
-                    className="flex items-center gap-1 px-2.5 py-2 rounded-lg text-white font-bold text-xs disabled:opacity-40" style={{background:"#7c3558"}}>
-                    <PackagePlus className="w-3.5 h-3.5" /> Add
+                    className="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors flex items-center gap-1.5 shadow-sm">
+                    <PackagePlus className="w-4 h-4" /> Add
                   </button>
                 </div>
               </div>
               {/* Sales List */}
               {looseSales.length === 0 ? (
-                <div className="px-3 py-4 text-center text-stone-400">
-                  <ShoppingBag className="w-6 h-6 mx-auto mb-1 text-violet-100" />
-                  <p className="text-[10px] font-medium text-stone-500">No loose sales today</p>
-                  <p className="text-[10px] mt-0.5 text-stone-400">Add a product above to start tracking</p>
+                <div className="px-4 py-5 text-center text-slate-400">
+                  <ShoppingBag className="w-7 h-7 mx-auto mb-1.5 text-violet-200" />
+                  <p className="text-xs font-medium text-slate-500">No loose sales today</p>
+                  <p className="text-xs mt-0.5 text-slate-400">Add a product above to start tracking</p>
                 </div>
               ) : (
-                <div className="divide-y divide-stone-50 max-h-48 overflow-y-auto">
+                <div className="divide-y divide-slate-50 max-h-52 overflow-y-auto">
                   {looseSales.map((sale, i) => (
-                    <div key={sale.id} className="flex items-center gap-2 px-3 py-2 hover:bg-violet-50/40 transition-colors group">
-                      <span className="text-[10px] text-stone-300 w-3.5 shrink-0 font-mono">{i + 1}</span>
+                    <div key={sale.id} className="flex items-center gap-2 px-3 py-2.5 hover:bg-violet-50/40 transition-colors group">
+                      <span className="text-xs text-slate-300 w-4 shrink-0 font-mono">{i + 1}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[11px] text-stone-800 truncate">{sale.product}</p>
-                        <p className="text-[9px] text-stone-400">{sale.time}</p>
+                        <p className="font-semibold text-xs text-slate-800 truncate">{sale.product}</p>
+                        <p className="text-[10px] text-slate-400">{sale.time}</p>
                       </div>
-                      <span className="font-bold text-violet-700 text-xs shrink-0">₹{sale.amount.toLocaleString("en-IN")}</span>
+                      <span className="font-bold text-violet-700 text-sm shrink-0">₹{sale.amount.toLocaleString("en-IN")}</span>
                       <button
                         onClick={() => handleRemoveLooseSale(sale.id)}
                         title="Remove"
-                        className="shrink-0 p-1 rounded text-stone-200 hover:text-red-400 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
-                        <Trash2 className="w-3 h-3" />
+                        className="shrink-0 p-1 rounded-lg text-slate-300 hover:text-red-400 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}
-                  <div className="px-3 py-2 bg-violet-50 flex justify-between items-center sticky bottom-0">
-                    <span className="text-[10px] font-bold text-violet-700 flex items-center gap-1">
-                      <ShoppingBag className="w-2.5 h-2.5" /> Today's Total ({looseSales.length} item{looseSales.length !== 1 ? "s" : ""})
+                  <div className="px-3 py-2.5 bg-violet-50 flex justify-between items-center sticky bottom-0">
+                    <span className="text-xs font-bold text-violet-700 flex items-center gap-1">
+                      <ShoppingBag className="w-3 h-3" /> Today's Total ({looseSales.length} item{looseSales.length !== 1 ? "s" : ""})
                     </span>
-                    <span className="font-bold text-violet-700 flex items-center gap-0.5 text-xs">
-                      <IndianRupee className="w-3 h-3" />{looseTodayTotal.toLocaleString("en-IN")}
+                    <span className="font-bold text-violet-700 flex items-center gap-0.5">
+                      <IndianRupee className="w-3.5 h-3.5" />{looseTodayTotal.toLocaleString("en-IN")}
                     </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── PENDING FEES PANEL ── */}
+            <div className="medical-card overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500">
+                <div className="flex items-center gap-2">
+                  <WalletCards className="w-4 h-4 text-white" />
+                  <span className="font-semibold text-sm text-white">Pending Fees</span>
+                  {pendingFees.length > 0 && (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white text-amber-600">{pendingFees.length}</span>
+                  )}
+                </div>
+                {pendingFees.length > 0 && (
+                  <span className="text-xs font-bold text-white">
+                    Total: ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
+                  </span>
+                )}
+              </div>
+              {pendingFees.length === 0 ? (
+                <div className="px-4 py-6 text-center text-slate-400">
+                  <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-300" />
+                  <p className="text-xs font-medium">No pending fees</p>
+                  <p className="text-xs mt-1 text-slate-300">Use "Mark Pending" in the fees field</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-amber-50 max-h-64 overflow-y-auto">
+                  {pendingFees.map((e, i) => (
+                    <div key={e.patientId} className="flex items-center gap-2 px-3 py-2.5 hover:bg-amber-50/50 transition-colors">
+                      <span className="text-xs text-slate-400 w-4 shrink-0">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-xs text-slate-900 truncate">{e.name}</p>
+                        <p className="text-[10px] font-mono text-slate-400">{e.mobile} · {format(new Date(e.date + "T00:00:00"), "dd MMM")}</p>
+                      </div>
+                      <span className="font-bold text-amber-600 text-sm shrink-0">₹{e.fees}</span>
+                      <button
+                        onClick={() => { removePendingFee(e.patientId); refreshPending(); toast({ title: "Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
+                        title="Mark as paid"
+                        className="shrink-0 p-1.5 rounded-lg bg-emerald-100 text-emerald-600 hover:bg-emerald-200 transition-colors">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="px-3 py-2 bg-amber-50 flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-600">Total Pending</span>
+                    <span className="font-bold text-amber-600">₹{pendingFees.reduce((s, e) => s + e.fees, 0)}</span>
                   </div>
                 </div>
               )}
@@ -1957,7 +1902,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-      </div>{/* end mc-bg */}
       {/* ── Google Sheet Connect Modal ── */}
       <AnimatePresence>
         {showSheetModal && (
@@ -2042,177 +1986,6 @@ export default function Home() {
                     <span className="text-xs text-emerald-600 font-semibold shrink-0">Fill →</span>
                   </button>
                 ))}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── PENDING FEES FLOATING BUTTON ── */}
-      <motion.button
-        onClick={() => { refreshPending(); setShowPendingModal(true); }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 px-4 py-3 rounded-2xl font-bold text-sm text-white shadow-2xl"
-        style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)", boxShadow: "0 8px 32px rgba(245,158,11,0.5)" }}
-      >
-        <WalletCards className="w-5 h-5" />
-        <span>Pending Fees</span>
-        {pendingFees.length > 0 && (
-          <motion.span
-            key={pendingFees.length}
-            initial={{ scale: 1.5 }}
-            animate={{ scale: 1 }}
-            className="w-5 h-5 rounded-full bg-white text-amber-600 text-[11px] font-black flex items-center justify-center"
-          >
-            {pendingFees.length}
-          </motion.span>
-        )}
-      </motion.button>
-
-      {/* ── PENDING FEES POPUP MODAL ── */}
-      <AnimatePresence>
-        {showPendingModal && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-            onClick={() => setShowPendingModal(false)}
-          >
-            <motion.div
-              initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 320, damping: 28 }}
-              onClick={e => e.stopPropagation()}
-              className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4" style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)" }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                    <WalletCards className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-white text-base leading-none">Pending Fees</p>
-                    <p className="text-amber-100 text-xs mt-0.5">{pendingFees.length} patient{pendingFees.length !== 1 ? "s" : ""}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {pendingFees.length > 0 && (
-                    <div className="text-right">
-                      <p className="text-[10px] text-amber-100 font-semibold uppercase tracking-wide">Total</p>
-                      <p className="text-white font-black text-xl leading-none">₹{pendingFees.reduce((s, e) => s + e.fees, 0).toLocaleString("en-IN")}</p>
-                    </div>
-                  )}
-                  <button onClick={() => setShowPendingModal(false)} className="w-8 h-8 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
-                    <X className="w-4 h-4 text-white" />
-                  </button>
-                </div>
-              </div>
-              {/* Body */}
-              {pendingFees.length === 0 ? (
-                <div className="px-6 py-14 flex flex-col items-center text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                  </div>
-                  <p className="font-bold text-slate-700 text-base">All cleared!</p>
-                  <p className="text-slate-400 text-sm mt-1">No pending fees at the moment.</p>
-                </div>
-              ) : (
-                <div className="max-h-[55vh] overflow-y-auto divide-y divide-slate-100">
-                  {pendingFees.map((e, i) => (
-                    <div key={e.patientId} className="flex items-center gap-3 px-5 py-3.5 hover:bg-amber-50/40 transition-colors">
-                      <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                        <span className="text-xs font-black text-amber-600">{i + 1}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-slate-900 text-sm truncate">{e.name}</p>
-                        <p className="text-[11px] font-mono text-slate-400 mt-0.5">{e.mobile} · {format(new Date(e.date + "T00:00:00"), "dd MMM yyyy")}</p>
-                      </div>
-                      <p className="font-black text-amber-600 text-base shrink-0">₹{e.fees.toLocaleString("en-IN")}</p>
-                      <button
-                        onClick={() => { removePendingFee(e.patientId); refreshPending(); setPendingAlert(null); toast({ title: "✅ Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
-                        className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-bold text-xs transition-colors"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Paid
-                      </button>
-                    </div>
-                  ))}
-                  <div className="px-5 py-3 bg-amber-50 flex justify-between items-center sticky bottom-0">
-                    <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                      <Hourglass className="w-3.5 h-3.5 text-amber-500" /> Total Pending
-                    </span>
-                    <span className="font-black text-amber-600 text-base">₹{pendingFees.reduce((s, e) => s + e.fees, 0).toLocaleString("en-IN")}</span>
-                  </div>
-                </div>
-              )}
-              <div className="px-5 py-4 border-t border-slate-100">
-                <button onClick={() => setShowPendingModal(false)}
-                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── PENDING FEES ALERT (auto-pops on 2nd visit) ── */}
-      <AnimatePresence>
-        {pendingAlert && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-            onClick={() => setPendingAlert(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.85, opacity: 0, y: -20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.85, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 350, damping: 25 }}
-              onClick={e => e.stopPropagation()}
-              className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
-              style={{ border: "3px solid #f59e0b" }}
-            >
-              <div className="px-5 pt-7 pb-4 flex flex-col items-center text-center" style={{ background: "linear-gradient(160deg, #fffbeb, #fff7ed)" }}>
-                <motion.div
-                  animate={{ rotate: [0, -10, 10, -10, 10, 0] }}
-                  transition={{ duration: 0.55, delay: 0.15 }}
-                  className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-lg"
-                  style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)" }}
-                >
-                  <Hourglass className="w-8 h-8 text-white" />
-                </motion.div>
-                <p className="text-[11px] font-black uppercase tracking-widest text-amber-500 mb-1">⚠️ Pending Fees Alert</p>
-                <h3 className="text-xl font-black text-slate-900">{pendingAlert.name}</h3>
-                <p className="text-sm text-slate-400 mt-0.5 font-mono">{pendingAlert.mobile}</p>
-              </div>
-              <div className="mx-5 my-4 rounded-2xl p-4 flex items-center gap-4" style={{ background: "linear-gradient(135deg, #fef3c7, #fde68a)" }}>
-                <div className="flex-1">
-                  <p className="text-xs font-bold text-amber-600 uppercase tracking-wide">Outstanding Amount</p>
-                  <p className="text-3xl font-black text-amber-700 mt-1">₹{pendingAlert.fees.toLocaleString("en-IN")}</p>
-                  <p className="text-[11px] text-amber-500 mt-1">Since {format(new Date(pendingAlert.date + "T00:00:00"), "dd MMM yyyy")}</p>
-                </div>
-                <IndianRupee className="w-10 h-10 text-amber-400 opacity-60 shrink-0" />
-              </div>
-              <p className="text-center text-xs text-slate-400 px-5 pb-3">This patient has unpaid fees from a previous visit</p>
-              <div className="px-5 pb-5 flex gap-3">
-                <button
-                  onClick={() => setPendingAlert(null)}
-                  className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors"
-                >
-                  Remind Later
-                </button>
-                <button
-                  onClick={() => {
-                    removePendingFee(pendingAlert.patientId);
-                    refreshPending();
-                    setPendingAlert(null);
-                    toast({ title: "✅ Fees Cleared", description: `${pendingAlert.name}'s pending fees marked as paid.` });
-                  }}
-                  className="flex-[2] py-3 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 shadow-lg transition-all hover:opacity-90"
-                  style={{ background: "linear-gradient(135deg, #10b981, #059669)" }}
-                >
-                  <CheckCircle2 className="w-4 h-4" /> Mark as Paid
-                </button>
               </div>
             </motion.div>
           </motion.div>
