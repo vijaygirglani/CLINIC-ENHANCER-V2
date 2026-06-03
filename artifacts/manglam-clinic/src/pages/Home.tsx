@@ -245,36 +245,11 @@ const emptyDefaults: PatientFormValues = {
   advice: "", reports: "", fees: 0, paymentMode: "cash" as const,
 };
 
-// ── Draw patient card directly onto a Canvas (no html2canvas) ────────────
-// Narrow portrait card — renders like a wallet/ID card in WhatsApp (≈320×480 px logical)
+// ── Draw patient card — premium vertical visiting card style ────────────
 function drawPatientCard(patient: Patient): HTMLCanvasElement {
-  const W = 320, scale = 3; // 960px actual — sharp on all screens, narrow in WA chat
-  const cw = W * scale;
-
-  // wrap address text
-  const tmpC = document.createElement("canvas");
-  const tmpX = tmpC.getContext("2d")!;
-  tmpX.font = `bold ${10}px sans-serif`;
-  const addrText = patient.address || "—";
-  const maxAddrW = W - 32;
-  const addrLines: string[] = [];
-  let addrCur = "";
-  for (const word of addrText.split(" ")) {
-    const test = addrCur ? addrCur + " " + word : word;
-    if (tmpX.measureText(test).width > maxAddrW && addrCur) { addrLines.push(addrCur); addrCur = word; }
-    else addrCur = test;
-  }
-  if (addrCur) addrLines.push(addrCur);
-  const addrExtra = Math.max(0, addrLines.length - 1);
-
-  const HEADER_H = 110;
-  const BODY_H   = 230 + addrExtra * 16;
-  const FOOTER_H = 54;
-  const TOTAL_H  = HEADER_H + BODY_H + FOOTER_H;
-  const ch = TOTAL_H * scale;
-
+  const W = 360, H = 580, scale = 3;
   const canvas = document.createElement("canvas");
-  canvas.width = cw; canvas.height = ch;
+  canvas.width = W * scale; canvas.height = H * scale;
   const ctx = canvas.getContext("2d")!;
   ctx.scale(scale, scale);
 
@@ -288,114 +263,182 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
     ctx.closePath();
   };
 
-  // card bg + clip
-  rr(0, 0, W, TOTAL_H, 20);
-  ctx.fillStyle = "#ffffff"; ctx.fill();
+  // ── Full card background gradient (dark green → deep forest) ──
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#1a3a0f");
+  bg.addColorStop(0.5, "#1f4a12");
+  bg.addColorStop(1, "#0f2208");
+  rr(0, 0, W, H, 24); ctx.fillStyle = bg; ctx.fill();
   ctx.save(); ctx.clip();
 
-  // ── HEADER ──
-  const hg = ctx.createLinearGradient(0, 0, W, HEADER_H);
-  hg.addColorStop(0, "#c45e10"); hg.addColorStop(1, "#b84f0a");
-  ctx.fillStyle = hg; ctx.fillRect(0, 0, W, HEADER_H);
+  // ── Decorative subtle circles (watermark feel) ──
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.arc(W - 40, 60, 90, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-20, H - 80, 110, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 0.04;
+  ctx.beginPath(); ctx.arc(W / 2, H / 2, 180, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 
-  // logo circle
-  ctx.fillStyle = "rgba(255,255,255,0.18)";
-  rr(14, 14, 34, 34, 9); ctx.fill();
-  ctx.fillStyle = "#fff"; ctx.font = `900 16px sans-serif`;
+  // ── Top amber accent band ──
+  const topBand = ctx.createLinearGradient(0, 0, W, 0);
+  topBand.addColorStop(0, "#c45e10");
+  topBand.addColorStop(0.6, "#e07828");
+  topBand.addColorStop(1, "#c45e10");
+  ctx.fillStyle = topBand; ctx.fillRect(0, 0, W, 6);
+
+  // ── Logo circle — centered ──
+  const logoX = W / 2, logoY = 68;
+  // outer glow ring
+  ctx.save();
+  ctx.shadowColor = "#e07828"; ctx.shadowBlur = 18;
+  ctx.strokeStyle = "rgba(224,120,40,0.5)"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(logoX, logoY, 38, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+  // filled circle
+  const logoGrad = ctx.createRadialGradient(logoX - 8, logoY - 8, 5, logoX, logoY, 34);
+  logoGrad.addColorStop(0, "#e07828");
+  logoGrad.addColorStop(1, "#b84f0a");
+  ctx.fillStyle = logoGrad;
+  ctx.beginPath(); ctx.arc(logoX, logoY, 34, 0, Math.PI * 2); ctx.fill();
+  // M letter
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `900 28px serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("M", 31, 31);
+  ctx.fillText("M", logoX, logoY + 1);
 
-  // clinic name + subtitle
-  ctx.fillStyle = "#fff"; ctx.font = `bold 13px sans-serif`;
-  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("Manglam Clinic", 56, 27);
-  ctx.fillStyle = "#ffe0c0"; ctx.font = `9px sans-serif`;
-  ctx.fillText("Dr. Vijay Girglani | B.A.M.S.", 56, 40);
+  // ── Clinic Name ──
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `bold 22px serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("Manglam Clinic", W / 2, 128);
 
-  // divider
-  ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(14, 58); ctx.lineTo(W - 14, 58); ctx.stroke();
+  // Doctor name
+  ctx.fillStyle = "#d4a574";
+  ctx.font = `italic 11px serif`;
+  ctx.fillText("Dr. Vijay Girglani  |  B.A.M.S.", W / 2, 148);
 
-  // subtitle text
-  ctx.fillStyle = "rgba(255,224,192,0.9)"; ctx.font = `bold 7px sans-serif`;
-  ctx.textAlign = "center"; ctx.letterSpacing = "1.8px";
-  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, 74);
+  // Tagline with decorative lines
+  const tlY = 168;
+  ctx.strokeStyle = "rgba(212,165,116,0.4)"; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(24, tlY); ctx.lineTo(W / 2 - 70, tlY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W / 2 + 70, tlY); ctx.lineTo(W - 24, tlY); ctx.stroke();
+  ctx.fillStyle = "rgba(212,165,116,0.8)"; ctx.font = `7.5px sans-serif`;
+  ctx.letterSpacing = "2px";
+  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, tlY + 4);
   ctx.letterSpacing = "0px";
 
-  // ── BODY ──
-  ctx.fillStyle = "#fdf8f3"; ctx.fillRect(0, HEADER_H, W, BODY_H);
+  // ── White "frosted" card panel ──
+  const panelY = 190, panelH = 318;
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 20; ctx.shadowOffsetY = 4;
+  rr(18, panelY, W - 36, panelH, 18);
+  ctx.fillStyle = "#ffffff"; ctx.fill();
+  ctx.restore();
+  ctx.save(); rr(18, panelY, W - 36, panelH, 18); ctx.clip();
 
-  // PATIENT CARD badge
-  const bY = HEADER_H + 16, bLabel = "PATIENT CARD";
-  ctx.font = `bold 7px sans-serif`; ctx.textAlign = "center";
-  const bW = ctx.measureText(bLabel).width + 20;
-  ctx.strokeStyle = "rgba(196,94,16,0.4)"; ctx.lineWidth = 0.8;
-  rr((W - bW) / 2, bY - 7, bW, 14, 7); ctx.stroke();
-  ctx.fillStyle = "#c45e10"; ctx.fillText(bLabel, W / 2, bY + 2);
+  // panel top accent stripe
+  const stripe = ctx.createLinearGradient(18, panelY, W - 18, panelY);
+  stripe.addColorStop(0, "#c45e10"); stripe.addColorStop(1, "#e07828");
+  ctx.fillStyle = stripe; ctx.fillRect(18, panelY, W - 36, 4);
 
-  // Case Number box
-  const bxY = HEADER_H + 36;
-  ctx.fillStyle = "#f5ece0"; rr(14, bxY, W - 28, 44, 11); ctx.fill();
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold 6.5px sans-serif`;
-  ctx.textAlign = "left"; ctx.letterSpacing = "1.2px";
-  ctx.fillText("CASE NUMBER", 26, bxY + 13);
+  // PATIENT CARD label inside panel
+  ctx.fillStyle = "#7c3a0a"; ctx.font = `bold 8px sans-serif`;
+  ctx.letterSpacing = "2.5px"; ctx.textAlign = "center";
+  ctx.fillText("✦  PATIENT CARD  ✦", W / 2, panelY + 22);
   ctx.letterSpacing = "0px";
-  const caseNo = patient.mobile.replace(/\D/g, "").padStart(10, "0");
-  ctx.fillStyle = "#c45e10"; ctx.font = `900 17px monospace`;
-  ctx.fillText(caseNo, 26, bxY + 34);
-  // wallet icon
-  const iX = W - 46, iY = bxY + 7;
-  ctx.fillStyle = "#fff"; rr(iX, iY, 28, 28, 7); ctx.fill();
-  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.2;
-  rr(iX + 5, iY + 7, 18, 14, 3); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(iX + 5, iY + 12); ctx.lineTo(iX + 23, iY + 12); ctx.stroke();
 
-  // rows
-  let rY = bxY + 44 + 16;
-  const LX = 14, RX = W - 14;
+  // ── Case Number section ──
+  const cnY = panelY + 34;
+  ctx.fillStyle = "#fdf0e6";
+  rr(30, cnY, W - 60, 56, 12); ctx.fill();
+  // label
+  ctx.fillStyle = "#b8825a"; ctx.font = `bold 7px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
+  ctx.fillText("CASE NO.", 44, cnY + 16);
+  ctx.letterSpacing = "0px";
+  // number
+  const rawD = patient.mobile.replace(/\D/g, "");
+  const caseNo = rawD.padStart(10, "0");
+  ctx.fillStyle = "#c45e10"; ctx.font = `900 24px monospace`;
+  ctx.fillText(caseNo, 44, cnY + 42);
+  // small card icon on right
+  ctx.fillStyle = "#c45e10"; ctx.globalAlpha = 0.15;
+  rr(W - 72, cnY + 10, 34, 34, 8); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.5;
+  rr(W - 66, cnY + 17, 22, 17, 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W - 66, cnY + 22); ctx.lineTo(W - 44, cnY + 22); ctx.stroke();
 
-  const drawRow = (label: string, value: string, isMultiline = false) => {
-    ctx.fillStyle = "#94a3b8"; ctx.font = `bold 6.5px sans-serif`;
-    ctx.letterSpacing = "1.2px"; ctx.textAlign = "left";
-    ctx.fillText(label, LX, rY);
+  // ── Info rows ──
+  let ry = cnY + 56 + 16;
+  const PX = 30, PXR = W - 30;
+
+  const infoRow = (icon: string, label: string, value: string) => {
+    // icon circle
+    ctx.fillStyle = "#fdf0e6";
+    ctx.beginPath(); ctx.arc(PX + 8, ry + 1, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#c45e10"; ctx.font = `8px sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(icon, PX + 8, ry + 1);
+    // label
+    ctx.fillStyle = "#94a3b8"; ctx.font = `bold 7px sans-serif`;
+    ctx.letterSpacing = "1px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(label, PX + 22, ry - 3);
     ctx.letterSpacing = "0px";
-    ctx.fillStyle = "#1e293b"; ctx.font = `bold 10.5px sans-serif`;
+    // value
+    ctx.fillStyle = "#1e293b"; ctx.font = `bold 11.5px sans-serif`;
     ctx.textAlign = "right";
-    if (!isMultiline) {
-      ctx.fillText(value, RX, rY);
-      rY += 9;
-    } else {
-      // multiline address
-      addrLines.forEach((line, i) => ctx.fillText(line, RX, rY + i * 13));
-      rY += Math.max(9, addrLines.length * 13);
-    }
-    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 0.7;
-    ctx.beginPath(); ctx.moveTo(LX, rY + 4); ctx.lineTo(RX, rY + 4); ctx.stroke();
-    rY += 16;
+    ctx.fillText(value, PXR, ry + 6);
+    // divider
+    ry += 18;
+    ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(PX, ry); ctx.lineTo(PXR, ry); ctx.stroke();
+    ry += 12;
   };
 
-  drawRow("PATIENT NAME", patient.name.toUpperCase());
-  drawRow("ADDRESS", "", true);
+  infoRow("👤", "PATIENT NAME", patient.name.toUpperCase());
 
-  // Clinic phone
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold 6.5px sans-serif`;
-  ctx.letterSpacing = "1.2px"; ctx.textAlign = "left";
-  ctx.fillText("CLINIC PHONE", LX, rY);
+  // address — may wrap
+  const addrVal = patient.address || "—";
+  ctx.fillStyle = "#fdf0e6";
+  ctx.beginPath(); ctx.arc(PX + 8, ry + 1, 8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#c45e10"; ctx.font = `8px sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("📍", PX + 8, ry + 1);
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold 7px sans-serif`;
+  ctx.letterSpacing = "1px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("ADDRESS", PX + 22, ry - 3);
   ctx.letterSpacing = "0px";
-  ctx.fillStyle = "#475569"; ctx.font = `10px monospace`;
-  ctx.textAlign = "right"; ctx.fillText("+91 96381 81875", RX, rY);
-
-  // ── FOOTER ──
-  ctx.fillStyle = "#2d5a1b"; ctx.fillRect(0, HEADER_H + BODY_H, W, FOOTER_H);
-  ctx.fillStyle = "#fff"; ctx.font = `bold 10px sans-serif`;
-  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("Manglam Hospital", 14, HEADER_H + BODY_H + 20);
-  ctx.fillStyle = "#bbf7d0"; ctx.font = `8.5px sans-serif`;
-  ctx.fillText("Morbi, Gujarat", 14, HEADER_H + BODY_H + 32);
-  ctx.fillStyle = "#bbf7d0"; ctx.font = `8px sans-serif`;
+  ctx.fillStyle = "#1e293b"; ctx.font = `bold 11.5px sans-serif`;
   ctx.textAlign = "right";
-  ctx.fillText("Show this card", W - 14, HEADER_H + BODY_H + 20);
-  ctx.fillText("on your next visit", W - 14, HEADER_H + BODY_H + 33);
+  // simple single-line truncate for address
+  const maxAW = PXR - (PX + 22) - 4;
+  let dispAddr = addrVal;
+  while (ctx.measureText(dispAddr).width > maxAW && dispAddr.length > 4) dispAddr = dispAddr.slice(0, -1);
+  if (dispAddr !== addrVal) dispAddr = dispAddr.trimEnd() + "…";
+  ctx.fillText(dispAddr, PXR, ry + 6);
+  ry += 18;
+  ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(PX, ry); ctx.lineTo(PXR, ry); ctx.stroke();
+  ry += 12;
+
+  infoRow("📞", "CLINIC PHONE", "+91 96381 81875");
+
+  ctx.restore(); // end panel clip
+
+  // ── Bottom footer area ──
+  const footY = panelY + panelH + 12;
+  ctx.fillStyle = "rgba(212,165,116,0.7)"; ctx.font = `bold 8px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("MANGLAM HOSPITAL  •  MORBI, GUJARAT", W / 2, footY + 14);
+  ctx.letterSpacing = "0px";
+  ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.font = `9px sans-serif`;
+  ctx.fillText("Show this card on your next visit", W / 2, footY + 30);
+
+  // ── Bottom amber accent ──
+  ctx.fillStyle = topBand; ctx.fillRect(0, H - 6, W, 6);
 
   ctx.restore();
   return canvas;
@@ -494,78 +537,85 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           onClick={e => e.stopPropagation()}
           className="w-full max-w-xs"
         >
-          {/* ── Card (this is what gets captured) ── */}
-          <div ref={cardRef} className="rounded-2xl overflow-hidden shadow-2xl shadow-black/30">
-            {/* Header */}
-            <div style={{ background: "linear-gradient(135deg, #c45e10, #d4711f, #b84f0a)" }} className="px-4 pt-4 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}>
-                  <span className="text-white font-black text-base">M</span>
-                </div>
-                <div>
-                  <p className="text-white font-bold text-sm leading-tight">Manglam Clinic</p>
-                  <p className="text-[9px] font-medium" style={{ color: "#ffe0c0" }}>Dr. Vijay Girglani | B.A.M.S.</p>
-                </div>
+          {/* ── Card preview ── */}
+          <div ref={cardRef} className="rounded-3xl overflow-hidden shadow-2xl" style={{
+            background: "linear-gradient(180deg, #1a3a0f 0%, #1f4a12 50%, #0f2208 100%)",
+            position: "relative",
+          }}>
+            {/* Top amber bar */}
+            <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
+
+            {/* Decorative bg circles */}
+            <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", bottom: 60, left: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
+
+            {/* Clinic header — centered */}
+            <div className="flex flex-col items-center pt-6 pb-4 px-5" style={{ position: "relative", zIndex: 1 }}>
+              {/* Logo ring + circle */}
+              <div style={{
+                width: 64, height: 64, borderRadius: "50%",
+                background: "linear-gradient(135deg, #e07828, #b84f0a)",
+                boxShadow: "0 0 0 3px rgba(224,120,40,0.3), 0 0 18px rgba(224,120,40,0.25)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                marginBottom: 10,
+              }}>
+                <span style={{ color: "#fff", fontFamily: "serif", fontWeight: 900, fontSize: 26 }}>M</span>
               </div>
-              <div className="mt-2.5 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}>
-                <p className="text-[8px] font-bold tracking-[0.2em] uppercase text-center" style={{ color: "rgba(255,224,192,0.9)" }}>
-                  Ayurvedic &amp; General Practice
-                </p>
+              <p style={{ color: "#ffffff", fontFamily: "serif", fontWeight: 700, fontSize: 18, letterSpacing: 0.5, marginBottom: 3 }}>Manglam Clinic</p>
+              <p style={{ color: "#d4a574", fontStyle: "italic", fontSize: 10, marginBottom: 10 }}>Dr. Vijay Girglani  |  B.A.M.S.</p>
+              {/* decorative divider */}
+              <div className="flex items-center gap-2 w-full">
+                <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
+                <p style={{ color: "rgba(212,165,116,0.8)", fontSize: 7, letterSpacing: "2px", whiteSpace: "nowrap" }}>AYURVEDIC &amp; GENERAL PRACTICE</p>
+                <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
               </div>
             </div>
 
-            {/* Body */}
-            <div style={{ background: "#fdf8f3" }} className="px-4 py-3 space-y-2.5">
-              {/* PATIENT CARD label */}
-              <div className="flex justify-center">
-                <span className="text-[8px] font-bold tracking-widest uppercase px-3 py-0.5 rounded-full" style={{ border: "1px solid rgba(196,94,16,0.4)", color: "#c45e10" }}>
-                  Patient Card
-                </span>
-              </div>
+            {/* White panel */}
+            <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
+              {/* panel top stripe */}
+              <div style={{ height: 3, background: "linear-gradient(90deg, #c45e10, #e07828)" }} />
 
-              {/* Case Number */}
-              <div className="rounded-xl px-3 py-2 flex items-center justify-between" style={{ background: "#f5ece0" }}>
-                <div>
-                  <p className="text-[8px] font-bold tracking-widest uppercase mb-0.5" style={{ color: "#94a3b8" }}>Case Number</p>
-                  <p className="text-lg font-black tracking-wide font-mono" style={{ color: "#c45e10" }}>{caseNo}</p>
-                </div>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", color: "#c45e10" }}>
-                  <WalletCards className="w-4 h-4" />
-                </div>
-              </div>
+              <div className="px-4 py-4" style={{ background: "#ffffff" }}>
+                {/* PATIENT CARD label */}
+                <p style={{ textAlign: "center", fontSize: 8, fontWeight: 700, letterSpacing: "2.5px", color: "#7c3a0a", marginBottom: 10 }}>✦ &nbsp; PATIENT CARD &nbsp; ✦</p>
 
-              {/* Patient info rows */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[8px] font-bold tracking-widest uppercase" style={{ color: "#94a3b8" }}>Patient Name</span>
-                  <span className="text-xs font-bold" style={{ color: "#1e293b" }}>{patient.name}</span>
+                {/* Case number box */}
+                <div className="rounded-xl px-3 py-2.5 mb-4" style={{ background: "#fdf0e6" }}>
+                  <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1.5px", color: "#b8825a", marginBottom: 4 }}>CASE NO.</p>
+                  <p style={{ fontSize: 20, fontWeight: 900, fontFamily: "monospace", color: "#c45e10", letterSpacing: 1 }}>{caseNo}</p>
                 </div>
-                <div style={{ height: 1, background: "#e2e8f0" }} />
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-[8px] font-bold tracking-widest uppercase flex items-center gap-1 mt-0.5 shrink-0" style={{ color: "#94a3b8" }}>
-                    <MapPin className="w-2 h-2" /> Address
-                  </span>
-                  <span className="text-xs font-semibold text-right" style={{ color: "#334155" }}>{patient.address || CLINIC_ADDRESS}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[8px] font-bold tracking-widest uppercase flex items-center gap-1" style={{ color: "#94a3b8" }}>
-                    <Phone className="w-2 h-2" /> Clinic Phone
-                  </span>
-                  <span className="text-xs font-mono" style={{ color: "#475569" }}>+91 {clinicPhone}</span>
-                </div>
+
+                {/* Info rows */}
+                {[
+                  { icon: "👤", label: "PATIENT NAME", value: patient.name.toUpperCase() },
+                  { icon: "📍", label: "ADDRESS", value: patient.address || CLINIC_ADDRESS },
+                  { icon: "📞", label: "CLINIC PHONE", value: `+91 ${clinicPhone}` },
+                ].map((row, i, arr) => (
+                  <div key={row.label}>
+                    <div className="flex items-center gap-2 py-2">
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
+                        {row.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{row.label}</p>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
+                      </div>
+                    </div>
+                    {i < arr.length - 1 && <div style={{ height: 1, background: "#f1f5f9" }} />}
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: "#2d5a1b" }}>
-              <div>
-                <p className="text-white font-bold text-xs">Manglam Hospital</p>
-                <p className="text-[9px]" style={{ color: "#bbf7d0" }}>Morbi, Gujarat</p>
-              </div>
-              <p className="text-[9px] text-right leading-tight" style={{ color: "#bbf7d0" }}>
-                Show this card<br />on your next visit
-              </p>
+            {/* Footer text */}
+            <div className="pb-4 px-4 flex flex-col items-center gap-0.5" style={{ position: "relative", zIndex: 1 }}>
+              <p style={{ fontSize: 8, fontWeight: 700, letterSpacing: "1.5px", color: "rgba(212,165,116,0.75)" }}>MANGLAM HOSPITAL  •  MORBI, GUJARAT</p>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)" }}>Show this card on your next visit</p>
             </div>
+
+            {/* Bottom amber bar */}
+            <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
           </div>
 
           {/* error hint */}
