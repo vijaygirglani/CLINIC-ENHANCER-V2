@@ -556,11 +556,13 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
       if (isMobile) {
+        // Mobile: Web Share API — image appears in WhatsApp directly, just tap Send
         const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
-        const canShare = typeof navigator.share === "function" &&
+        if (
+          typeof navigator.share === "function" &&
           typeof navigator.canShare === "function" &&
-          navigator.canShare({ files: [file] });
-        if (canShare) {
+          navigator.canShare({ files: [file] })
+        ) {
           try {
             await navigator.share({ files: [file], title: "Manglam Clinic — Patient Card" });
             setSharing(false);
@@ -569,25 +571,26 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
             if (e?.name === "AbortError") { setSharing(false); return; }
           }
         }
-        window.location.href = `whatsapp://send?phone=${waNumber}`;
+        // Mobile fallback: open WhatsApp app directly to that number's chat
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+
       } else {
+        // Desktop: copy image to clipboard silently, then open WhatsApp to that number's chat
+        // Do NOT use navigator.share — it triggers the Windows share sheet
         let copied = false;
         try {
           await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
           copied = true;
         } catch (_) {}
-        window.location.href = `whatsapp://send?phone=${waNumber}`;
-        if (!copied) {
-          const objectUrl = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = objectUrl; a.download = "manglam-patient-card.png";
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
-        }
+
+        // Open WhatsApp desktop app directly to the patient's chat
+        // window.open with whatsapp:// opens the installed desktop app (not the browser)
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+
         setShareError(
           copied
-            ? `✅ Image copied! WhatsApp opening — press Ctrl+V to paste & send.`
-            : `Image downloaded — attach it in WhatsApp that opened.`
+            ? `✅ Image copied! Just press Ctrl+V in the chat to send.`
+            : `⚠️ Could not copy image — paste manually after opening chat.`
         );
       }
     } catch (err: any) {
