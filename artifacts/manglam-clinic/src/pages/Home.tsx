@@ -548,48 +548,50 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
         canvas.toBlob((b: Blob | null) => b ? res(b) : rej(new Error("toBlob failed")), "image/png", 1.0)
       );
 
-      const waNumber = rawDigits.length === 10
-        ? `91${rawDigits}`
-        : rawDigits.startsWith("91") && rawDigits.length === 12
-          ? rawDigits : rawDigits;
+      const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
 
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-      if (isMobile) {
-        const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
-        const canShare = typeof navigator.share === "function" &&
-          typeof navigator.canShare === "function" &&
-          navigator.canShare({ files: [file] });
-        if (canShare) {
-          try {
-            await navigator.share({ files: [file], title: "Manglam Clinic — Patient Card" });
-            setSharing(false);
-            return;
-          } catch (e: any) {
-            if (e?.name === "AbortError") { setSharing(false); return; }
-          }
-        }
-        window.location.href = `whatsapp://send?phone=${waNumber}`;
-      } else {
-        let copied = false;
+      // ── Best path: Web Share API (mobile Chrome/Safari) ──
+      // This opens the native share sheet with image already attached.
+      // User just taps WhatsApp → Send. No paste needed.
+      if (
+        typeof navigator.share === "function" &&
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [file] })
+      ) {
         try {
-          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-          copied = true;
-        } catch (_) {}
-        window.location.href = `whatsapp://send?phone=${waNumber}`;
-        if (!copied) {
-          const objectUrl = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = objectUrl; a.download = "manglam-patient-card.png";
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
+          await navigator.share({ files: [file], title: "Manglam Clinic — Patient Card" });
+          setSharing(false);
+          return;
+        } catch (e: any) {
+          if (e?.name === "AbortError") { setSharing(false); return; }
+          // share failed for other reason — fall through to next strategy
         }
-        setShareError(
-          copied
-            ? `✅ Image copied! WhatsApp opening — press Ctrl+V to paste & send.`
-            : `Image downloaded — attach it in WhatsApp that opened.`
-        );
       }
+
+      // ── Desktop / browsers without file share: open WhatsApp Web in new tab ──
+      // Attach the image by opening wa.me with a data URL via a hidden form POST trick.
+      // Best we can do on desktop: download image + open WhatsApp Web.
+      // Auto-trigger download so image is ready in Downloads, then open WA Web.
+      const waNumber = rawDigits.length === 10 ? `91${rawDigits}` : rawDigits;
+
+      // Download the image automatically
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = "manglam-patient-card.png";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+
+      // Open WhatsApp Web — user just clicks the attachment icon (📎) and picks the downloaded image
+      const waUrl = waNumber
+        ? `https://web.whatsapp.com/send?phone=${waNumber}`
+        : `https://web.whatsapp.com/`;
+      window.open(waUrl, "_blank");
+
+      setShareError("📥 Image saved to Downloads — attach it in the WhatsApp chat that opened.");
+
     } catch (err: any) {
       console.error("Card share error:", err);
       setShareError("Could not generate card. Please try again.");
