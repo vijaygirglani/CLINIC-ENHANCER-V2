@@ -798,6 +798,7 @@ export default function Home() {
   const [showNameDropdown, setShowNameDropdown] = useState(false);
   const [pendingFees, setPendingFees] = useState<PendingEntry[]>(() => getPendingFees());
   const [feesMarkedPending, setFeesMarkedPending] = useState(false);
+  const [pendingAmount, setPendingAmount] = useState<string>("");
   const refreshPending = () => setPendingFees(getPendingFees());
 
   // ── Loose Medicine Sales state ──
@@ -867,6 +868,7 @@ export default function Home() {
   const nameValue = form.watch("name");
   const complaintValue = form.watch("complaint");
   const paymentModeValue = form.watch("paymentMode");
+  const feesValue = form.watch("fees");
 
   // Live dropdown: watch name field, search on every keystroke
   useEffect(() => {
@@ -1078,11 +1080,14 @@ export default function Home() {
       attachments, registerType, visitDate,
     });
     if (feesMarkedPending && saved.fees > 0) {
-      addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: saved.fees, date: visitDate, markedAt: new Date().toISOString() });
+      const pendingVal = pendingAmount.trim() !== "" ? Number(pendingAmount) : saved.fees;
+      const finalPending = (!isNaN(pendingVal) && pendingVal > 0) ? pendingVal : saved.fees;
+      addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: finalPending, date: visitDate, markedAt: new Date().toISOString() });
       refreshPending();
     }
     setLastSaved(saved);
     setFeesMarkedPending(false);
+    setPendingAmount("");
     toast({
       title: "Saved!",
       description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
@@ -1356,7 +1361,7 @@ export default function Home() {
                         </button>
                       </div>
                       <button type="button"
-                        onClick={() => setFeesMarkedPending(p => !p)}
+                        onClick={() => { setFeesMarkedPending(p => !p); setPendingAmount(""); }}
                         title={feesMarkedPending ? "Click to unmark pending" : "Mark fees as pending"}
                         className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border font-semibold text-xs transition-all ${
                           feesMarkedPending
@@ -1368,9 +1373,45 @@ export default function Home() {
                       </button>
                     </div>
                     {feesMarkedPending && (
-                      <p className="text-xs text-amber-600 flex items-center gap-1">
-                        <Hourglass className="w-3 h-3" /> Fees will be saved as pending after form submission
-                      </p>
+                      <div className="space-y-2">
+                        {/* Pending amount input */}
+                        <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                          <Hourglass className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">Pending Amount (₹)</p>
+                            <div className="flex items-center gap-2">
+                              <div className="relative flex-1">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 font-bold text-xs">₹</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={pendingAmount}
+                                  onChange={e => setPendingAmount(e.target.value)}
+                                  placeholder={`Full (₹${feesValue || 0})`}
+                                  className="w-full pl-6 pr-3 py-1.5 rounded-lg border border-amber-300 bg-white text-sm font-bold text-amber-800 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 placeholder:text-amber-300 placeholder:font-normal"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Paid / Pending breakdown */}
+                        {pendingAmount.trim() !== "" && Number(pendingAmount) > 0 && Number(feesValue) > 0 && (
+                          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs">
+                            <span className="flex items-center gap-1 text-emerald-600 font-bold">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Paid: ₹{Math.max(0, Number(feesValue) - Number(pendingAmount))}
+                            </span>
+                            <span className="text-slate-300">|</span>
+                            <span className="flex items-center gap-1 text-amber-600 font-bold">
+                              <Hourglass className="w-3.5 h-3.5" />
+                              Pending: ₹{Number(pendingAmount)}
+                            </span>
+                          </div>
+                        )}
+                        {pendingAmount.trim() === "" && (
+                          <p className="text-[10px] text-amber-500 px-1">Leave blank to mark full amount (₹{feesValue || 0}) as pending</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
