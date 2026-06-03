@@ -463,13 +463,11 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
         ? `91${rawDigits}`
         : rawDigits.startsWith("91") && rawDigits.length === 12
           ? rawDigits : rawDigits;
-      const waUrl = waNumber ? `https://wa.me/${waNumber}` : `https://wa.me/`;
 
-      // ── Detect mobile vs desktop ──
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
       if (isMobile) {
-        // Mobile: use Web Share API — shows WhatsApp directly in the share sheet
+        // Mobile: Web Share API → WhatsApp in share sheet
         const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
         const canShare = typeof navigator.share === "function" &&
           typeof navigator.canShare === "function" &&
@@ -483,34 +481,35 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
             if (e?.name === "AbortError") { setSharing(false); return; }
           }
         }
-        // Mobile fallback: open WhatsApp deep link
-        window.location.href = waUrl;
+        window.location.href = `whatsapp://send?phone=${waNumber}`;
+
       } else {
-        // ── Desktop: Step 1 — copy image to clipboard ──
+        // ── Desktop: copy image to clipboard first ──
         let copied = false;
         try {
           await navigator.clipboard.write([
             new ClipboardItem({ "image/png": blob })
           ]);
           copied = true;
-        } catch (_) { /* clipboard not supported */ }
+        } catch (_) { /* clipboard API not available */ }
 
-        // ── Desktop: Step 2 — open WhatsApp Web chat for that number directly ──
-        // Use WhatsApp Web URL which opens the exact chat, not a generic page
-        const waWebUrl = `https://web.whatsapp.com/send?phone=${waNumber}&text=`;
-        window.open(waWebUrl, "_blank");
+        // ── Open installed WhatsApp app via deep link (not web) ──
+        // whatsapp:// protocol opens the desktop app directly
+        window.location.href = `whatsapp://send?phone=${waNumber}`;
 
-        // ── Desktop: Step 3 — also download image as backup ──
-        const objectUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = objectUrl; a.download = "manglam-patient-card.png";
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
+        // Also download image as fallback if clipboard failed
+        if (!copied) {
+          const objectUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = objectUrl; a.download = "manglam-patient-card.png";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
+        }
 
         setShareError(
           copied
-            ? `✅ Image copied! WhatsApp opened — just press Ctrl+V to paste & send.`
-            : `Image downloaded — attach it in the WhatsApp chat that opened.`
+            ? `✅ Image copied! WhatsApp opening — press Ctrl+V to paste & send.`
+            : `Image downloaded — attach it in WhatsApp that opened.`
         );
       }
 
