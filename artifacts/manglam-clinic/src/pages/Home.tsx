@@ -245,8 +245,56 @@ const emptyDefaults: PatientFormValues = {
   advice: "", reports: "", fees: 0, paymentMode: "cash" as const,
 };
 
+// ── Language config ────────────────────────────────────────────────────────
+type CardLang = "en" | "hi" | "gu";
+
+const CARD_LABELS: Record<CardLang, {
+  clinicName: string; doctor: string; tagline: string;
+  patientCard: string; caseNo: string;
+  patientName: string; address: string; clinicPhone: string;
+  footer: string; footerSub: string;
+}> = {
+  en: {
+    clinicName:  "Manglam Clinic",
+    doctor:      "Dr. Vijay Girglani  |  B.A.M.S.",
+    tagline:     "AYURVEDIC & GENERAL PRACTICE",
+    patientCard: "✦  PATIENT CARD  ✦",
+    caseNo:      "CASE NO.",
+    patientName: "PATIENT NAME",
+    address:     "ADDRESS",
+    clinicPhone: "CLINIC PHONE",
+    footer:      "MANGLAM HOSPITAL  •  MORBI, GUJARAT",
+    footerSub:   "Show this card on your next visit",
+  },
+  hi: {
+    clinicName:  "मंगलम क्लिनिक",
+    doctor:      "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.",
+    tagline:     "आयुर्वेदिक एवं सामान्य चिकित्सा",
+    patientCard: "✦  रोगी कार्ड  ✦",
+    caseNo:      "केस नं.",
+    patientName: "रोगी का नाम",
+    address:     "पता",
+    clinicPhone: "क्लिनिक फोन",
+    footer:      "मंगलम हॉस्पिटल  •  मोरबी, गुजरात",
+    footerSub:   "अगली मुलाकात पर यह कार्ड दिखाएं",
+  },
+  gu: {
+    clinicName:  "મંગલમ ક્લિનિક",
+    doctor:      "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.",
+    tagline:     "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ",
+    patientCard: "✦  દર્દી કાર્ડ  ✦",
+    caseNo:      "કેસ નં.",
+    patientName: "દર્દીનું નામ",
+    address:     "સરનામું",
+    clinicPhone: "ક્લિનિક ફોન",
+    footer:      "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત",
+    footerSub:   "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો",
+  },
+};
+
 // ── Draw patient card — premium vertical visiting card style ────────────
-function drawPatientCard(patient: Patient): HTMLCanvasElement {
+function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasElement {
+  const L = CARD_LABELS[lang];
   const W = 360, scale = 3;
 
   // ── Measure content to compute exact height ──
@@ -326,12 +374,12 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
   let cy = AMBER_BAR + LOGO_SECT;
   ctx.fillStyle = "#ffffff"; ctx.font = `bold 20px serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("Manglam Clinic", W / 2, cy);
+  ctx.fillText(L.clinicName, W / 2, cy);
   cy += CLINIC_NAME;
 
   // Doctor name
   ctx.fillStyle = "#d4a574"; ctx.font = `italic 10px serif`;
-  ctx.fillText("Dr. Vijay Girglani  |  B.A.M.S.", W / 2, cy);
+  ctx.fillText(L.doctor, W / 2, cy);
   cy += DR_NAME;
 
   // Tagline
@@ -340,7 +388,7 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
   ctx.beginPath(); ctx.moveTo(W / 2 + 68, cy - 4); ctx.lineTo(W - 24, cy - 4); ctx.stroke();
   ctx.fillStyle = "rgba(212,165,116,0.8)"; ctx.font = `7px sans-serif`;
   ctx.letterSpacing = "1.8px";
-  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, cy);
+  ctx.fillText(L.tagline, W / 2, cy);
   ctx.letterSpacing = "0px";
   cy += TAGLINE;
 
@@ -359,7 +407,7 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
   // ✦ PATIENT CARD ✦
   ctx.fillStyle = "#7c3a0a"; ctx.font = `bold 7.5px sans-serif`;
   ctx.letterSpacing = "2.5px"; ctx.textAlign = "center";
-  ctx.fillText("\u2756  PATIENT CARD  \u2756", W / 2, pY + STRIPE + 16);
+  ctx.fillText(L.patientCard, W / 2, pY + STRIPE + 16);
   ctx.letterSpacing = "0px";
 
   // Case number box
@@ -367,7 +415,7 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
   ctx.fillStyle = "#fdf0e6"; rr(30, cnY, W - 60, 52, 12); ctx.fill();
   ctx.fillStyle = "#b8825a"; ctx.font = `bold 6.5px sans-serif`;
   ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
-  ctx.fillText("CASE NO.", 44, cnY + 15);
+  ctx.fillText(L.caseNo, 44, cnY + 15);
   ctx.letterSpacing = "0px";
   const rawD = patient.mobile.replace(/\D/g, "");
   const caseNo = rawD.padStart(10, "0");
@@ -410,9 +458,9 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
     ry += 4;
   };
 
-  infoRow("👤", "PATIENT NAME", patient.name.toUpperCase());
-  infoRow("📍", "ADDRESS", patient.address || "—");
-  infoRow("📞", "CLINIC PHONE", "+91 96381 81875");
+  infoRow("👤", L.patientName, patient.name.toUpperCase());
+  infoRow("📍", L.address, patient.address || "—");
+  infoRow("📞", L.clinicPhone, "+91 96381 81875");
 
   ctx.restore(); // end panel clip
 
@@ -420,10 +468,10 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
   const fY = pY + panelH + 8;
   ctx.fillStyle = "rgba(212,165,116,0.7)"; ctx.font = `bold 7px sans-serif`;
   ctx.letterSpacing = "1.5px"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("MANGLAM HOSPITAL  \u2022  MORBI, GUJARAT", W / 2, fY + 14);
+  ctx.fillText(L.footer, W / 2, fY + 14);
   ctx.letterSpacing = "0px";
   ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.font = `8.5px sans-serif`;
-  ctx.fillText("Show this card on your next visit", W / 2, fY + 28);
+  ctx.fillText(L.footerSub, W / 2, fY + 28);
 
   // ── Bottom amber bar ──
   ctx.fillStyle = amberGrad; ctx.fillRect(0, H - AMBER_BAR_B, W, AMBER_BAR_B);
@@ -442,23 +490,27 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
   const cardRef = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState("");
-  // Friendly label for button — show patient's number if available
+  const [lang, setLang] = useState<CardLang>("en");
+  // Show language picker before share
+  const [showLangPicker, setShowLangPicker] = useState(false);
+
+  const L = CARD_LABELS[lang];
   const patientWaLabel = rawDigits.length >= 10
     ? `Send to ${rawDigits.slice(-10)}`
     : "Send on WhatsApp";
 
-  const sendWhatsApp = async () => {
+  const doShare = async (chosenLang: CardLang) => {
+    setShowLangPicker(false);
+    setLang(chosenLang);
     setSharing(true);
     setShareError("");
     try {
-      const canvas = drawPatientCard(patient);
+      const canvas = drawPatientCard(patient, chosenLang);
 
       const blob: Blob = await new Promise((res, rej) =>
         canvas.toBlob((b: Blob | null) => b ? res(b) : rej(new Error("toBlob failed")), "image/png", 1.0)
       );
 
-      // ── Build WhatsApp number ──
-      const rawDigits = patient.mobile.replace(/\D/g, "");
       const waNumber = rawDigits.length === 10
         ? `91${rawDigits}`
         : rawDigits.startsWith("91") && rawDigits.length === 12
@@ -467,7 +519,6 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
       if (isMobile) {
-        // Mobile: Web Share API → WhatsApp in share sheet
         const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
         const canShare = typeof navigator.share === "function" &&
           typeof navigator.canShare === "function" &&
@@ -482,22 +533,13 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           }
         }
         window.location.href = `whatsapp://send?phone=${waNumber}`;
-
       } else {
-        // ── Desktop: copy image to clipboard first ──
         let copied = false;
         try {
-          await navigator.clipboard.write([
-            new ClipboardItem({ "image/png": blob })
-          ]);
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
           copied = true;
-        } catch (_) { /* clipboard API not available */ }
-
-        // ── Open installed WhatsApp app via deep link (not web) ──
-        // whatsapp:// protocol opens the desktop app directly
+        } catch (_) {}
         window.location.href = `whatsapp://send?phone=${waNumber}`;
-
-        // Also download image as fallback if clipboard failed
         if (!copied) {
           const objectUrl = URL.createObjectURL(blob);
           const a = document.createElement("a");
@@ -505,20 +547,25 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           document.body.appendChild(a); a.click(); document.body.removeChild(a);
           setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
         }
-
         setShareError(
           copied
             ? `✅ Image copied! WhatsApp opening — press Ctrl+V to paste & send.`
             : `Image downloaded — attach it in WhatsApp that opened.`
         );
       }
-
     } catch (err: any) {
       console.error("Card share error:", err);
       setShareError("Could not generate card. Please try again.");
     }
     setSharing(false);
   };
+
+  // Language options config
+  const LANGS: { id: CardLang; label: string; native: string; flag: string }[] = [
+    { id: "en", label: "English",  native: "English",  flag: "🇬🇧" },
+    { id: "hi", label: "Hindi",    native: "हिन्दी",    flag: "🇮🇳" },
+    { id: "gu", label: "Gujarati", native: "ગુજરાતી", flag: "🏵️" },
+  ];
 
   return (
     <AnimatePresence>
@@ -535,6 +582,25 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           onClick={e => e.stopPropagation()}
           className="w-full max-w-xs"
         >
+          {/* ── Language tab strip ── */}
+          <div className="flex gap-1 mb-3 p-1 rounded-2xl" style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)" }}>
+            {LANGS.map(l => (
+              <button
+                key={l.id}
+                onClick={() => setLang(l.id)}
+                className="flex-1 py-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-0.5"
+                style={{
+                  background: lang === l.id ? "#ffffff" : "transparent",
+                  color: lang === l.id ? "#c45e10" : "rgba(255,255,255,0.7)",
+                  boxShadow: lang === l.id ? "0 2px 8px rgba(0,0,0,0.15)" : "none",
+                }}
+              >
+                <span style={{ fontSize: 16 }}>{l.flag}</span>
+                <span>{l.native}</span>
+              </button>
+            ))}
+          </div>
+
           {/* ── Card preview ── */}
           <div ref={cardRef} className="rounded-3xl overflow-hidden shadow-2xl" style={{
             background: "linear-gradient(180deg, #1a3a0f 0%, #1f4a12 50%, #0f2208 100%)",
@@ -547,50 +613,42 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
             <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
             <div style={{ position: "absolute", bottom: 60, left: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
 
-            {/* Clinic header — centered */}
+            {/* Clinic header */}
             <div className="flex flex-col items-center pt-6 pb-4 px-5" style={{ position: "relative", zIndex: 1 }}>
-              {/* Logo ring + circle */}
               <div style={{
                 width: 64, height: 64, borderRadius: "50%",
                 background: "linear-gradient(135deg, #e07828, #b84f0a)",
                 boxShadow: "0 0 0 3px rgba(224,120,40,0.3), 0 0 18px rgba(224,120,40,0.25)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                marginBottom: 10,
+                display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10,
               }}>
                 <span style={{ color: "#fff", fontFamily: "serif", fontWeight: 900, fontSize: 26 }}>M</span>
               </div>
-              <p style={{ color: "#ffffff", fontFamily: "serif", fontWeight: 700, fontSize: 18, letterSpacing: 0.5, marginBottom: 3 }}>Manglam Clinic</p>
-              <p style={{ color: "#d4a574", fontStyle: "italic", fontSize: 10, marginBottom: 10 }}>Dr. Vijay Girglani  |  B.A.M.S.</p>
-              {/* decorative divider */}
+              <p style={{ color: "#ffffff", fontFamily: "serif", fontWeight: 700, fontSize: 18, letterSpacing: 0.5, marginBottom: 3 }}>{L.clinicName}</p>
+              <p style={{ color: "#d4a574", fontStyle: "italic", fontSize: 10, marginBottom: 10 }}>{L.doctor}</p>
               <div className="flex items-center gap-2 w-full">
                 <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
-                <p style={{ color: "rgba(212,165,116,0.8)", fontSize: 7, letterSpacing: "2px", whiteSpace: "nowrap" }}>AYURVEDIC &amp; GENERAL PRACTICE</p>
+                <p style={{ color: "rgba(212,165,116,0.8)", fontSize: 7, letterSpacing: "1.5px", whiteSpace: "nowrap" }}>{L.tagline}</p>
                 <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
               </div>
             </div>
 
             {/* White panel */}
             <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
-              {/* panel top stripe */}
               <div style={{ height: 3, background: "linear-gradient(90deg, #c45e10, #e07828)" }} />
-
               <div className="px-4 py-4" style={{ background: "#ffffff" }}>
-                {/* PATIENT CARD label */}
-                <p style={{ textAlign: "center", fontSize: 8, fontWeight: 700, letterSpacing: "2.5px", color: "#7c3a0a", marginBottom: 10 }}>✦ &nbsp; PATIENT CARD &nbsp; ✦</p>
+                <p style={{ textAlign: "center", fontSize: 8, fontWeight: 700, letterSpacing: "2px", color: "#7c3a0a", marginBottom: 10 }}>{L.patientCard}</p>
 
-                {/* Case number box */}
                 <div className="rounded-xl px-3 py-2.5 mb-4" style={{ background: "#fdf0e6" }}>
-                  <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1.5px", color: "#b8825a", marginBottom: 4 }}>CASE NO.</p>
+                  <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1.5px", color: "#b8825a", marginBottom: 4 }}>{L.caseNo}</p>
                   <p style={{ fontSize: 20, fontWeight: 900, fontFamily: "monospace", color: "#c45e10", letterSpacing: 1 }}>{caseNo}</p>
                 </div>
 
-                {/* Info rows */}
                 {[
-                  { icon: "👤", label: "PATIENT NAME", value: patient.name.toUpperCase() },
-                  { icon: "📍", label: "ADDRESS", value: patient.address || CLINIC_ADDRESS },
-                  { icon: "📞", label: "CLINIC PHONE", value: `+91 ${clinicPhone}` },
+                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase() },
+                  { icon: "📍", label: L.address,     value: patient.address || CLINIC_ADDRESS },
+                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}` },
                 ].map((row, i, arr) => (
-                  <div key={row.label}>
+                  <div key={i}>
                     <div className="flex items-center gap-2 py-2">
                       <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
                         {row.icon}
@@ -606,13 +664,12 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
               </div>
             </div>
 
-            {/* Footer text */}
+            {/* Footer */}
             <div className="pb-4 px-4 flex flex-col items-center gap-0.5" style={{ position: "relative", zIndex: 1 }}>
-              <p style={{ fontSize: 8, fontWeight: 700, letterSpacing: "1.5px", color: "rgba(212,165,116,0.75)" }}>MANGLAM HOSPITAL  •  MORBI, GUJARAT</p>
-              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)" }}>Show this card on your next visit</p>
+              <p style={{ fontSize: 8, fontWeight: 700, letterSpacing: "1.5px", color: "rgba(212,165,116,0.75)" }}>{L.footer}</p>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)" }}>{L.footerSub}</p>
             </div>
 
-            {/* Bottom amber bar */}
             <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
           </div>
 
@@ -624,21 +681,60 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
             </div>
           )}
 
+          {/* ── Language picker overlay (shown before share) ── */}
+          <AnimatePresence>
+            {showLangPicker && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                className="mt-3 rounded-2xl overflow-hidden shadow-xl"
+                style={{ background: "#fff", border: "1px solid rgba(196,94,16,0.2)" }}
+              >
+                <p style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#7c3a0a", padding: "10px 16px 6px", letterSpacing: "1px" }}>
+                  CHOOSE LANGUAGE TO SHARE
+                </p>
+                {LANGS.map(l => (
+                  <button
+                    key={l.id}
+                    onClick={() => doShare(l.id)}
+                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-orange-50 transition-colors"
+                    style={{ borderTop: "1px solid #f1f5f9" }}
+                  >
+                    <span style={{ fontSize: 20 }}>{l.flag}</span>
+                    <div className="text-left">
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{l.label}</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8" }}>{l.native}</p>
+                    </div>
+                    <span style={{ marginLeft: "auto", fontSize: 13, color: "#c45e10" }}>→</span>
+                  </button>
+                ))}
+                <button
+                  onClick={() => setShowLangPicker(false)}
+                  className="w-full py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors"
+                  style={{ borderTop: "1px solid #f1f5f9" }}
+                >
+                  Cancel
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* ── Action buttons ── */}
-          <div className="mt-4 flex gap-3">
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 rounded-2xl bg-white/90 backdrop-blur text-slate-600 font-semibold text-sm hover:bg-white transition-all shadow">
-              Close
-            </button>
-            <button
-              onClick={sendWhatsApp}
-              disabled={sharing}
-              className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30 disabled:opacity-70">
-              {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
-              {sharing ? "Capturing…" : patientWaLabel}
-            </button>
-          </div>
+          {!showLangPicker && (
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={onClose}
+                className="flex-1 py-3 rounded-2xl bg-white/90 backdrop-blur text-slate-600 font-semibold text-sm hover:bg-white transition-all shadow">
+                Close
+              </button>
+              <button
+                onClick={() => setShowLangPicker(true)}
+                disabled={sharing}
+                className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30 disabled:opacity-70">
+                {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                {sharing ? "Capturing…" : patientWaLabel}
+              </button>
+            </div>
+          )}
         </motion.div>
       </motion.div>
     </AnimatePresence>
