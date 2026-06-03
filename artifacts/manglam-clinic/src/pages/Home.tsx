@@ -684,9 +684,9 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                 </div>
 
                 {[
-                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase() },
-                  { icon: "📍", label: L.address,     value: patient.address || CLINIC_ADDRESS },
-                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}` },
+                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null },
+                  { icon: "📍", label: L.address,     value: patient.address || CLINIC_ADDRESS, href: "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D" },
+                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: null },
                 ].map((row, i, arr) => (
                   <div key={i}>
                     <div className="flex items-center gap-2 py-2">
@@ -695,7 +695,16 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                       </div>
                       <div className="flex-1 min-w-0">
                         <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{row.label}</p>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
+                        {row.href ? (
+                          <a
+                            href={row.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: 11, fontWeight: 700, color: "#c45e10", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", textDecoration: "underline", textDecorationColor: "rgba(196,94,16,0.4)", textUnderlineOffset: 2 }}
+                          >{row.value}</a>
+                        ) : (
+                          <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
+                        )}
                       </div>
                     </div>
                     {i < arr.length - 1 && <div style={{ height: 1, background: "#f1f5f9" }} />}
