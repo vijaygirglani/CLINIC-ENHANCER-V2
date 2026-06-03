@@ -1128,61 +1128,66 @@ export default function Home() {
       {lastSaved && <PrintPrescription patient={lastSaved} />}
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* ── MAIN FORM ── */}
-        <div className="lg:col-span-8 space-y-6">
-          <div className="medical-card p-6 md:p-8 border-l-4 border-l-primary shadow-md">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-blue-400 flex items-center justify-center text-white shadow-md shadow-primary/30">
-                <User className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-display bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">Patient Registration</h2>
-                <p className="text-slate-500 text-sm">Register a new visit and view medical history.</p>
-              </div>
-              {/* Sheet action buttons */}
-              <div className="ml-auto flex items-center gap-2">
-                <button type="button" onClick={handleSync}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all shadow-md shadow-emerald-200">
-                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  Sync from Sheet
-                </button>
-                <button type="button" onClick={() => { setSheetInput(sheetUrl); setShowSheetModal(true); }}
-                  title="Connect Google Sheet"
-                  className="p-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-all">
-                  <Sheet className="w-4 h-4" />
-                </button>
+        <div className="lg:col-span-8 space-y-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden">
+            {/* Card header strip */}
+            <div className="h-1 w-full bg-gradient-to-r from-teal-500 via-emerald-400 to-cyan-500" />
+            <div className="px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-sm">
+                  <User className="w-4.5 h-4.5 text-white" style={{width:"18px",height:"18px"}} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-stone-800 tracking-tight">Patient Registration</h2>
+                  <p className="text-stone-400 text-xs">Register a new visit and view medical history.</p>
+                </div>
+                {/* Sheet action buttons */}
+                <div className="ml-auto flex items-center gap-2">
+                  <button type="button" onClick={handleSync}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition-all shadow-sm">
+                    {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    Sync from Sheet
+                  </button>
+                  <button type="button" onClick={() => { setSheetInput(sheetUrl); setShowSheetModal(true); }}
+                    title="Connect Google Sheet"
+                    className="p-1.5 rounded-lg bg-stone-100 border border-stone-200 text-stone-500 hover:text-teal-600 hover:bg-teal-50 transition-all">
+                    <Sheet className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Sheet connected banner */}
             {sheetConnected && (
-              <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-700 text-sm shadow-sm">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+              <div className="mx-6 mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-teal-50 border border-teal-200 text-teal-700 text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse inline-block" />
                 <span><strong>Google Sheet connected.</strong> Press "Sync from Sheet" to load today's patients.</span>
               </div>
             )}
 
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Visit Date */}
-              <div className="bg-gradient-to-br from-blue-50/60 to-slate-50/40 p-6 rounded-2xl border border-blue-100 border-l-4 border-l-blue-400 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-slate-400" /> Visit Date
+            <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 pb-6 space-y-4">
+              {/* Visit Date + Patient Info */}
+              <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200/70 space-y-3">
+                <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Patient Information</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <Calendar className="w-3 h-3 text-stone-400" /> Visit Date
                     </label>
                     <input type="date" {...form.register("visitDate")}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" />
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" />
                   </div>
                 </div>
 
                 {/* Mobile / Case No */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-slate-400" /> Mobile / Case No. <span className="text-red-500">*</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <Phone className="w-3 h-3 text-stone-400" /> Mobile / Case No. <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5">
                       <div className="relative flex-1">
                         <input
                           {...mobileRest}
@@ -1193,33 +1198,33 @@ export default function Home() {
                           onKeyDown={e => {
                             if (e.key === "Enter") { e.preventDefault(); runMobileLookup(); }
                           }}
-                          className="w-full pl-4 pr-10 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800 font-mono"
+                          className="w-full pl-3 pr-8 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm font-mono"
                           placeholder="Mobile or Case No."
                         />
-                        {isLookingUp && <Loader2 className="w-4 h-4 absolute right-3 top-3.5 animate-spin text-slate-400" />}
+                        {isLookingUp && <Loader2 className="w-3.5 h-3.5 absolute right-2.5 top-3 animate-spin text-stone-400" />}
                       </div>
                       <button type="button" onClick={runMobileLookup}
-                        className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary hover:border-primary/20 transition-all" title="Search">
-                        <Search className="w-4 h-4" />
+                        className="px-2.5 py-2 rounded-lg bg-stone-100 border border-stone-200 text-stone-500 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition-all" title="Search">
+                        <Search className="w-3.5 h-3.5" />
                       </button>
                       <button type="button" onClick={handleAutoCase} title="Auto-generate case number"
-                        className="px-3 py-2 rounded-xl bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 transition-all flex items-center gap-1 shadow whitespace-nowrap">
-                        <Zap className="w-3.5 h-3.5" /> Auto
+                        className="px-2.5 py-2 rounded-lg bg-indigo-500 text-white font-semibold text-xs hover:bg-indigo-600 transition-all flex items-center gap-1 shadow-sm whitespace-nowrap">
+                        <Zap className="w-3 h-3" /> Auto
                       </button>
                     </div>
                     {form.formState.errors.mobile && <p className="text-destructive text-xs">{form.formState.errors.mobile.message}</p>}
-                    <p className="text-xs text-slate-400">
-                      Case format: <span className="font-mono text-purple-600">00{format(new Date(visitDateValue || todayStr), "ddMMyy")}01</span>
-                      &nbsp;· Press <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[10px]">Enter</kbd> or <Search className="w-3 h-3 inline" /> to search
+                    <p className="text-[10px] text-stone-400">
+                      Case format: <span className="font-mono text-purple-500">00{format(new Date(visitDateValue || todayStr), "ddMMyy")}01</span>
+                      &nbsp;· Press <kbd className="px-1 py-0.5 bg-stone-100 rounded text-[9px]">Enter</kbd> or <Search className="w-2.5 h-2.5 inline" /> to search
                     </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-                      <User className="w-4 h-4 text-slate-400" /> Patient Name <span className="text-red-500">*</span>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <User className="w-3 h-3 text-stone-400" /> Patient Name <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
-                      <div className="flex gap-2">
+                      <div className="flex gap-1.5">
                         <input
                           {...nameRest}
                           ref={(el) => {
@@ -1231,21 +1236,21 @@ export default function Home() {
                             if (e.key === "Escape") setShowNameDropdown(false);
                           }}
                           onBlur={() => setTimeout(() => setShowNameDropdown(false), 200)}
-                          className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800"
-                          placeholder="Full Name"
+                          className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm"
+                          placeholder="Patient Name"
                         />
                         <button type="button" onClick={runNameLookup}
-                          className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary hover:border-primary/20 transition-all" title="Search by name">
-                          <Search className="w-4 h-4" />
+                          className="px-2.5 py-2 rounded-lg bg-stone-100 border border-stone-200 text-stone-500 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition-all" title="Search by name">
+                          <Search className="w-3.5 h-3.5" />
                         </button>
                       </div>
 
                       {/* Live patient suggestions dropdown */}
                       {showNameDropdown && nameSuggestions.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-y-auto" style={{ zIndex: 9999, maxHeight: "280px" }}>
-                          <div className="px-3 py-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-                            <Search className="w-3 h-3 text-slate-400" />
-                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-stone-200 rounded-xl shadow-xl overflow-y-auto" style={{ zIndex: 9999, maxHeight: "280px" }}>
+                          <div className="px-3 py-2 border-b border-stone-100 bg-stone-50 flex items-center gap-2">
+                            <Search className="w-3 h-3 text-stone-400" />
+                            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">
                               {nameSuggestions.length} patient{nameSuggestions.length > 1 ? "s" : ""} found
                             </span>
                           </div>
@@ -1254,32 +1259,32 @@ export default function Home() {
                               key={i}
                               type="button"
                               onMouseDown={e => { e.preventDefault(); handleSelectSuggestion(s); }}
-                              className="w-full px-4 py-3 hover:bg-blue-50 transition-colors text-left border-b border-slate-50 last:border-0"
+                              className="w-full px-3 py-2.5 hover:bg-teal-50 transition-colors text-left border-b border-stone-50 last:border-0"
                             >
-                              <div className="flex items-start gap-3">
-                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
-                                  <User className="w-3.5 h-3.5" />
+                              <div className="flex items-start gap-2.5">
+                                <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600 shrink-0 mt-0.5">
+                                  <User className="w-3 h-3" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <span className="font-bold text-slate-900 text-sm truncate">{s.name}</span>
-                                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full shrink-0">
+                                    <span className="font-bold text-stone-900 text-sm truncate">{s.name}</span>
+                                    <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded shrink-0">
                                       {s.visitCount} visit{s.visitCount > 1 ? "s" : ""}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-xs font-mono text-slate-500">{s.mobile}</span>
-                                    {s.age > 0 && <span className="text-xs text-slate-400">{s.age}y</span>}
-                                    {s.address && <span className="text-xs text-slate-400 truncate max-w-[100px]">· {s.address}</span>}
+                                    <span className="text-xs font-mono text-stone-400">{s.mobile}</span>
+                                    {s.age > 0 && <span className="text-xs text-stone-400">{s.age}y</span>}
+                                    {s.address && <span className="text-xs text-stone-400 truncate max-w-[100px]">· {s.address}</span>}
                                   </div>
                                   {s.recentVisits[0] && (
-                                    <div className="mt-1 text-[10px] text-slate-400">
-                                      <span className="font-semibold text-slate-500">{format(new Date(s.recentVisits[0].visitDate), "dd MMM yyyy")}</span>
+                                    <div className="mt-1 text-[10px] text-stone-400">
+                                      <span className="font-semibold text-stone-500">{format(new Date(s.recentVisits[0].visitDate), "dd MMM yyyy")}</span>
                                       {s.recentVisits[0].complaint && <span className="ml-1">· {s.recentVisits[0].complaint.slice(0, 40)}</span>}
                                     </div>
                                   )}
                                 </div>
-                                <span className="text-[10px] text-primary font-bold shrink-0 mt-1">Fill →</span>
+                                <span className="text-[10px] text-teal-500 font-bold shrink-0 mt-1">Fill →</span>
                               </div>
                             </button>
                           ))}
@@ -1291,83 +1296,84 @@ export default function Home() {
                 </div>
 
                 {/* Age + Weight + Address */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Age <span className="text-slate-400 text-xs">(optional)</span></label>
-                    <div className="flex gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Age <span className="text-stone-400 text-[10px]">(optional)</span></label>
+                    <div className="flex gap-1.5">
                       <div className="flex-1 relative">
                         <input type="number" {...form.register("age")} min={0}
-                          className="w-full px-3 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="0" />
-                        <span className="absolute right-2 top-3.5 text-xs text-slate-400">yrs</span>
+                          className="w-full px-2.5 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" placeholder="0" />
+                        <span className="absolute right-2 top-3 text-[10px] text-stone-400">yrs</span>
                       </div>
-                      <div className="w-20 relative">
+                      <div className="w-16 relative">
                         <input type="number" {...form.register("ageMonths")} min={0} max={11}
-                          className="w-full px-2 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="0" />
-                        <span className="absolute right-2 top-3.5 text-xs text-slate-400">mo</span>
+                          className="w-full px-2 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" placeholder="0" />
+                        <span className="absolute right-1.5 top-3 text-[10px] text-stone-400">mo</span>
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-                      <Weight className="w-4 h-4 text-slate-400" /> Weight
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <Weight className="w-3 h-3 text-stone-400" /> Weight
                     </label>
                     <input {...form.register("weight")}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="e.g. 65 kg" />
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" placeholder="e.g. 65 kg" />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-slate-400" /> Address
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <MapPin className="w-3 h-3 text-stone-400" /> Address
                     </label>
                     <input {...form.register("address")}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="City / Area" />
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all text-stone-800 text-sm" placeholder="City / Area" />
                   </div>
                 </div>
               </div>
 
               {/* Medical Details */}
-              <div className="bg-gradient-to-br from-emerald-50/50 to-blue-50/20 p-6 rounded-2xl border border-emerald-100 border-l-4 border-l-emerald-400 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-slate-400" /> Complaint Code
+              <div className="bg-teal-50/50 p-4 rounded-xl border border-teal-200/70 space-y-3">
+                <p className="text-[10px] font-bold text-teal-700 uppercase tracking-widest">Clinical Details</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <Activity className="w-3 h-3 text-stone-400" /> Complaint Code
                     </label>
                     <input {...form.register("complaintCode")}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 uppercase transition-all text-slate-800"
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 uppercase transition-all text-stone-800 text-sm"
                       placeholder="E.G. CCF" />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Consultation Fees (₹)</label>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Consultation Fees (₹)</label>
                     {/* Preset buttons */}
-                    <div className="flex gap-1.5 mb-1">
+                    <div className="flex gap-1 mb-1">
                       {[200, 250, 550].map(preset => (
                         <button key={preset} type="button"
                           onClick={() => form.setValue("fees", preset)}
-                          className="px-3 py-1 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-all border border-primary/20">
+                          className="px-2.5 py-1 rounded-md bg-teal-50 text-teal-700 text-xs font-bold hover:bg-teal-100 transition-all border border-teal-200">
                           ₹{preset}
                         </button>
                       ))}
                     </div>
                     {/* Row 1: Amount input */}
                     <input type="number" {...form.register("fees")} min={0}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all font-semibold text-slate-900" placeholder="Amount" />
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all font-semibold text-stone-900 text-sm" placeholder="Amount" />
                     {/* Row 2: Cash/Online toggle + Mark Pending */}
                     <div className="flex gap-2 items-center">
-                      <div className="flex rounded-xl border border-slate-200 overflow-hidden shrink-0">
+                      <div className="flex rounded-lg border border-stone-200 overflow-hidden shrink-0">
                         <button type="button"
                           onClick={() => form.setValue("paymentMode", "cash")}
-                          className={`flex items-center gap-1 px-3 py-2 text-xs font-bold transition-all ${
+                          className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold transition-all ${
                             paymentModeValue !== "online"
-                              ? "bg-emerald-500 text-white shadow-inner"
-                              : "bg-white text-slate-400 hover:bg-slate-50"
+                              ? "bg-emerald-500 text-white"
+                              : "bg-white text-stone-400 hover:bg-stone-50"
                           }`}>
                           💵 Cash
                         </button>
                         <button type="button"
                           onClick={() => form.setValue("paymentMode", "online")}
-                          className={`flex items-center gap-1 px-3 py-2 text-xs font-bold transition-all border-l border-slate-200 ${
+                          className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold transition-all border-l border-stone-200 ${
                             paymentModeValue === "online"
-                              ? "bg-blue-500 text-white shadow-inner"
-                              : "bg-white text-slate-400 hover:bg-slate-50"
+                              ? "bg-blue-500 text-white"
+                              : "bg-white text-stone-400 hover:bg-stone-50"
                           }`}>
                           📱 Online
                         </button>
@@ -1375,12 +1381,12 @@ export default function Home() {
                       <button type="button"
                         onClick={() => { setFeesMarkedPending(p => !p); setPendingAmount(""); }}
                         title={feesMarkedPending ? "Click to unmark pending" : "Mark fees as pending"}
-                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border font-semibold text-xs transition-all ${
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border font-semibold text-xs transition-all ${
                           feesMarkedPending
-                            ? "bg-amber-100 border-amber-400 text-amber-700 shadow-inner"
-                            : "bg-white border-slate-200 text-slate-400 hover:border-amber-300 hover:text-amber-500"
+                            ? "bg-amber-100 border-amber-400 text-amber-700"
+                            : "bg-white border-stone-200 text-stone-400 hover:border-amber-300 hover:text-amber-500"
                         }`}>
-                        <Hourglass className="w-3.5 h-3.5" />
+                        <Hourglass className="w-3 h-3" />
                         {feesMarkedPending ? "Pending ✓" : "Mark Pending"}
                       </button>
                     </div>
@@ -1419,10 +1425,10 @@ export default function Home() {
                     )}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Presenting Complaints</label>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Presenting Complaints</label>
                   <textarea {...form.register("complaint")} rows={2}
-                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Describe the symptoms..." />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all resize-none text-stone-800 text-sm" placeholder="Describe the symptoms..." />
                 </div>
 
                 {/* ── Pathya-Apathya Disease Suggest Panel ── */}
@@ -1432,22 +1438,22 @@ export default function Home() {
                       initial={{ opacity: 0, y: -8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
-                      className="rounded-2xl border border-emerald-200 bg-emerald-50/60 overflow-hidden"
+                      className="rounded-xl border border-emerald-200 bg-emerald-50/60 overflow-hidden"
                     >
                       {/* Header */}
-                      <div className="flex items-center gap-2 px-4 py-3">
+                      <div className="flex items-center gap-2 px-3 py-2.5">
                         <button
                           type="button"
                           onClick={() => setShowPAPanel(p => !p)}
                           className="flex items-center gap-2 flex-1 min-w-0"
                         >
-                          <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
+                          <div className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center shrink-0">
                             <Leaf className="w-3.5 h-3.5 text-white" />
                           </div>
-                          <span className="text-sm font-bold text-emerald-800">
+                          <span className="text-xs font-bold text-emerald-800">
                             Pathya-Apathya Suggestions
                           </span>
-                          <span className="text-xs font-semibold bg-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full ml-1 shrink-0">
+                          <span className="text-[10px] font-semibold bg-emerald-200 text-emerald-700 px-1.5 py-0.5 rounded ml-1 shrink-0">
                             {paMatches.length} match{paMatches.length > 1 ? "es" : ""}
                           </span>
                         </button>
@@ -1499,17 +1505,17 @@ export default function Home() {
                                           toast({ title: "Open Pathya-Apathya tab", description: `"${name}" data is in the Pathya-Apathya section. Import it to send via WhatsApp.` });
                                         }
                                       }}
-                                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
                                         isSelected
-                                          ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
+                                          ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
                                           : hasFullData
                                           ? "bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-100"
-                                          : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                                          : "bg-white text-stone-500 border-stone-200 hover:bg-stone-50"
                                       }`}
                                     >
                                       <Stethoscope className="w-3 h-3" />
                                       {name}
-                                      {!hasFullData && <span className="text-[9px] text-slate-400 ml-0.5">(built-in)</span>}
+                                      {!hasFullData && <span className="text-[9px] text-stone-400 ml-0.5">(built-in)</span>}
                                     </button>
                                   );
                                 })}
@@ -1548,22 +1554,22 @@ export default function Home() {
                                             {pathyaList.length > 0 && (
                                               <div>
                                                 <p className="font-bold text-emerald-700 mb-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> {pathyaLabel}</p>
-                                                <ul className="space-y-0.5 text-slate-600">
+                                                <ul className="space-y-0.5 text-stone-600">
                                                   {pathyaList.slice(0, 5).map((p, i) => (
                                                     <li key={i} className="flex gap-1"><span className="text-emerald-500 shrink-0">•</span>{p}</li>
                                                   ))}
-                                                  {pathyaList.length > 5 && <li className="text-slate-400">+{pathyaList.length - 5} more...</li>}
+                                                  {pathyaList.length > 5 && <li className="text-stone-400">+{pathyaList.length - 5} more...</li>}
                                                 </ul>
                                               </div>
                                             )}
                                             {apathyaList.length > 0 && (
                                               <div>
                                                 <p className="font-bold text-red-600 mb-1 flex items-center gap-1"><X className="w-3 h-3" /> {apathyaLabel}</p>
-                                                <ul className="space-y-0.5 text-slate-600">
+                                                <ul className="space-y-0.5 text-stone-600">
                                                   {apathyaList.slice(0, 4).map((a, i) => (
                                                     <li key={i} className="flex gap-1"><span className="text-red-400 shrink-0">•</span>{a}</li>
                                                   ))}
-                                                  {apathyaList.length > 4 && <li className="text-slate-400">+{apathyaList.length - 4} more...</li>}
+                                                  {apathyaList.length > 4 && <li className="text-stone-400">+{apathyaList.length - 4} more...</li>}
                                                 </ul>
                                               </div>
                                             )}
@@ -1573,11 +1579,11 @@ export default function Home() {
                                     </div>
 
                                     {/* WhatsApp send bar */}
-                                    <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex items-center gap-3">
+                                    <div className="px-3 py-2.5 bg-stone-50 border-t border-stone-100 flex items-center gap-2">
                                       <div className="flex-1 min-w-0">
-                                        <p className="text-xs text-slate-500">
+                                        <p className="text-xs text-stone-500">
                                           {form.getValues("mobile")
-                                            ? <span>Will send to <strong className="text-slate-700 font-mono">{form.getValues("mobile")}</strong></span>
+                                            ? <span>Will send to <strong className="text-stone-700 font-mono">{form.getValues("mobile")}</strong></span>
                                             : <span className="text-amber-600">Fill mobile number to send directly</span>
                                           }
                                         </p>
@@ -1605,45 +1611,48 @@ export default function Home() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Treatment Plan</label>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Treatment Plan</label>
                   <textarea {...form.register("treatment")} rows={2}
-                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Prescribed medicines..." />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all resize-none text-stone-800 text-sm" placeholder="Prescribed medicines..." />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">
                       Advice / Notes
-                      <span className="text-slate-400 font-normal text-xs ml-2">— F5 = follow-up after 5 days</span>
+                      <span className="text-stone-400 font-normal ml-2">— F5 = follow-up after 5 days</span>
                     </label>
                     <textarea {...form.register("advice")} rows={2}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="F5 · Rest, diet..." />
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all resize-none text-stone-800 text-sm" placeholder="F5 · Rest, diet..." />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Reports Required</label>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Reports Required</label>
                     <textarea {...form.register("reports")} rows={2}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Blood test, X-ray..." />
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all resize-none text-stone-800 text-sm" placeholder="Blood test, X-ray..." />
                   </div>
                 </div>
                 {/* Attachments */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-                    <Paperclip className="w-4 h-4 text-slate-400" /> Attach Report Images
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Paperclip className="w-3 h-3 text-stone-400" /> Attach Report Images
                   </label>
-                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 flex flex-col items-center gap-2 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all"
+                  <div className="border-2 border-dashed border-stone-200 rounded-lg p-4 flex flex-col items-center gap-1.5 cursor-pointer hover:border-teal-300 hover:bg-teal-50/30 transition-all"
                     onClick={() => fileInputRef.current?.click()}>
-                    <Paperclip className="w-6 h-6 text-slate-300" />
-                    <p className="text-sm text-slate-400">Click to upload image reports</p>
+                    <div className="flex items-center gap-3 text-stone-300">
+                      <Paperclip className="w-5 h-5" />
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </div>
+                    <p className="text-xs text-stone-400">Click to upload image reports</p>
                   </div>
                   <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileUpload} />
                   {attachments.length > 0 && (
                     <div className="flex flex-wrap gap-3 mt-2">
                       {attachments.map((src, i) => (
                         <div key={i} className="relative group">
-                          <img src={src} className="w-20 h-20 object-cover rounded-xl border border-slate-200" alt={`Report ${i + 1}`} />
+                          <img src={src} className="w-16 h-16 object-cover rounded-lg border border-stone-200" alt={`Report ${i + 1}`} />
                           <button type="button" onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
-                            className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <X className="w-3 h-3" />
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X className="w-2.5 h-2.5" />
                           </button>
                         </div>
                       ))}
@@ -1653,27 +1662,31 @@ export default function Home() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap justify-end gap-3 pt-2">
-                {lastSaved && (
-                  <button type="button" onClick={() => printPatientPrescription(lastSaved)}
-                    className="px-5 py-3 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-2">
-                    <Printer className="w-5 h-5" /> Print Last
+              <div className="flex flex-wrap justify-between gap-2 pt-1">
+                <div className="flex gap-2">
+                  {lastSaved && (
+                    <button type="button" onClick={() => printPatientPrescription(lastSaved)}
+                      className="px-4 py-2.5 rounded-lg font-semibold bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 shadow-sm transition-all flex items-center gap-1.5 text-sm">
+                      <Printer className="w-4 h-4" /> Print
+                    </button>
+                  )}
+                  {lastSaved && (
+                    <button type="button" onClick={() => setShowCard(true)}
+                      className="px-4 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 text-sm">
+                      <WalletCards className="w-4 h-4" /> Patient Card
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={onSaveAyurvedic}
+                    className="px-4 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 text-sm">
+                    <Leaf className="w-4 h-4" /> Save Ayurvedic
                   </button>
-                )}
-                {lastSaved && (
-                  <button type="button" onClick={() => setShowCard(true)}
-                    className="px-5 py-3 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-400/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
-                    <WalletCards className="w-5 h-5" /> Share Card
+                  <button type="submit"
+                    className="px-5 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 text-sm">
+                    <Save className="w-4 h-4" /> Save General
                   </button>
-                )}
-                <button type="button" onClick={onSaveAyurvedic}
-                  className="px-5 py-3 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
-                  <Leaf className="w-5 h-5" /> Save Ayurvedic
-                </button>
-                <button type="submit"
-                  className="px-7 py-3 rounded-xl font-semibold bg-gradient-to-r from-primary via-blue-500 to-indigo-600 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
-                  <Save className="w-5 h-5" /> Save General
-                </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1681,32 +1694,33 @@ export default function Home() {
 
         {/* ── SIDEBAR ── */}
         <div className="lg:col-span-4">
-          <div className="sticky top-24 space-y-4">
+          <div className="sticky top-24 space-y-3">
             {/* Filter Mode Selector */}
-            <div className="medical-card p-3">
-              <div className="flex gap-1 bg-slate-100 rounded-2xl p-1">
+            <div className="bg-white rounded-2xl shadow-sm border border-stone-200/80 p-3">
+              <div className="h-0.5 w-full bg-gradient-to-r from-teal-500 via-emerald-400 to-cyan-500 rounded-full mb-3" />
+              <div className="flex gap-1 bg-stone-100 rounded-xl p-1">
                 <button onClick={() => setFilterMode("history")}
-                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "history" ? "bg-white shadow text-primary" : "text-slate-500 hover:text-slate-700"}`}>
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "history" ? "bg-white shadow-sm text-teal-600" : "text-stone-500 hover:text-stone-700"}`}>
                   <RefreshCw className="w-3 h-3" /> History
                 </button>
                 <button onClick={() => setFilterMode("complaint")}
-                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "complaint" ? "bg-white shadow text-primary" : "text-slate-500 hover:text-slate-700"}`}>
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "complaint" ? "bg-white shadow-sm text-teal-600" : "text-stone-500 hover:text-stone-700"}`}>
                   <Activity className="w-3 h-3" /> Complaint
                 </button>
                 <button onClick={() => setFilterMode("address")}
-                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "address" ? "bg-white shadow text-primary" : "text-slate-500 hover:text-slate-700"}`}>
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "address" ? "bg-white shadow-sm text-teal-600" : "text-stone-500 hover:text-stone-700"}`}>
                   <MapPin className="w-3 h-3" /> Village
                 </button>
               </div>
 
               {(filterMode === "complaint" || filterMode === "address") && (
                 <div className="mt-2 relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
                   <input
                     value={filterQuery}
                     onChange={e => setFilterQuery(e.target.value)}
                     placeholder={filterMode === "complaint" ? "Search complaint or code..." : "Search village / city..."}
-                    className="w-full pl-8 pr-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary text-sm"
+                    className="w-full pl-7 pr-3 py-2 rounded-lg bg-white border border-stone-200 focus:outline-none focus:border-teal-400 text-xs"
                     autoFocus
                   />
                 </div>
@@ -1718,47 +1732,47 @@ export default function Home() {
               {/* ── HISTORY MODE ── */}
               {filterMode === "history" && (
                 <motion.div key="history" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="medical-card overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
+                  className="bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
                   {patientHistory.length > 0 ? (
                     <>
                       {/* Patient identity header */}
-                      <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-primary/10 to-blue-50 shrink-0">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                            <User className="w-4 h-4" />
+                      <div className="px-4 py-3 border-b border-stone-100 bg-gradient-to-r from-teal-50 to-stone-50 shrink-0">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600 shrink-0">
+                            <User className="w-3.5 h-3.5" />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-bold text-slate-900 truncate">{historyName || patientHistory[0]?.name}</p>
-                            <p className="text-xs font-mono text-slate-500">{historyMobile || patientHistory[0]?.mobile}</p>
+                            <p className="font-bold text-stone-900 truncate text-sm">{historyName || patientHistory[0]?.name}</p>
+                            <p className="text-[10px] font-mono text-stone-500">{historyMobile || patientHistory[0]?.mobile}</p>
                           </div>
-                          <span className="ml-auto text-xs text-slate-400 shrink-0">{patientHistory.length} visits</span>
+                          <span className="ml-auto text-[10px] text-stone-400 shrink-0 bg-stone-100 px-1.5 py-0.5 rounded">{patientHistory.length} visits</span>
                         </div>
                       </div>
-                      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                      <div className="flex-1 overflow-y-auto p-3 space-y-2">
                         {patientHistory.map((visit, i) => (
-                          <div key={i} className="p-3 rounded-xl border border-slate-100 bg-white hover:bg-gradient-to-r hover:from-blue-50/60 hover:to-slate-50 transition-all hover:border-blue-100 hover:shadow-sm">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-xs font-bold px-2 py-1 bg-white rounded-md border border-slate-200 text-slate-600">
+                          <div key={i} className="p-2.5 rounded-lg border border-stone-100 bg-white hover:bg-teal-50/40 transition-all hover:border-teal-100">
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-stone-100 rounded text-stone-600">
                                 {format(new Date(visit.visitDate), "dd MMM yyyy")}
                               </span>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1">
                                 {visit.registerType === "ayurvedic" && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">AYU</span>
+                                  <span className="text-[9px] font-bold px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">AYU</span>
                                 )}
                                 {visit.fees > 0 && (
-                                  <span className="text-xs font-bold text-primary bg-primary/5 px-2 py-1 rounded-md">₹{visit.fees}</span>
+                                  <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-100">₹{visit.fees}</span>
                                 )}
                               </div>
                             </div>
-                            <div className="space-y-1">
-                              {visit.complaint && <p className="text-xs text-slate-700"><span className="text-[10px] uppercase text-slate-400 font-bold">Complaint: </span>{visit.complaint}</p>}
-                              {visit.treatment && <p className="text-xs text-slate-600"><span className="text-[10px] uppercase text-slate-400 font-bold">Treatment: </span>{visit.treatment}</p>}
-                              {visit.advice && <p className="text-xs text-slate-500"><span className="text-[10px] uppercase text-slate-400 font-bold">Advice: </span>{visit.advice}</p>}
+                            <div className="space-y-0.5">
+                              {visit.complaint && <p className="text-[11px] text-stone-700"><span className="text-[9px] uppercase text-stone-400 font-bold">Complaint: </span>{visit.complaint}</p>}
+                              {visit.treatment && <p className="text-[11px] text-stone-600"><span className="text-[9px] uppercase text-stone-400 font-bold">Treatment: </span>{visit.treatment}</p>}
+                              {visit.advice && <p className="text-[11px] text-stone-500"><span className="text-[9px] uppercase text-stone-400 font-bold">Advice: </span>{visit.advice}</p>}
                             </div>
-                            <div className="mt-2 flex justify-end">
+                            <div className="mt-1.5 flex justify-end">
                               <button type="button" onClick={() => printPatientPrescription(visit)}
-                                className="flex items-center gap-1 text-xs text-slate-400 hover:text-primary transition-colors">
-                                <Printer className="w-3 h-3" /> Print
+                                className="flex items-center gap-1 text-[10px] text-stone-400 hover:text-teal-600 transition-colors">
+                                <Printer className="w-2.5 h-2.5" /> Print
                               </button>
                             </div>
                           </div>
@@ -1766,10 +1780,10 @@ export default function Home() {
                       </div>
                     </>
                   ) : (
-                    <div className="p-8 flex flex-col items-center justify-center text-center text-slate-400 h-64">
-                      <FileText className="w-12 h-12 mb-4 text-slate-300" />
-                      <p className="font-medium">No history yet</p>
-                      <p className="text-sm mt-2">Type mobile / case no. then press<br /><kbd className="px-1.5 py-0.5 bg-slate-200 rounded text-xs mx-1">Enter</kbd>or click <Search className="w-3 h-3 inline mx-1" /></p>
+                    <div className="p-8 flex flex-col items-center justify-center text-center text-stone-400 h-64">
+                      <FileText className="w-10 h-10 mb-3 text-stone-200" />
+                      <p className="font-medium text-sm">No history yet</p>
+                      <p className="text-xs mt-1.5">Type mobile / case no. then press<br /><kbd className="px-1.5 py-0.5 bg-stone-200 rounded text-[10px] mx-1">Enter</kbd>or click <Search className="w-2.5 h-2.5 inline mx-1" /></p>
                     </div>
                   )}
                 </motion.div>
@@ -1778,27 +1792,27 @@ export default function Home() {
               {/* ── COMPLAINT / VILLAGE MODE ── compact list ── */}
               {(filterMode === "complaint" || filterMode === "address") && (
                 <motion.div key="filter" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="medical-card overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
+                  className="bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
                   {filterResults.length > 0 ? (
                     <>
-                      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 shrink-0 flex items-center gap-2">
-                        <SlidersHorizontal className="w-4 h-4 text-primary" />
-                        <span className="font-semibold text-sm text-slate-800">
+                      <div className="px-3 py-2.5 border-b border-stone-100 bg-stone-50/60 shrink-0 flex items-center gap-2">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-teal-500" />
+                        <span className="font-semibold text-xs text-stone-700">
                           {filterMode === "complaint" ? "By Complaint" : "By Village"}
                         </span>
-                        <span className="ml-auto text-xs font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+                        <span className="ml-auto text-[10px] font-bold text-stone-500 bg-stone-200 px-1.5 py-0.5 rounded-full">
                           {filterResults.length} patients
                         </span>
                       </div>
-                      <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                      <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
                         {filterResults.map((p, i) => (
-                          <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
-                            <span className="text-xs text-slate-400 font-medium w-5 shrink-0">{i + 1}</span>
+                          <div key={i} className="flex items-center gap-2.5 px-3 py-2 hover:bg-stone-50 transition-colors">
+                            <span className="text-[10px] text-stone-400 font-medium w-4 shrink-0">{i + 1}</span>
                             <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-slate-900 text-sm truncate">{p.name}</p>
-                              <p className="text-xs font-mono text-slate-400">{p.mobile}</p>
+                              <p className="font-semibold text-stone-900 text-xs truncate">{p.name}</p>
+                              <p className="text-[10px] font-mono text-stone-400">{p.mobile}</p>
                             </div>
-                            <span className="text-xs text-slate-400 shrink-0">
+                            <span className="text-[10px] text-stone-400 shrink-0">
                               {format(new Date(p.visitDate), "dd/MM/yy")}
                             </span>
                           </div>
@@ -1806,9 +1820,9 @@ export default function Home() {
                       </div>
                     </>
                   ) : (
-                    <div className="p-8 flex flex-col items-center justify-center text-center text-slate-400 h-48">
-                      {filterMode === "complaint" ? <Activity className="w-10 h-10 mb-3 text-slate-300" /> : <MapPin className="w-10 h-10 mb-3 text-slate-300" />}
-                      <p className="text-sm font-medium">{filterQuery.length < 2 ? "Type to search..." : "No results found"}</p>
+                    <div className="p-6 flex flex-col items-center justify-center text-center text-stone-400 h-40">
+                      {filterMode === "complaint" ? <Activity className="w-8 h-8 mb-2.5 text-stone-200" /> : <MapPin className="w-8 h-8 mb-2.5 text-stone-200" />}
+                      <p className="text-xs font-medium">{filterQuery.length < 2 ? "Type to search..." : "No results found"}</p>
                     </div>
                   )}
                 </motion.div>
@@ -1816,30 +1830,31 @@ export default function Home() {
             </AnimatePresence>
 
             {/* ── LOOSE MEDICINE SALES ── */}
-            <div className="medical-card overflow-hidden">
-              <div className="px-4 py-3 bg-gradient-to-r from-violet-600 to-purple-600 flex items-center justify-between">
+            <div className="bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden">
+              <div className="h-0.5 w-full bg-gradient-to-r from-violet-500 to-purple-600 rounded-t-full" />
+              <div className="px-3 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4 text-white" />
-                  <span className="text-sm font-bold text-white">Loose Medicine Sales</span>
+                  <ShoppingBag className="w-3.5 h-3.5 text-white" />
+                  <span className="text-xs font-bold text-white">Loose Medicine Sales</span>
                 </div>
                 {looseTodayTotal > 0 && (
-                  <span className="text-xs font-bold text-violet-700 bg-white px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <IndianRupee className="w-3 h-3" />{looseTodayTotal.toLocaleString("en-IN")}
+                  <span className="text-[10px] font-bold text-violet-700 bg-white px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                    <IndianRupee className="w-2.5 h-2.5" />{looseTodayTotal.toLocaleString("en-IN")}
                   </span>
                 )}
               </div>
               {/* Add Entry Form */}
-              <div className="p-3 border-b border-violet-50 bg-white space-y-2">
+              <div className="p-3 border-b border-violet-50 bg-white space-y-1.5">
                 <input
                   value={looseProduct}
                   onChange={e => setLooseProduct(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); document.getElementById("loose-amount-input")?.focus(); } }}
                   placeholder="Product name (e.g. Triphala Churna)"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm transition-all"
+                  className="w-full px-2.5 py-2 rounded-lg border border-stone-200 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-100 text-xs transition-all"
                 />
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                   <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₹</span>
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 text-xs font-bold">₹</span>
                     <input
                       id="loose-amount-input"
                       type="number"
@@ -1848,48 +1863,48 @@ export default function Home() {
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddLooseSale(); } }}
                       placeholder="Amount"
                       min={0}
-                      className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm font-mono transition-all"
+                      className="w-full pl-6 pr-2.5 py-2 rounded-lg border border-stone-200 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-100 text-xs font-mono transition-all"
                     />
                   </div>
                   <button
                     onClick={handleAddLooseSale}
                     disabled={!looseProduct.trim() || !looseAmount || Number(looseAmount) <= 0}
-                    className="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors flex items-center gap-1.5 shadow-sm">
-                    <PackagePlus className="w-4 h-4" /> Add
+                    className="px-2.5 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs transition-colors flex items-center gap-1 shadow-sm">
+                    <PackagePlus className="w-3.5 h-3.5" /> Add
                   </button>
                 </div>
               </div>
               {/* Sales List */}
               {looseSales.length === 0 ? (
-                <div className="px-4 py-5 text-center text-slate-400">
-                  <ShoppingBag className="w-7 h-7 mx-auto mb-1.5 text-violet-200" />
-                  <p className="text-xs font-medium text-slate-500">No loose sales today</p>
-                  <p className="text-xs mt-0.5 text-slate-400">Add a product above to start tracking</p>
+                <div className="px-3 py-4 text-center text-stone-400">
+                  <ShoppingBag className="w-6 h-6 mx-auto mb-1 text-violet-100" />
+                  <p className="text-[10px] font-medium text-stone-500">No loose sales today</p>
+                  <p className="text-[10px] mt-0.5 text-stone-400">Add a product above to start tracking</p>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-50 max-h-52 overflow-y-auto">
+                <div className="divide-y divide-stone-50 max-h-48 overflow-y-auto">
                   {looseSales.map((sale, i) => (
-                    <div key={sale.id} className="flex items-center gap-2 px-3 py-2.5 hover:bg-violet-50/40 transition-colors group">
-                      <span className="text-xs text-slate-300 w-4 shrink-0 font-mono">{i + 1}</span>
+                    <div key={sale.id} className="flex items-center gap-2 px-3 py-2 hover:bg-violet-50/40 transition-colors group">
+                      <span className="text-[10px] text-stone-300 w-3.5 shrink-0 font-mono">{i + 1}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-xs text-slate-800 truncate">{sale.product}</p>
-                        <p className="text-[10px] text-slate-400">{sale.time}</p>
+                        <p className="font-semibold text-[11px] text-stone-800 truncate">{sale.product}</p>
+                        <p className="text-[9px] text-stone-400">{sale.time}</p>
                       </div>
-                      <span className="font-bold text-violet-700 text-sm shrink-0">₹{sale.amount.toLocaleString("en-IN")}</span>
+                      <span className="font-bold text-violet-700 text-xs shrink-0">₹{sale.amount.toLocaleString("en-IN")}</span>
                       <button
                         onClick={() => handleRemoveLooseSale(sale.id)}
                         title="Remove"
-                        className="shrink-0 p-1 rounded-lg text-slate-300 hover:text-red-400 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
-                        <Trash2 className="w-3.5 h-3.5" />
+                        className="shrink-0 p-1 rounded text-stone-200 hover:text-red-400 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
                   ))}
-                  <div className="px-3 py-2.5 bg-violet-50 flex justify-between items-center sticky bottom-0">
-                    <span className="text-xs font-bold text-violet-700 flex items-center gap-1">
-                      <ShoppingBag className="w-3 h-3" /> Today's Total ({looseSales.length} item{looseSales.length !== 1 ? "s" : ""})
+                  <div className="px-3 py-2 bg-violet-50 flex justify-between items-center sticky bottom-0">
+                    <span className="text-[10px] font-bold text-violet-700 flex items-center gap-1">
+                      <ShoppingBag className="w-2.5 h-2.5" /> Today's Total ({looseSales.length} item{looseSales.length !== 1 ? "s" : ""})
                     </span>
-                    <span className="font-bold text-violet-700 flex items-center gap-0.5">
-                      <IndianRupee className="w-3.5 h-3.5" />{looseTodayTotal.toLocaleString("en-IN")}
+                    <span className="font-bold text-violet-700 flex items-center gap-0.5 text-xs">
+                      <IndianRupee className="w-3 h-3" />{looseTodayTotal.toLocaleString("en-IN")}
                     </span>
                   </div>
                 </div>
