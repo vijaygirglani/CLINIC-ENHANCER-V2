@@ -1178,10 +1178,10 @@ export default function Home() {
         }
       `}</style>
 
-      <div className="mc-bg" style={{margin:"-16px -16px -32px", padding:"12px", minHeight:"calc(100vh - 64px)"}}>
-      <div style={{display:"grid", gridTemplateColumns:"280px 1fr 300px", gap:"12px", height:"calc(100vh - 88px)", minHeight:0}}>
+      <div className="mc-bg" style={{margin:"-16px -16px -32px", padding:"16px", minHeight:"calc(100vh - 80px)"}}>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* ── LEFT COLUMN: Patient Info ── */}
-        <div style={{display:"flex", flexDirection:"column", gap:"8px", minHeight:0}}>
+        <div className="lg:col-span-3">
           {/* Sheet connected banner */}
           {sheetConnected && (
             <div className="mc-card mb-3 flex items-center gap-2 px-3 py-2.5 text-xs" style={{borderLeft:"4px solid #1f7a4a"}}>
@@ -1189,155 +1189,173 @@ export default function Home() {
               <span style={{color:"#1f7a4a"}}><strong>Google Sheet connected.</strong> Press "Sync from Sheet"</span>
             </div>
           )}
-          <div className="mc-card" style={{flex:1, display:"flex", flexDirection:"column", overflow:"hidden"}}>
-            <form onSubmit={form.handleSubmit(onSubmit)} style={{flex:1, display:"flex", flexDirection:"column", overflow:"hidden"}}>
-              <div style={{flex:1, overflowY:"auto", padding:"14px", display:"flex", flexDirection:"column", gap:"10px"}}>
-
-                {/* Visit Date */}
-                <div className="space-y-1">
-                  <label className="mc-label">
-                    <Calendar className="w-3 h-3 text-stone-400" /> Visit Date
-                  </label>
-                  <input type="date" {...form.register("visitDate")} className="mc-input" />
+          <div className="mc-card p-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-0">
+              <div className="space-y-3">
+                <p className="mc-section-title">Patient Information</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="mc-label">
+                      <Calendar className="w-3 h-3 text-stone-400" /> Visit Date
+                    </label>
+                    <input type="date" {...form.register("visitDate")}
+                      className="mc-input" />
+                  </div>
                 </div>
 
                 {/* Mobile / Case No */}
-                <div className="space-y-1">
-                  <label className="mc-label">
-                    <Phone className="w-3 h-3 text-stone-400" /> Mobile / Case No. <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex gap-1.5">
-                    <div className="relative flex-1">
-                      <input
-                        {...mobileRest}
-                        ref={(el) => {
-                          mobileRHFRef(el);
-                          (mobileRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === "Enter") { e.preventDefault(); runMobileLookup(); }
-                        }}
-                        className="mc-input" style={{fontFamily:"monospace"}}
-                        placeholder="Mobile or Case No."
-                      />
-                      {isLookingUp && <Loader2 className="w-3.5 h-3.5 absolute right-2.5 top-3 animate-spin text-stone-400" />}
-                    </div>
-                    <button type="button" onClick={runMobileLookup}
-                      className="flex items-center justify-center px-2.5 py-2 rounded-lg border transition-all" style={{background:"#f0ebe0",border:"1.5px solid #ddd8cc",color:"#6b7a5a"}} title="Search">
-                      <Search className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  {form.formState.errors.mobile && <p className="text-destructive text-xs">{form.formState.errors.mobile.message}</p>}
-                </div>
-
-                {/* Patient Name */}
-                <div className="space-y-1">
-                  <label className="mc-label">
-                    <User className="w-3 h-3 text-stone-400" /> Patient Name <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      {...nameRest}
-                      ref={(el) => {
-                        nameRHFRef(el);
-                        (nameRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === "Enter") { e.preventDefault(); runNameLookup(); setShowNameDropdown(false); }
-                        if (e.key === "Escape") setShowNameDropdown(false);
-                      }}
-                      onBlur={() => setTimeout(() => setShowNameDropdown(false), 200)}
-                      className="mc-input"
-                      placeholder="Patient Name"
-                    />
-                    {showNameDropdown && nameSuggestions.length > 0 && (
-                      <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl overflow-y-auto" style={{zIndex:9999,maxHeight:"280px",border:"1px solid #e0dbd0"}}>
-                        <div className="px-3 py-2 border-b border-stone-100 bg-stone-50 flex items-center gap-2">
-                          <Search className="w-3 h-3 text-stone-400" />
-                          <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">
-                            {nameSuggestions.length} patient{nameSuggestions.length > 1 ? "s" : ""} found
-                          </span>
-                        </div>
-                        {nameSuggestions.map((s, i) => (
-                          <button key={i} type="button"
-                            onMouseDown={e => { e.preventDefault(); handleSelectSuggestion(s); }}
-                            className="w-full px-3 py-2.5 hover:bg-teal-50 transition-colors text-left border-b border-stone-50 last:border-0">
-                            <div className="flex items-start gap-2.5">
-                              <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600 shrink-0 mt-0.5">
-                                <User className="w-3 h-3" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-stone-900 text-sm truncate">{s.name}</span>
-                                  <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded shrink-0">
-                                    {s.visitCount} visit{s.visitCount > 1 ? "s" : ""}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-xs font-mono text-stone-400">{s.mobile}</span>
-                                  {s.age > 0 && <span className="text-xs text-stone-400">{s.age}y</span>}
-                                  {s.address && <span className="text-xs text-stone-400 truncate max-w-[100px]">· {s.address}</span>}
-                                </div>
-                              </div>
-                              <span className="text-[10px] text-teal-500 font-bold shrink-0 mt-1">Fill →</span>
-                            </div>
-                          </button>
-                        ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="mc-label">
+                      <Phone className="w-3 h-3 text-stone-400" /> Mobile / Case No. <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex gap-1.5">
+                      <div className="relative flex-1">
+                        <input
+                          {...mobileRest}
+                          ref={(el) => {
+                            mobileRHFRef(el);
+                            (mobileRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") { e.preventDefault(); runMobileLookup(); }
+                          }}
+                          className="mc-input" style={{fontFamily:"monospace"}}
+                          placeholder="Mobile or Case No."
+                        />
+                        {isLookingUp && <Loader2 className="w-3.5 h-3.5 absolute right-2.5 top-3 animate-spin text-stone-400" />}
                       </div>
-                    )}
+                      <button type="button" onClick={runMobileLookup}
+                        className="flex items-center justify-center px-2.5 py-2 rounded-lg border transition-all" style={{background:"#f0ebe0",border:"1.5px solid #ddd8cc",color:"#6b7a5a"}} title="Search">
+                        <Search className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" onClick={handleAutoCase} title="Auto-generate case number"
+                        className="px-2.5 py-2 rounded-lg text-white font-semibold text-xs flex items-center gap-1 shadow-sm whitespace-nowrap" style={{background:"#1a6fd4"}}>
+                        <Zap className="w-3 h-3" /> Auto
+                      </button>
+                    </div>
+                    {form.formState.errors.mobile && <p className="text-destructive text-xs">{form.formState.errors.mobile.message}</p>}
+                    <p className="text-[10px] text-stone-400">
+                      Case format: <span className="font-mono text-purple-500">00{format(new Date(visitDateValue || todayStr), "ddMMyy")}01</span>
+                      &nbsp;· Press <kbd className="px-1 py-0.5 bg-stone-100 rounded text-[9px]">Enter</kbd> or <Search className="w-2.5 h-2.5 inline" /> to search
+                    </p>
                   </div>
-                  {form.formState.errors.name && <p className="text-destructive text-xs">{form.formState.errors.name.message}</p>}
+
+                  <div className="space-y-1">
+                    <label className="mc-label">
+                      <User className="w-3 h-3 text-stone-400" /> Patient Name <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="flex gap-1.5">
+                        <input
+                          {...nameRest}
+                          ref={(el) => {
+                            nameRHFRef(el);
+                            (nameRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") { e.preventDefault(); runNameLookup(); setShowNameDropdown(false); }
+                            if (e.key === "Escape") setShowNameDropdown(false);
+                          }}
+                          onBlur={() => setTimeout(() => setShowNameDropdown(false), 200)}
+                          className="mc-input"
+                          placeholder="Patient Name"
+                        />
+                        <button type="button" onClick={runNameLookup}
+                          className="flex items-center justify-center px-2.5 py-2 rounded-lg border transition-all" style={{background:"#f0ebe0",border:"1.5px solid #ddd8cc",color:"#6b7a5a"}} title="Search by name">
+                          <Search className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Live patient suggestions dropdown */}
+                      {showNameDropdown && nameSuggestions.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl overflow-y-auto" style={{zIndex:9999,maxHeight:"280px",border:"1px solid #e0dbd0"}} style={{ zIndex: 9999, maxHeight: "280px" }}>
+                          <div className="px-3 py-2 border-b border-stone-100 bg-stone-50 flex items-center gap-2">
+                            <Search className="w-3 h-3 text-stone-400" />
+                            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">
+                              {nameSuggestions.length} patient{nameSuggestions.length > 1 ? "s" : ""} found
+                            </span>
+                          </div>
+                          {nameSuggestions.map((s, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onMouseDown={e => { e.preventDefault(); handleSelectSuggestion(s); }}
+                              className="w-full px-3 py-2.5 hover:bg-teal-50 transition-colors text-left border-b border-stone-50 last:border-0"
+                            >
+                              <div className="flex items-start gap-2.5">
+                                <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600 shrink-0 mt-0.5">
+                                  <User className="w-3 h-3" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-stone-900 text-sm truncate">{s.name}</span>
+                                    <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded shrink-0">
+                                      {s.visitCount} visit{s.visitCount > 1 ? "s" : ""}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-xs font-mono text-stone-400">{s.mobile}</span>
+                                    {s.age > 0 && <span className="text-xs text-stone-400">{s.age}y</span>}
+                                    {s.address && <span className="text-xs text-stone-400 truncate max-w-[100px]">· {s.address}</span>}
+                                  </div>
+                                  {s.recentVisits[0] && (
+                                    <div className="mt-1 text-[10px] text-stone-400">
+                                      <span className="font-semibold text-stone-500">{format(new Date(s.recentVisits[0].visitDate), "dd MMM yyyy")}</span>
+                                      {s.recentVisits[0].complaint && <span className="ml-1">· {s.recentVisits[0].complaint.slice(0, 40)}</span>}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-teal-500 font-bold shrink-0 mt-1">Fill →</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {form.formState.errors.name && <p className="text-destructive text-xs">{form.formState.errors.name.message}</p>}
+                  </div>
                 </div>
 
-                {/* Age + Weight */}
-                <div className="flex gap-2">
-                  <div className="space-y-1" style={{flex:2}}>
+                {/* Age + Weight + Address */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="space-y-1">
                     <label className="mc-label">Age <span className="text-stone-400 text-[10px]">(optional)</span></label>
                     <div className="flex gap-1.5">
                       <div className="flex-1 relative">
-                        <input type="number" {...form.register("age")} min={0} className="mc-input" placeholder="0" />
+                        <input type="number" {...form.register("age")} min={0}
+                          className="mc-input" placeholder="0" />
                         <span className="absolute right-2 top-3 text-[10px] text-stone-400">yrs</span>
                       </div>
                       <div className="w-16 relative">
-                        <input type="number" {...form.register("ageMonths")} min={0} max={11} className="mc-input" placeholder="0" />
+                        <input type="number" {...form.register("ageMonths")} min={0} max={11}
+                          className="mc-input" placeholder="0" />
                         <span className="absolute right-1.5 top-3 text-[10px] text-stone-400">mo</span>
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-1" style={{flex:1}}>
+                  <div className="space-y-1">
                     <label className="mc-label">
                       <Weight className="w-3 h-3 text-stone-400" /> Weight
                     </label>
-                    <input {...form.register("weight")} className="mc-input" placeholder="65 kg" />
+                    <input {...form.register("weight")}
+                      className="mc-input" placeholder="e.g. 65 kg" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="mc-label">
+                      <MapPin className="w-3 h-3 text-stone-400" /> Address
+                    </label>
+                    <input {...form.register("address")}
+                      className="mc-input" placeholder="City / Area" />
                   </div>
                 </div>
-
-                {/* Address */}
-                <div className="space-y-1">
-                  <label className="mc-label">
-                    <MapPin className="w-3 h-3 text-stone-400" /> Address
-                  </label>
-                  <input {...form.register("address")} className="mc-input" placeholder="City / Area" />
-                </div>
-
-                {/* Auto case hint */}
-                <div className="flex gap-1.5">
-                  <button type="button" onClick={handleAutoCase}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white font-semibold text-xs" style={{background:"#1a6fd4"}}>
-                    <Zap className="w-3 h-3" /> Auto Case No.
-                  </button>
-                </div>
-                <p className="text-[10px] text-stone-400 -mt-1">
-                  Format: <span className="font-mono text-purple-500">00{format(new Date(visitDateValue || todayStr), "ddMMyy")}01</span>
-                </p>
-
               </div>
 
               {/* Left Column Action Buttons */}
-              <div style={{padding:"10px 14px", borderTop:"1px solid #e8e4da", display:"flex", flexDirection:"column", gap:"8px"}}>
+              <div className="flex flex-col gap-2 mt-4">
                 {lastSaved && (
                   <button type="button" onClick={() => printPatientPrescription(lastSaved)}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm" style={{background:"#1a6fd4",color:"white",border:"none"}}>
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm" style={{background:"#fff",border:"1.5px solid #ddd8cc",color:"#3a4a2a"}}>
                     <Printer style={{width:16,height:16}} /> Print
                   </button>
                 )}
@@ -1347,38 +1365,115 @@ export default function Home() {
                     <WalletCards style={{width:16,height:16}} /> Patient Card
                   </button>
                 )}
-                {!lastSaved && (
-                  <div style={{display:"flex", gap:"8px"}}>
-                    <div style={{flex:1, height:"38px", borderRadius:"10px", background:"#e8e4da"}} />
-                    <div style={{flex:1, height:"38px", borderRadius:"10px", background:"#e8e4da"}} />
-                  </div>
-                )}
               </div>
 
+              {/* Medical Details */}
+              </div>
             </form>
           </div>
         </div>
 
         {/* ── CENTER COLUMN: Clinical Details ── */}
-        <div style={{display:"flex", flexDirection:"column", minHeight:0}}>
-          <div className="mc-card" style={{flex:1, display:"flex", flexDirection:"column", overflow:"hidden"}}>
-            <form onSubmit={form.handleSubmit(onSubmit)} id="clinical-form" style={{flex:1, display:"flex", flexDirection:"column", overflow:"hidden"}}>
-              <div style={{flex:1, overflowY:"auto", padding:"14px", display:"flex", flexDirection:"column", gap:"10px"}}>
-
-                {/* Complaint Code */}
-                <div className="space-y-1">
-                  <label className="mc-label">
-                    <Activity className="w-3 h-3 text-stone-400" /> Complaint Code
-                  </label>
-                  <input {...form.register("complaintCode")}
-                    className="mc-input" style={{textTransform:"uppercase"}}
-                    placeholder="E.G. CCF" />
+        <div className="lg:col-span-5">
+          <div className="mc-card p-4 space-y-3">
+            <p className="mc-section-title" style={{color:"#2d5a27"}}>Clinical Details</p>
+            <form onSubmit={form.handleSubmit(onSubmit)} id="clinical-form">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="mc-label">
+                      <Activity className="w-3 h-3 text-stone-400" /> Complaint Code
+                    </label>
+                    <input {...form.register("complaintCode")}
+                      className="mc-input" style={{textTransform:"uppercase"}}
+                      placeholder="E.G. CCF" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="mc-label">Consultation Fees (₹)</label>
+                    {/* Preset buttons */}
+                    <div className="flex gap-1 mb-1">
+                      {[200, 250, 550].map(preset => (
+                        <button key={preset} type="button"
+                          onClick={() => form.setValue("fees", preset)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all" style={{background:"#e0f0e8",color:"#1f7a4a",border:"1px solid #b8d8c0"}}>
+                          ₹{preset}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Row 1: Amount input */}
+                    <input type="number" {...form.register("fees")} min={0}
+                      className="mc-input" style={{fontWeight:"600"}} placeholder="Amount" />
+                    {/* Row 2: Cash/Online toggle + Mark Pending */}
+                    <div className="flex gap-2 items-center">
+                      <div className="flex rounded-lg border border-stone-200 overflow-hidden shrink-0">
+                        <button type="button"
+                          onClick={() => form.setValue("paymentMode", "cash")}
+                          className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold transition-all ${
+                            paymentModeValue !== "online"
+                              ? ""
+                              : ""
+                          } style={paymentModeValue !== "online" ? {background:"#1f7a4a",color:"white"} : {background:"white",color:"#aaa"}}`}>
+                          💵 Cash
+                        </button>
+                        <button type="button"
+                          onClick={() => form.setValue("paymentMode", "online")}
+                          className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold transition-all border-l border-stone-200 ${
+                            paymentModeValue === "online"
+                              ? ""
+                              : ""
+                          } style={paymentModeValue === "online" ? {background:"#1a6fd4",color:"white"} : {background:"white",color:"#aaa"}}`}>
+                          📱 Online
+                        </button>
+                      </div>
+                      <button type="button"
+                        onClick={() => { setFeesMarkedPending(p => !p); setPendingAmount(""); }}
+                        title={feesMarkedPending ? "Click to unmark pending" : "Mark fees as pending"}
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border font-semibold text-xs transition-all ${
+                          feesMarkedPending
+                            ? "bg-amber-100 border-amber-400 text-amber-700"
+                            : "bg-white border-stone-200 text-stone-400 hover:border-amber-300 hover:text-amber-500"
+                        }`}>
+                        <Hourglass className="w-3 h-3" />
+                        {feesMarkedPending ? "Pending ✓" : "Mark Pending"}
+                      </button>
+                    </div>
+                    {feesMarkedPending && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                          <Hourglass className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">Pending Amount (₹)</p>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 font-bold text-xs">₹</span>
+                              <input
+                                type="number" min={0}
+                                value={pendingAmount}
+                                onChange={e => setPendingAmount(e.target.value)}
+                                placeholder={`Full (₹${feesValue || 0})`}
+                                className="w-full pl-6 pr-3 py-1.5 rounded-lg border border-amber-300 bg-white text-sm font-bold text-amber-800 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 placeholder:text-amber-300 placeholder:font-normal"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        {pendingAmount.trim() !== "" && Number(pendingAmount) > 0 && Number(feesValue) > 0 ? (
+                          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs">
+                            <span className="flex items-center gap-1 text-emerald-600 font-bold">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Paid: ₹{Math.max(0, Number(feesValue) - Number(pendingAmount))}
+                            </span>
+                            <span className="text-slate-300">|</span>
+                            <span className="flex items-center gap-1 text-amber-600 font-bold">
+                              <Hourglass className="w-3.5 h-3.5" /> Pending: ₹{Number(pendingAmount)}
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-amber-500 px-1">Leave blank to mark full amount (₹{feesValue || 0}) as pending</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-
-                {/* Presenting Complaints */}
                 <div className="space-y-1">
                   <label className="mc-label">Presenting Complaints</label>
-                  <textarea {...form.register("complaint")} rows={3}
+                  <textarea {...form.register("complaint")} rows={2}
                     className="mc-input" style={{resize:"none"}} placeholder="Describe the symptoms..." />
                 </div>
 
@@ -1391,43 +1486,79 @@ export default function Home() {
                       exit={{ opacity: 0, y: -8 }}
                       className="rounded-xl border border-emerald-200 bg-emerald-50/60 overflow-hidden"
                     >
+                      {/* Header */}
                       <div className="flex items-center gap-2 px-3 py-2.5">
-                        <button type="button" onClick={() => setShowPAPanel(p => !p)} className="flex items-center gap-2 flex-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setShowPAPanel(p => !p)}
+                          className="flex items-center gap-2 flex-1 min-w-0"
+                        >
                           <div className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center shrink-0">
                             <Leaf className="w-3.5 h-3.5 text-white" />
                           </div>
-                          <span className="text-xs font-bold text-emerald-800">Pathya-Apathya Suggestions</span>
+                          <span className="text-xs font-bold text-emerald-800">
+                            Pathya-Apathya Suggestions
+                          </span>
                           <span className="text-[10px] font-semibold bg-emerald-200 text-emerald-700 px-1.5 py-0.5 rounded ml-1 shrink-0">
                             {paMatches.length} match{paMatches.length > 1 ? "es" : ""}
                           </span>
                         </button>
+                        {/* Language selector */}
                         <div className="flex items-center gap-1 shrink-0 ml-auto">
                           {(["gu", "hi", "en"] as const).map(l => (
-                            <button key={l} type="button" onClick={() => setPaLang(l)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${paLang === l ? "bg-emerald-600 text-white shadow-sm" : "bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50"}`}>
+                            <button
+                              key={l}
+                              type="button"
+                              onClick={() => setPaLang(l)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                paLang === l
+                                  ? "bg-emerald-600 text-white shadow-sm"
+                                  : "bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50"
+                              }`}
+                            >
                               {l === "gu" ? "ગુ" : l === "hi" ? "हि" : "EN"}
                             </button>
                           ))}
                         </div>
-                        <ChevronDown onClick={() => setShowPAPanel(p => !p)}
-                          className={`w-4 h-4 text-emerald-600 transition-transform cursor-pointer shrink-0 ${showPAPanel ? "rotate-180" : ""}`} />
+                        <ChevronDown
+                          onClick={() => setShowPAPanel(p => !p)}
+                          className={`w-4 h-4 text-emerald-600 transition-transform cursor-pointer shrink-0 ${showPAPanel ? "rotate-180" : ""}`}
+                        />
                       </div>
+
                       <AnimatePresence>
                         {showPAPanel && (
-                          <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden">
+                          <motion.div
+                            initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }}
+                            className="overflow-hidden"
+                          >
                             <div className="px-4 pb-4 space-y-3">
+                              {/* Disease chips */}
                               <div className="flex flex-wrap gap-2">
                                 {paMatches.map((m, i) => {
                                   const name = m.disease?.nameEn || m.builtin?.nameEn || "";
                                   const isSelected = selectedPADisease?.id === (m.disease?.id || m.builtin?.id);
+                                  // Only imported diseases have full data for preview
                                   const hasFullData = !!m.disease;
                                   return (
-                                    <button key={i} type="button"
+                                    <button
+                                      key={i}
+                                      type="button"
                                       onClick={() => {
-                                        if (m.disease) { setSelectedPADisease(isSelected ? null : m.disease); }
-                                        else { toast({ title: "Open Pathya-Apathya tab", description: `"${name}" data is in the Pathya-Apathya section.` }); }
+                                        if (m.disease) {
+                                          setSelectedPADisease(isSelected ? null : m.disease);
+                                        } else {
+                                          toast({ title: "Open Pathya-Apathya tab", description: `"${name}" data is in the Pathya-Apathya section. Import it to send via WhatsApp.` });
+                                        }
                                       }}
-                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${isSelected ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : hasFullData ? "bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-100" : "bg-white text-stone-500 border-stone-200 hover:bg-stone-50"}`}>
+                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                        isSelected
+                                          ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                          : hasFullData
+                                          ? "bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                                          : "bg-white text-stone-500 border-stone-200 hover:bg-stone-50"
+                                      }`}
+                                    >
                                       <Stethoscope className="w-3 h-3" />
                                       {name}
                                       {!hasFullData && <span className="text-[9px] text-stone-400 ml-0.5">(built-in)</span>}
@@ -1435,14 +1566,21 @@ export default function Home() {
                                   );
                                 })}
                               </div>
+
+                              {/* Selected disease full preview + WhatsApp */}
                               <AnimatePresence>
                                 {selectedPADisease && (
-                                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                                    className="bg-white rounded-xl border border-emerald-200 overflow-hidden">
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                                    className="bg-white rounded-xl border border-emerald-200 overflow-hidden"
+                                  >
+                                    {/* Disease header */}
                                     <div className="flex items-center justify-between px-4 py-3 bg-emerald-600">
                                       <div>
                                         <p className="font-bold text-white text-sm">
-                                          {paLang === "gu" ? (selectedPADisease.nameGu || selectedPADisease.nameEn) : paLang === "hi" ? (selectedPADisease.nameHi || selectedPADisease.nameEn) : selectedPADisease.nameEn}
+                                          {paLang === "gu" ? (selectedPADisease.nameGu || selectedPADisease.nameEn)
+                                            : paLang === "hi" ? (selectedPADisease.nameHi || selectedPADisease.nameEn)
+                                            : selectedPADisease.nameEn}
                                         </p>
                                         <p className="text-emerald-100 text-xs">{selectedPADisease.nameEn}</p>
                                       </div>
@@ -1450,6 +1588,7 @@ export default function Home() {
                                         <X className="w-4 h-4" />
                                       </button>
                                     </div>
+
                                     <div className="p-4 space-y-3 max-h-60 overflow-y-auto text-xs">
                                       {(() => {
                                         const pathyaList = paLang === "gu" ? selectedPADisease.pathyaGu : paLang === "hi" ? selectedPADisease.pathyaHi : selectedPADisease.pathyaEn;
@@ -1462,7 +1601,9 @@ export default function Home() {
                                               <div>
                                                 <p className="font-bold text-emerald-700 mb-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> {pathyaLabel}</p>
                                                 <ul className="space-y-0.5 text-stone-600">
-                                                  {pathyaList.slice(0, 5).map((p, i) => (<li key={i} className="flex gap-1"><span className="text-emerald-500 shrink-0">•</span>{p}</li>))}
+                                                  {pathyaList.slice(0, 5).map((p, i) => (
+                                                    <li key={i} className="flex gap-1"><span className="text-emerald-500 shrink-0">•</span>{p}</li>
+                                                  ))}
                                                   {pathyaList.length > 5 && <li className="text-stone-400">+{pathyaList.length - 5} more...</li>}
                                                 </ul>
                                               </div>
@@ -1471,7 +1612,9 @@ export default function Home() {
                                               <div>
                                                 <p className="font-bold text-red-600 mb-1 flex items-center gap-1"><X className="w-3 h-3" /> {apathyaLabel}</p>
                                                 <ul className="space-y-0.5 text-stone-600">
-                                                  {apathyaList.slice(0, 4).map((a, i) => (<li key={i} className="flex gap-1"><span className="text-red-400 shrink-0">•</span>{a}</li>))}
+                                                  {apathyaList.slice(0, 4).map((a, i) => (
+                                                    <li key={i} className="flex gap-1"><span className="text-red-400 shrink-0">•</span>{a}</li>
+                                                  ))}
                                                   {apathyaList.length > 4 && <li className="text-stone-400">+{apathyaList.length - 4} more...</li>}
                                                 </ul>
                                               </div>
@@ -1480,14 +1623,26 @@ export default function Home() {
                                         );
                                       })()}
                                     </div>
+
+                                    {/* WhatsApp send bar */}
                                     <div className="px-3 py-2.5 bg-stone-50 border-t border-stone-100 flex items-center gap-2">
                                       <div className="flex-1 min-w-0">
                                         <p className="text-xs text-stone-500">
-                                          {form.getValues("mobile") ? <span>Send to <strong className="text-stone-700 font-mono">{form.getValues("mobile")}</strong></span> : <span className="text-amber-600">Fill mobile to send directly</span>}
+                                          {form.getValues("mobile")
+                                            ? <span>Will send to <strong className="text-stone-700 font-mono">{form.getValues("mobile")}</strong></span>
+                                            : <span className="text-amber-600">Fill mobile number to send directly</span>
+                                          }
                                         </p>
                                       </div>
-                                      <button type="button" onClick={() => sendPathyaWhatsApp(selectedPADisease)}
-                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${paSent ? "bg-emerald-100 text-emerald-700 border border-emerald-300" : "bg-[#25D366] hover:bg-[#1ebe5b] text-white"}`}>
+                                      <button
+                                        type="button"
+                                        onClick={() => sendPathyaWhatsApp(selectedPADisease)}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${
+                                          paSent
+                                            ? "bg-emerald-100 text-emerald-700 border border-emerald-300"
+                                            : "bg-[#25D366] hover:bg-[#1ebe5b] text-white shadow-green-200 shadow-md"
+                                        }`}
+                                      >
                                         <MessageSquare className="w-4 h-4" />
                                         {paSent ? "Sent! ✓" : "Send on WhatsApp"}
                                       </button>
@@ -1502,31 +1657,26 @@ export default function Home() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-
-                {/* Treatment Plan */}
                 <div className="space-y-1">
                   <label className="mc-label">Treatment Plan</label>
-                  <textarea {...form.register("treatment")} rows={3}
+                  <textarea {...form.register("treatment")} rows={2}
                     className="mc-input" style={{resize:"none"}} placeholder="Prescribed medicines..." />
                 </div>
-
-                {/* Advice / Notes + Reports side by side */}
-                <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px"}}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="mc-label">
                       Advice / Notes
-                      <span className="text-stone-400 font-normal ml-1" style={{fontSize:"9px"}}>— F5 = Follow-up after 5 days</span>
+                      <span className="text-stone-400 font-normal ml-2">— F5 = follow-up after 5 days</span>
                     </label>
-                    <textarea {...form.register("advice")} rows={3}
+                    <textarea {...form.register("advice")} rows={2}
                       className="mc-input" style={{resize:"none"}} placeholder="F5 · Rest, diet..." />
                   </div>
                   <div className="space-y-1">
                     <label className="mc-label">Reports Required</label>
-                    <textarea {...form.register("reports")} rows={3}
+                    <textarea {...form.register("reports")} rows={2}
                       className="mc-input" style={{resize:"none"}} placeholder="Blood test, X-ray..." />
                   </div>
                 </div>
-
                 {/* Attachments */}
                 <div className="space-y-1">
                   <label className="mc-label">
@@ -1555,11 +1705,10 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-
               </div>
 
-              {/* Center Column Save Buttons */}
-              <div style={{padding:"10px 14px", borderTop:"1px solid #e8e4da", display:"flex", gap:"8px"}}>
+              {/* Action Buttons for clinical form */}
+              <div className="flex gap-2 mt-2">
                 <button type="button" onClick={onSaveAyurvedic} className="mc-btn-green flex-1">
                   <Leaf style={{width:16,height:16}} /> Save Ayurvedic
                 </button>
@@ -1572,14 +1721,13 @@ export default function Home() {
         </div>
 
         {/* ── RIGHT SIDEBAR ── */}
-        <div style={{display:"flex", flexDirection:"column", minHeight:0}}>
-          <div style={{display:"flex", flexDirection:"column", gap:"8px", height:"100%"}}>
-
-            {/* Sync from Sheet button */}
-            <div style={{display:"flex", gap:"6px"}}>
+        <div className="lg:col-span-4">
+          <div className="sticky top-24 space-y-3">
+            {/* Sync from Sheet button - top of sidebar */}
+            <div className="flex gap-2 mb-1">
               <button type="button" onClick={handleSync}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-white text-xs font-semibold"
-                style={{flex:1, background:"#1f9080"}}>
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-white text-xs font-semibold"
+                style={{background:"#1f9080"}}>
                 {isSyncing ? <Loader2 style={{width:14,height:14}} className="animate-spin" /> : <RefreshCw style={{width:14,height:14}} />}
                 Sync from Sheet
               </button>
@@ -1590,122 +1738,144 @@ export default function Home() {
                 <Sheet style={{width:14,height:14}} />
               </button>
             </div>
+            {/* Filter Mode Selector */}
+            <div className="mc-card p-3">
+              <div className="h-0.5 w-full rounded-full mb-3" style={{background:"linear-gradient(90deg,#1f9080,#2d5a27)"}} />
+              <div className="flex gap-1 rounded-xl p-1" style={{background:"#ede8dc"}}>
+                <button onClick={() => setFilterMode("history")}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "history" ? "bg-white shadow-sm" : ""}`}>
+                  <RefreshCw className="w-3 h-3" /> History
+                </button>
+                <button onClick={() => setFilterMode("complaint")}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "complaint" ? "bg-white shadow-sm" : ""}`}>
+                  <Activity className="w-3 h-3" /> Complaint
+                </button>
+                <button onClick={() => setFilterMode("address")}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${filterMode === "address" ? "bg-white shadow-sm" : ""}`}>
+                  <MapPin className="w-3 h-3" /> Village
+                </button>
+              </div>
 
-            {/* History / Complaint / Village Tabs + Panel */}
-            <div className="mc-card" style={{flex:1, display:"flex", flexDirection:"column", overflow:"hidden"}}>
-              <div style={{padding:"10px", borderBottom:"1px solid #e8e4da"}}>
-                <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"4px", background:"#ede8dc", borderRadius:"10px", padding:"3px"}}>
-                  <button onClick={() => setFilterMode("history")}
-                    className="py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1"
-                    style={filterMode === "history" ? {background:"white", boxShadow:"0 1px 3px rgba(0,0,0,0.1)"} : {}}>
-                    <RefreshCw className="w-3 h-3" /> History
-                  </button>
-                  <button onClick={() => setFilterMode("complaint")}
-                    className="py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1"
-                    style={filterMode === "complaint" ? {background:"white", boxShadow:"0 1px 3px rgba(0,0,0,0.1)"} : {}}>
-                    <Activity className="w-3 h-3" /> Complaint
-                  </button>
-                  <button onClick={() => setFilterMode("address")}
-                    className="py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1"
-                    style={filterMode === "address" ? {background:"white", boxShadow:"0 1px 3px rgba(0,0,0,0.1)"} : {}}>
-                    <MapPin className="w-3 h-3" /> Village
-                  </button>
+              {(filterMode === "complaint" || filterMode === "address") && (
+                <div className="mt-2 relative">
+                  <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    value={filterQuery}
+                    onChange={e => setFilterQuery(e.target.value)}
+                    placeholder={filterMode === "complaint" ? "Search complaint or code..." : "Search village / city..."}
+                    className="mc-input" style={{paddingLeft:"28px",fontSize:"12px"}}
+                    autoFocus
+                  />
                 </div>
-                {(filterMode === "complaint" || filterMode === "address") && (
-                  <div className="mt-2 relative">
-                    <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                    <input value={filterQuery} onChange={e => setFilterQuery(e.target.value)}
-                      placeholder={filterMode === "complaint" ? "Search complaint or code..." : "Search village / city..."}
-                      className="mc-input" style={{paddingLeft:"28px",fontSize:"12px"}} autoFocus />
-                  </div>
-                )}
-              </div>
-
-              {/* Results */}
-              <div style={{flex:1, overflowY:"auto"}}>
-                <AnimatePresence mode="wait">
-                  {filterMode === "history" && (
-                    <motion.div key="history" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{height:"100%"}}>
-                      {patientHistory.length > 0 ? (
-                        <>
-                          <div className="px-3 py-2 shrink-0" style={{borderBottom:"1px solid #e8e4da",background:"#f8f6f0"}}>
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{background:"#e0f0e8",color:"#1f7a4a"}}>
-                                <User className="w-3 h-3" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-bold truncate text-sm" style={{color:"#1a2010"}}>{historyName || patientHistory[0]?.name}</p>
-                                <p className="text-[10px] font-mono text-stone-500">{historyMobile || patientHistory[0]?.mobile}</p>
-                              </div>
-                              <span className="ml-auto text-[10px] text-stone-400 shrink-0 bg-stone-100 px-1.5 py-0.5 rounded">{patientHistory.length} visits</span>
-                            </div>
-                          </div>
-                          <div className="p-2 space-y-1.5">
-                            {patientHistory.map((visit, i) => (
-                              <div key={i} className="p-2 rounded-lg" style={{border:"1px solid #e8e4da",background:"#fafaf7"}}>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 bg-stone-100 rounded text-stone-600">
-                                    {format(new Date(visit.visitDate), "dd MMM yyyy")}
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    {visit.registerType === "ayurvedic" && <span className="text-[9px] font-bold px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">AYU</span>}
-                                    {visit.fees > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{color:"#1f7a4a",background:"#e0f0e8"}}>₹{visit.fees}</span>}
-                                  </div>
-                                </div>
-                                <div className="space-y-0.5">
-                                  {visit.complaint && <p className="text-[11px] text-stone-700"><span className="text-[9px] uppercase text-stone-400 font-bold">C: </span>{visit.complaint}</p>}
-                                  {visit.treatment && <p className="text-[11px] text-stone-600"><span className="text-[9px] uppercase text-stone-400 font-bold">Rx: </span>{visit.treatment}</p>}
-                                </div>
-                                <div className="mt-1 flex justify-end">
-                                  <button type="button" onClick={() => printPatientPrescription(visit)}
-                                    className="flex items-center gap-1 text-[10px] text-stone-400 hover:text-teal-600 transition-colors">
-                                    <Printer className="w-2.5 h-2.5" /> Print
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="p-6 flex flex-col items-center justify-center text-center text-stone-400">
-                          <FileText className="w-8 h-8 mb-2 text-stone-200" />
-                          <p className="font-medium text-sm">No history yet</p>
-                          <p className="text-xs mt-1">Type mobile / case no. then press<br /><kbd className="px-1.5 py-0.5 bg-stone-200 rounded text-[10px] mx-1">Enter</kbd>or click <Search className="w-2.5 h-2.5 inline mx-1" /></p>
-                        </div>
-                      )}
-                    </motion.div>
-                  )}
-                  {(filterMode === "complaint" || filterMode === "address") && (
-                    <motion.div key="filter" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      {filterResults.length > 0 ? (
-                        <div className="divide-y divide-stone-100">
-                          {filterResults.map((p, i) => (
-                            <div key={i} className="flex items-center gap-2 px-3 py-2 hover:bg-stone-50 transition-colors">
-                              <span className="text-[10px] text-stone-400 font-medium w-4 shrink-0">{i + 1}</span>
-                              <div className="min-w-0 flex-1">
-                                <p className="font-semibold text-stone-900 text-xs truncate">{p.name}</p>
-                                <p className="text-[10px] font-mono text-stone-400">{p.mobile}</p>
-                              </div>
-                              <span className="text-[10px] text-stone-400 shrink-0">{format(new Date(p.visitDate), "dd/MM/yy")}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-6 flex flex-col items-center justify-center text-center text-stone-400">
-                          {filterMode === "complaint" ? <Activity className="w-8 h-8 mb-2 text-stone-200" /> : <MapPin className="w-8 h-8 mb-2 text-stone-200" />}
-                          <p className="text-xs font-medium">{filterQuery.length < 2 ? "Type to search..." : "No results found"}</p>
-                        </div>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              )}
             </div>
+
+            {/* Results Panel */}
+            <AnimatePresence mode="wait">
+              {/* ── HISTORY MODE ── */}
+              {filterMode === "history" && (
+                <motion.div key="history" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                  className="mc-card overflow-hidden flex flex-col" style={{maxHeight:"calc(100vh - 220px)"}}>
+                  {patientHistory.length > 0 ? (
+                    <>
+                      {/* Patient identity header */}
+                      <div className="px-4 py-3 shrink-0" style={{borderBottom:"1px solid #e8e4da",background:"#f8f6f0"}}>
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{background:"#e0f0e8",color:"#1f7a4a"}}>
+                            <User className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold truncate text-sm" style={{color:"#1a2010"}}>{historyName || patientHistory[0]?.name}</p>
+                            <p className="text-[10px] font-mono text-stone-500">{historyMobile || patientHistory[0]?.mobile}</p>
+                          </div>
+                          <span className="ml-auto text-[10px] text-stone-400 shrink-0 bg-stone-100 px-1.5 py-0.5 rounded">{patientHistory.length} visits</span>
+                        </div>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                        {patientHistory.map((visit, i) => (
+                          <div key={i} className="p-2.5 rounded-lg transition-all" style={{border:"1px solid #e8e4da",background:"#fafaf7"}}>
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-stone-100 rounded text-stone-600">
+                                {format(new Date(visit.visitDate), "dd MMM yyyy")}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                {visit.registerType === "ayurvedic" && (
+                                  <span className="text-[9px] font-bold px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">AYU</span>
+                                )}
+                                {visit.fees > 0 && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{color:"#1f7a4a",background:"#e0f0e8"}}>₹{visit.fees}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="space-y-0.5">
+                              {visit.complaint && <p className="text-[11px] text-stone-700"><span className="text-[9px] uppercase text-stone-400 font-bold">Complaint: </span>{visit.complaint}</p>}
+                              {visit.treatment && <p className="text-[11px] text-stone-600"><span className="text-[9px] uppercase text-stone-400 font-bold">Treatment: </span>{visit.treatment}</p>}
+                              {visit.advice && <p className="text-[11px] text-stone-500"><span className="text-[9px] uppercase text-stone-400 font-bold">Advice: </span>{visit.advice}</p>}
+                            </div>
+                            <div className="mt-1.5 flex justify-end">
+                              <button type="button" onClick={() => printPatientPrescription(visit)}
+                                className="flex items-center gap-1 text-[10px] text-stone-400 hover:text-teal-600 transition-colors">
+                                <Printer className="w-2.5 h-2.5" /> Print
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="p-8 flex flex-col items-center justify-center text-center text-stone-400 h-64">
+                      <FileText className="w-10 h-10 mb-3 text-stone-200" />
+                      <p className="font-medium text-sm">No history yet</p>
+                      <p className="text-xs mt-1.5">Type mobile / case no. then press<br /><kbd className="px-1.5 py-0.5 bg-stone-200 rounded text-[10px] mx-1">Enter</kbd>or click <Search className="w-2.5 h-2.5 inline mx-1" /></p>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              {/* ── COMPLAINT / VILLAGE MODE ── compact list ── */}
+              {(filterMode === "complaint" || filterMode === "address") && (
+                <motion.div key="filter" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                  className="mc-card overflow-hidden flex flex-col" style={{maxHeight:"calc(100vh - 220px)"}}>
+                  {filterResults.length > 0 ? (
+                    <>
+                      <div className="px-3 py-2.5 border-b border-stone-100 bg-stone-50/60 shrink-0 flex items-center gap-2">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-teal-500" />
+                        <span className="font-semibold text-xs text-stone-700">
+                          {filterMode === "complaint" ? "By Complaint" : "By Village"}
+                        </span>
+                        <span className="ml-auto text-[10px] font-bold text-stone-500 bg-stone-200 px-1.5 py-0.5 rounded-full">
+                          {filterResults.length} patients
+                        </span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
+                        {filterResults.map((p, i) => (
+                          <div key={i} className="flex items-center gap-2.5 px-3 py-2 hover:bg-stone-50 transition-colors">
+                            <span className="text-[10px] text-stone-400 font-medium w-4 shrink-0">{i + 1}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-stone-900 text-xs truncate">{p.name}</p>
+                              <p className="text-[10px] font-mono text-stone-400">{p.mobile}</p>
+                            </div>
+                            <span className="text-[10px] text-stone-400 shrink-0">
+                              {format(new Date(p.visitDate), "dd/MM/yy")}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="p-6 flex flex-col items-center justify-center text-center text-stone-400 h-40">
+                      {filterMode === "complaint" ? <Activity className="w-8 h-8 mb-2.5 text-stone-200" /> : <MapPin className="w-8 h-8 mb-2.5 text-stone-200" />}
+                      <p className="text-xs font-medium">{filterQuery.length < 2 ? "Type to search..." : "No results found"}</p>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* ── LOOSE MEDICINE SALES ── */}
             <div className="mc-card overflow-hidden">
-              <div style={{height:"3px", background:"linear-gradient(90deg,#7c3558,#9a3d6e)"}} />
-              <div className="px-3 py-2 flex items-center justify-between" style={{background:"linear-gradient(135deg,#7c3558,#9a3d6e)"}}>
+              <div className="h-0.5 w-full bg-gradient-to-r from-violet-500 to-purple-600 rounded-t-full" />
+              <div className="px-3 py-2.5 flex items-center justify-between" style={{background:"linear-gradient(135deg,#7c3558,#9a3d6e)"}}>
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="w-3.5 h-3.5 text-white" />
                   <span className="text-xs font-bold text-white">Loose Medicine Sales</span>
@@ -1716,98 +1886,69 @@ export default function Home() {
                   </span>
                 )}
               </div>
-              <div className="p-2.5 space-y-1.5">
-                <input value={looseProduct} onChange={e => setLooseProduct(e.target.value)}
+              {/* Add Entry Form */}
+              <div className="p-3 border-b border-violet-50 bg-white space-y-1.5">
+                <input
+                  value={looseProduct}
+                  onChange={e => setLooseProduct(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); document.getElementById("loose-amount-input")?.focus(); } }}
-                  placeholder="Product name (e.g. Triphala Churna)" className="mc-input" style={{fontSize:"12px"}} />
+                  placeholder="Product name (e.g. Triphala Churna)"
+                  className="mc-input" style={{fontSize:"12px"}}
+                />
                 <div className="flex gap-1.5">
                   <div className="relative flex-1">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 text-xs font-bold">₹</span>
-                    <input id="loose-amount-input" type="number" value={looseAmount} onChange={e => setLooseAmount(e.target.value)}
+                    <input
+                      id="loose-amount-input"
+                      type="number"
+                      value={looseAmount}
+                      onChange={e => setLooseAmount(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddLooseSale(); } }}
-                      placeholder="Amount" min={0} className="mc-input" style={{paddingLeft:"24px",fontSize:"12px",fontFamily:"monospace"}} />
+                      placeholder="Amount"
+                      min={0}
+                      className="mc-input" style={{paddingLeft:"24px",fontSize:"12px",fontFamily:"monospace"}}
+                    />
                   </div>
-                  <button onClick={handleAddLooseSale} disabled={!looseProduct.trim() || !looseAmount || Number(looseAmount) <= 0}
+                  <button
+                    onClick={handleAddLooseSale}
+                    disabled={!looseProduct.trim() || !looseAmount || Number(looseAmount) <= 0}
                     className="flex items-center gap-1 px-2.5 py-2 rounded-lg text-white font-bold text-xs disabled:opacity-40" style={{background:"#7c3558"}}>
                     <PackagePlus className="w-3.5 h-3.5" /> Add
                   </button>
                 </div>
               </div>
+              {/* Sales List */}
               {looseSales.length === 0 ? (
-                <div className="px-3 py-3 text-center">
+                <div className="px-3 py-4 text-center text-stone-400">
+                  <ShoppingBag className="w-6 h-6 mx-auto mb-1 text-violet-100" />
                   <p className="text-[10px] font-medium text-stone-500">No loose sales today</p>
+                  <p className="text-[10px] mt-0.5 text-stone-400">Add a product above to start tracking</p>
                 </div>
               ) : (
-                <div style={{maxHeight:"120px", overflowY:"auto"}}>
+                <div className="divide-y divide-stone-50 max-h-48 overflow-y-auto">
                   {looseSales.map((sale, i) => (
-                    <div key={sale.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-violet-50/40 transition-colors group" style={{borderTop:"1px solid #f5f0ff"}}>
+                    <div key={sale.id} className="flex items-center gap-2 px-3 py-2 hover:bg-violet-50/40 transition-colors group">
                       <span className="text-[10px] text-stone-300 w-3.5 shrink-0 font-mono">{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-[11px] text-stone-800 truncate">{sale.product}</p>
                         <p className="text-[9px] text-stone-400">{sale.time}</p>
                       </div>
                       <span className="font-bold text-violet-700 text-xs shrink-0">₹{sale.amount.toLocaleString("en-IN")}</span>
-                      <button onClick={() => handleRemoveLooseSale(sale.id)} title="Remove"
+                      <button
+                        onClick={() => handleRemoveLooseSale(sale.id)}
+                        title="Remove"
                         className="shrink-0 p-1 rounded text-stone-200 hover:text-red-400 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
                   ))}
-                  <div className="px-3 py-2 flex justify-between items-center" style={{background:"#f5f0ff", borderTop:"1px solid #ede8ff"}}>
-                    <span className="text-[10px] font-bold text-violet-700">Today's Total ({looseSales.length} items)</span>
+                  <div className="px-3 py-2 bg-violet-50 flex justify-between items-center sticky bottom-0">
+                    <span className="text-[10px] font-bold text-violet-700 flex items-center gap-1">
+                      <ShoppingBag className="w-2.5 h-2.5" /> Today's Total ({looseSales.length} item{looseSales.length !== 1 ? "s" : ""})
+                    </span>
                     <span className="font-bold text-violet-700 flex items-center gap-0.5 text-xs">
                       <IndianRupee className="w-3 h-3" />{looseTodayTotal.toLocaleString("en-IN")}
                     </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Consultation Fees */}
-            <div className="mc-card p-3">
-              <p className="mc-label mb-2">Consultation Fees (₹)</p>
-              <div className="flex gap-1.5 mb-2">
-                {[200, 250, 550].map(preset => (
-                  <button key={preset} type="button" onClick={() => form.setValue("fees", preset)}
-                    className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all" style={{background:"#e0f0e8",color:"#1f7a4a",border:"1px solid #b8d8c0"}}>
-                    ₹{preset}
-                  </button>
-                ))}
-              </div>
-              <input type="number" {...form.register("fees")} min={0}
-                className="mc-input mb-2" style={{fontWeight:"600"}} placeholder="Amount" />
-              <div className="flex gap-2 items-center">
-                <div className="flex rounded-lg border border-stone-200 overflow-hidden shrink-0">
-                  <button type="button" onClick={() => form.setValue("paymentMode", "cash")}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold transition-all"
-                    style={paymentModeValue !== "online" ? {background:"#1f7a4a",color:"white"} : {background:"white",color:"#aaa"}}>
-                    💵 Cash
-                  </button>
-                  <button type="button" onClick={() => form.setValue("paymentMode", "online")}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold transition-all border-l border-stone-200"
-                    style={paymentModeValue === "online" ? {background:"#1a6fd4",color:"white"} : {background:"white",color:"#aaa"}}>
-                    📱 Online
-                  </button>
-                </div>
-                <button type="button" onClick={() => { setFeesMarkedPending(p => !p); setPendingAmount(""); }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border font-semibold text-xs transition-all ${feesMarkedPending ? "bg-amber-100 border-amber-400 text-amber-700" : "bg-white border-stone-200 text-stone-400 hover:border-amber-300 hover:text-amber-500"}`}>
-                  <Hourglass className="w-3 h-3" />
-                  {feesMarkedPending ? "Pending ✓" : "Mark Pending"}
-                </button>
-              </div>
-              {feesMarkedPending && (
-                <div className="mt-2 space-y-2">
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200">
-                    <Hourglass className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">Pending Amount (₹)</p>
-                      <div className="relative">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 font-bold text-xs">₹</span>
-                        <input type="number" min={0} value={pendingAmount} onChange={e => setPendingAmount(e.target.value)}
-                          placeholder={`Full (₹${feesValue || 0})`}
-                          className="w-full pl-6 pr-3 py-1.5 rounded-lg border border-amber-300 bg-white text-sm font-bold text-amber-800 focus:outline-none focus:border-amber-500 placeholder:text-amber-300 placeholder:font-normal" />
-                      </div>
-                    </div>
                   </div>
                 </div>
               )}
@@ -1817,7 +1958,6 @@ export default function Home() {
         </div>
       </div>
       </div>{/* end mc-bg */}
-}
       {/* ── Google Sheet Connect Modal ── */}
       <AnimatePresence>
         {showSheetModal && (
