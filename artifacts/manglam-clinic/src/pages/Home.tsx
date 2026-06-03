@@ -246,18 +246,17 @@ const emptyDefaults: PatientFormValues = {
 };
 
 // ── Draw patient card directly onto a Canvas (no html2canvas) ────────────
+// Narrow portrait card — renders like a wallet/ID card in WhatsApp (≈320×480 px logical)
 function drawPatientCard(patient: Patient): HTMLCanvasElement {
-  // A4-proportioned compact card: 595 × 420 logical px @2x
-  const W = 595, scale = 2;
+  const W = 320, scale = 3; // 960px actual — sharp on all screens, narrow in WA chat
   const cw = W * scale;
 
-  // ── measure text to compute dynamic height ──
+  // wrap address text
   const tmpC = document.createElement("canvas");
   const tmpX = tmpC.getContext("2d")!;
-  tmpX.font = `bold ${10 * scale}px sans-serif`;
-  const addrText = patient.address || "Pipaliya Char Rasta";
-  const maxAddrW = 220 * scale;
-  // wrap address
+  tmpX.font = `bold ${10}px sans-serif`;
+  const addrText = patient.address || "—";
+  const maxAddrW = W - 32;
   const addrLines: string[] = [];
   let addrCur = "";
   for (const word of addrText.split(" ")) {
@@ -266,11 +265,11 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
     else addrCur = test;
   }
   if (addrCur) addrLines.push(addrCur);
-  const addrExtraLines = Math.max(0, addrLines.length - 1);
+  const addrExtra = Math.max(0, addrLines.length - 1);
 
-  const HEADER_H = 120;
-  const BODY_H   = 220 + addrExtraLines * 18;
-  const FOOTER_H = 60;
+  const HEADER_H = 110;
+  const BODY_H   = 230 + addrExtra * 16;
+  const FOOTER_H = 54;
   const TOTAL_H  = HEADER_H + BODY_H + FOOTER_H;
   const ch = TOTAL_H * scale;
 
@@ -279,7 +278,7 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
   const ctx = canvas.getContext("2d")!;
   ctx.scale(scale, scale);
 
-  const r = (x: number, y: number, w: number, h: number, rad: number) => {
+  const rr = (x: number, y: number, w: number, h: number, rad: number) => {
     ctx.beginPath();
     ctx.moveTo(x + rad, y);
     ctx.lineTo(x + w - rad, y); ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
@@ -289,129 +288,114 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
     ctx.closePath();
   };
 
-  // ── CARD BACKGROUND with rounded corners ──
-  r(0, 0, W, TOTAL_H, 24);
+  // card bg + clip
+  rr(0, 0, W, TOTAL_H, 20);
   ctx.fillStyle = "#ffffff"; ctx.fill();
   ctx.save(); ctx.clip();
 
   // ── HEADER ──
   const hg = ctx.createLinearGradient(0, 0, W, HEADER_H);
-  hg.addColorStop(0, "#c45e10"); hg.addColorStop(0.5, "#d4711f"); hg.addColorStop(1, "#b84f0a");
+  hg.addColorStop(0, "#c45e10"); hg.addColorStop(1, "#b84f0a");
   ctx.fillStyle = hg; ctx.fillRect(0, 0, W, HEADER_H);
 
-  // Logo circle
-  ctx.fillStyle = "rgba(255,255,255,0.2)";
-  r(16, 14, 38, 38, 10); ctx.fill();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `900 ${18}px sans-serif`;
+  // logo circle
+  ctx.fillStyle = "rgba(255,255,255,0.18)";
+  rr(14, 14, 34, 34, 9); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.font = `900 16px sans-serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("M", 35, 33);
+  ctx.fillText("M", 31, 31);
 
-  // Clinic name
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `bold ${15}px sans-serif`;
+  // clinic name + subtitle
+  ctx.fillStyle = "#fff"; ctx.font = `bold 13px sans-serif`;
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("Manglam Clinic", 62, 30);
-  ctx.fillStyle = "#ffe0c0";
-  ctx.font = `${10}px sans-serif`;
-  ctx.fillText("Dr. Vijay Girglani | B.A.M.S.", 62, 44);
+  ctx.fillText("Manglam Clinic", 56, 27);
+  ctx.fillStyle = "#ffe0c0"; ctx.font = `9px sans-serif`;
+  ctx.fillText("Dr. Vijay Girglani | B.A.M.S.", 56, 40);
 
-  // Divider
-  ctx.strokeStyle = "rgba(255,255,255,0.25)"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(16, 62); ctx.lineTo(W - 16, 62); ctx.stroke();
+  // divider
+  ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(14, 58); ctx.lineTo(W - 14, 58); ctx.stroke();
 
-  // Subtitle
-  ctx.fillStyle = "rgba(255,224,192,0.9)";
-  ctx.font = `bold ${8}px sans-serif`;
-  ctx.textAlign = "center";
-  ctx.letterSpacing = "2px";
-  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, 80);
+  // subtitle text
+  ctx.fillStyle = "rgba(255,224,192,0.9)"; ctx.font = `bold 7px sans-serif`;
+  ctx.textAlign = "center"; ctx.letterSpacing = "1.8px";
+  ctx.fillText("AYURVEDIC & GENERAL PRACTICE", W / 2, 74);
   ctx.letterSpacing = "0px";
 
   // ── BODY ──
   ctx.fillStyle = "#fdf8f3"; ctx.fillRect(0, HEADER_H, W, BODY_H);
 
-  // "PATIENT CARD" badge
-  const badgeY = HEADER_H + 18;
-  const badgeLabel = "PATIENT CARD";
-  ctx.font = `bold ${8}px sans-serif`;
-  ctx.textAlign = "center";
-  const badgeW = ctx.measureText(badgeLabel).width + 24;
-  const badgeX = (W - badgeW) / 2;
-  ctx.strokeStyle = "rgba(196,94,16,0.4)"; ctx.lineWidth = 1;
-  r(badgeX, badgeY - 8, badgeW, 16, 8); ctx.stroke();
-  ctx.fillStyle = "#c45e10"; ctx.fillText(badgeLabel, W / 2, badgeY + 2);
+  // PATIENT CARD badge
+  const bY = HEADER_H + 16, bLabel = "PATIENT CARD";
+  ctx.font = `bold 7px sans-serif`; ctx.textAlign = "center";
+  const bW = ctx.measureText(bLabel).width + 20;
+  ctx.strokeStyle = "rgba(196,94,16,0.4)"; ctx.lineWidth = 0.8;
+  rr((W - bW) / 2, bY - 7, bW, 14, 7); ctx.stroke();
+  ctx.fillStyle = "#c45e10"; ctx.fillText(bLabel, W / 2, bY + 2);
 
   // Case Number box
-  const boxY = HEADER_H + 40;
-  ctx.fillStyle = "#f5ece0"; r(16, boxY, W - 32, 48, 12); ctx.fill();
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${7.5}px sans-serif`;
-  ctx.textAlign = "left"; ctx.letterSpacing = "1.5px";
-  ctx.fillText("CASE NUMBER", 30, boxY + 14);
+  const bxY = HEADER_H + 36;
+  ctx.fillStyle = "#f5ece0"; rr(14, bxY, W - 28, 44, 11); ctx.fill();
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold 6.5px sans-serif`;
+  ctx.textAlign = "left"; ctx.letterSpacing = "1.2px";
+  ctx.fillText("CASE NUMBER", 26, bxY + 13);
   ctx.letterSpacing = "0px";
-  const caseNo = patient.mobile.padStart(9, "0");
-  ctx.fillStyle = "#c45e10"; ctx.font = `900 ${20}px monospace`;
-  ctx.fillText(caseNo, 30, boxY + 36);
+  const caseNo = patient.mobile.replace(/\D/g, "").padStart(10, "0");
+  ctx.fillStyle = "#c45e10"; ctx.font = `900 17px monospace`;
+  ctx.fillText(caseNo, 26, bxY + 34);
   // wallet icon
-  const iconX = W - 54, iconY = boxY + 8;
-  ctx.fillStyle = "#ffffff";
-  r(iconX, iconY, 32, 32, 8); ctx.fill();
-  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.5;
-  r(iconX + 6, iconY + 8, 20, 16, 3); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(iconX + 6, iconY + 13); ctx.lineTo(iconX + 26, iconY + 13); ctx.stroke();
+  const iX = W - 46, iY = bxY + 7;
+  ctx.fillStyle = "#fff"; rr(iX, iY, 28, 28, 7); ctx.fill();
+  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.2;
+  rr(iX + 5, iY + 7, 18, 14, 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(iX + 5, iY + 12); ctx.lineTo(iX + 23, iY + 12); ctx.stroke();
 
-  // Info rows
-  let rowY = HEADER_H + 40 + 48 + 18;
-  const LX = 16, RX = W - 16;
+  // rows
+  let rY = bxY + 44 + 16;
+  const LX = 14, RX = W - 14;
 
-  // Patient Name row
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${7.5}px sans-serif`;
-  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
-  ctx.fillText("PATIENT NAME", LX, rowY);
+  const drawRow = (label: string, value: string, isMultiline = false) => {
+    ctx.fillStyle = "#94a3b8"; ctx.font = `bold 6.5px sans-serif`;
+    ctx.letterSpacing = "1.2px"; ctx.textAlign = "left";
+    ctx.fillText(label, LX, rY);
+    ctx.letterSpacing = "0px";
+    ctx.fillStyle = "#1e293b"; ctx.font = `bold 10.5px sans-serif`;
+    ctx.textAlign = "right";
+    if (!isMultiline) {
+      ctx.fillText(value, RX, rY);
+      rY += 9;
+    } else {
+      // multiline address
+      addrLines.forEach((line, i) => ctx.fillText(line, RX, rY + i * 13));
+      rY += Math.max(9, addrLines.length * 13);
+    }
+    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(LX, rY + 4); ctx.lineTo(RX, rY + 4); ctx.stroke();
+    rY += 16;
+  };
+
+  drawRow("PATIENT NAME", patient.name.toUpperCase());
+  drawRow("ADDRESS", "", true);
+
+  // Clinic phone
+  ctx.fillStyle = "#94a3b8"; ctx.font = `bold 6.5px sans-serif`;
+  ctx.letterSpacing = "1.2px"; ctx.textAlign = "left";
+  ctx.fillText("CLINIC PHONE", LX, rY);
   ctx.letterSpacing = "0px";
-  ctx.fillStyle = "#1e293b"; ctx.font = `bold ${12}px sans-serif`;
-  ctx.textAlign = "right"; ctx.fillText(patient.name.toUpperCase(), RX, rowY);
-
-  // Divider
-  rowY += 10;
-  ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(LX, rowY); ctx.lineTo(RX, rowY); ctx.stroke();
-  rowY += 14;
-
-  // Address row (multi-line)
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${7.5}px sans-serif`;
-  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
-  ctx.fillText("ADDRESS", LX + 10, rowY);
-  ctx.letterSpacing = "0px";
-  ctx.fillStyle = "#334155"; ctx.font = `bold ${11}px sans-serif`;
-  ctx.textAlign = "right";
-  addrLines.forEach((line, i) => ctx.fillText(line, RX, rowY + i * 15));
-  rowY += Math.max(14, addrLines.length * 15) + 8;
-
-  // Divider
-  ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(LX, rowY); ctx.lineTo(RX, rowY); ctx.stroke();
-  rowY += 14;
-
-  // Clinic Phone row
-  ctx.fillStyle = "#94a3b8"; ctx.font = `bold ${7.5}px sans-serif`;
-  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left";
-  ctx.fillText("CLINIC PHONE", LX + 10, rowY);
-  ctx.letterSpacing = "0px";
-  ctx.fillStyle = "#475569"; ctx.font = `${11}px monospace`;
-  ctx.textAlign = "right"; ctx.fillText("+91 96381 81875", RX, rowY);
+  ctx.fillStyle = "#475569"; ctx.font = `10px monospace`;
+  ctx.textAlign = "right"; ctx.fillText("+91 96381 81875", RX, rY);
 
   // ── FOOTER ──
   ctx.fillStyle = "#2d5a1b"; ctx.fillRect(0, HEADER_H + BODY_H, W, FOOTER_H);
-  ctx.fillStyle = "#ffffff"; ctx.font = `bold ${11}px sans-serif`;
+  ctx.fillStyle = "#fff"; ctx.font = `bold 10px sans-serif`;
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillText("Manglam Hospital", 16, HEADER_H + BODY_H + 22);
-  ctx.fillStyle = "#bbf7d0"; ctx.font = `${9.5}px sans-serif`;
-  ctx.fillText("Morbi, Gujarat", 16, HEADER_H + BODY_H + 36);
-  ctx.fillStyle = "#bbf7d0"; ctx.font = `${9}px sans-serif`;
+  ctx.fillText("Manglam Hospital", 14, HEADER_H + BODY_H + 20);
+  ctx.fillStyle = "#bbf7d0"; ctx.font = `8.5px sans-serif`;
+  ctx.fillText("Morbi, Gujarat", 14, HEADER_H + BODY_H + 32);
+  ctx.fillStyle = "#bbf7d0"; ctx.font = `8px sans-serif`;
   ctx.textAlign = "right";
-  ctx.fillText("Show this card", W - 16, HEADER_H + BODY_H + 22);
-  ctx.fillText("on your next visit", W - 16, HEADER_H + BODY_H + 36);
+  ctx.fillText("Show this card", W - 14, HEADER_H + BODY_H + 20);
+  ctx.fillText("on your next visit", W - 14, HEADER_H + BODY_H + 33);
 
   ctx.restore();
   return canvas;
@@ -419,19 +403,23 @@ function drawPatientCard(patient: Patient): HTMLCanvasElement {
 
 // ── Patient Card Modal ─────────────────────────────────────────────────────
 function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
-  const caseNo = patient.mobile.padStart(9, "0");
+  const rawDigits = patient.mobile.replace(/\D/g, "");
+  const caseNo = rawDigits.padStart(10, "0");
   const CLINIC_MOBILE = "9638181875";
   const CLINIC_ADDRESS = "Pipaliya Char Rasta";
   const clinicPhone = CLINIC_MOBILE.replace(/(\d{5})(\d{5})/, "$1 $2");
   const cardRef = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState("");
+  // Friendly label for button — show patient's number if available
+  const patientWaLabel = rawDigits.length >= 10
+    ? `Send to ${rawDigits.slice(-10)}`
+    : "Send on WhatsApp";
 
   const sendWhatsApp = async () => {
     setSharing(true);
     setShareError("");
     try {
-      // Draw card directly on canvas — no html2canvas needed
       const canvas = drawPatientCard(patient);
 
       const blob: Blob = await new Promise((res, rej) =>
@@ -439,11 +427,18 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       );
 
       const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
-      // Auto-use the patient's own mobile number for direct WhatsApp
-      const number = formatMobileWA(patient.mobile);
-      const waDirectUrl = number ? `https://wa.me/${number}` : `https://wa.me/`;
 
-      // ── Strategy 1: Web Share API with file (Android Chrome / iOS Safari) ──
+      // ── Derive WhatsApp number from patient.mobile (the case number / mobile field) ──
+      // Strip non-digits, ensure 10-digit Indian mobile → prefix 91
+      const rawDigits = patient.mobile.replace(/\D/g, "");
+      const waNumber = rawDigits.length === 10
+        ? `91${rawDigits}`
+        : rawDigits.startsWith("91") && rawDigits.length === 12
+          ? rawDigits
+          : rawDigits; // fallback: use as-is
+      const waUrl = waNumber ? `https://wa.me/${waNumber}` : `https://wa.me/`;
+
+      // ── Strategy 1: Web Share API with file (Android / iOS) ──
       const canShareFiles =
         typeof navigator.share === "function" &&
         typeof navigator.canShare === "function" &&
@@ -456,26 +451,26 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
             title: "Manglam Clinic — Patient Card",
             text: `Patient card for ${patient.name}`,
           });
-          // After sharing the image, open the patient's WhatsApp chat directly
-          setTimeout(() => window.open(waDirectUrl, "_blank"), 500);
+          // Open the patient's WhatsApp chat directly after sharing image
+          setTimeout(() => window.open(waUrl, "_blank"), 400);
           setSharing(false);
           return;
         } catch (shareErr: any) {
           if (shareErr?.name === "AbortError") { setSharing(false); return; }
-          // fall through to download strategy
+          // fall through
         }
       }
 
-      // ── Strategy 2: Download image then open patient's WhatsApp directly ──
+      // ── Strategy 2 (desktop): Download image + open patient's WA chat directly ──
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objectUrl; a.download = "manglam-patient-card.png";
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(objectUrl), 8000);
 
-      // Open patient's WhatsApp chat automatically
-      setTimeout(() => window.open(waDirectUrl, "_blank"), 800);
-      setShareError("Image saved — attach it in the WhatsApp chat that opened.");
+      // Open patient's WhatsApp chat directly — number auto-filled from case/mobile field
+      setTimeout(() => window.open(waUrl, "_blank"), 800);
+      setShareError(`Image downloaded — attach it in WhatsApp (${rawDigits.slice(-10)}).`);
 
     } catch (err: any) {
       console.error("Card share error:", err);
@@ -590,7 +585,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
               disabled={sharing}
               className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30 disabled:opacity-70">
               {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
-              {sharing ? "Capturing…" : `Send to ${patient.mobile || "WhatsApp"}`}
+              {sharing ? "Capturing…" : patientWaLabel}
             </button>
           </div>
         </motion.div>
