@@ -256,46 +256,46 @@ const CARD_LABELS: Record<CardLang, {
   tapToCall: string; tapForLocation: string;
 }> = {
   en: {
-    clinicName:      "Manglam Clinic",
-    doctor:          "Dr. Vijay Girglani  |  B.A.M.S.",
-    tagline:         "AYURVEDIC & GENERAL PRACTICE",
-    patientCard:     "✦  PATIENT CARD  ✦",
-    caseNo:          "CASE NO.",
-    patientName:     "PATIENT NAME",
-    address:         "ADDRESS",
-    clinicPhone:     "CLINIC PHONE",
-    footer:          "MANGLAM HOSPITAL  •  MORBI, GUJARAT",
-    footerSub:       "Show this card on your next visit",
-    tapToCall:       "👆 Tap here to write your case or call us",
-    tapForLocation:  "👆 Tap here for clinic location",
+    clinicName:     "Manglam Clinic",
+    doctor:         "Dr. Vijay Girglani  |  B.A.M.S.",
+    tagline:        "AYURVEDIC & GENERAL PRACTICE",
+    patientCard:    "✦  PATIENT CARD  ✦",
+    caseNo:         "CASE NO.",
+    patientName:    "PATIENT NAME",
+    address:        "ADDRESS",
+    clinicPhone:    "CLINIC PHONE",
+    footer:         "MANGLAM HOSPITAL  •  MORBI, GUJARAT",
+    footerSub:      "Show this card on your next visit",
+    tapToCall:      "👆 Tap here to write your case or call us",
+    tapForLocation: "👆 Tap here for clinic location",
   },
   hi: {
-    clinicName:      "मंगलम क्लिनिक",
-    doctor:          "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.",
-    tagline:         "आयुर्वेदिक एवं सामान्य चिकित्सा",
-    patientCard:     "✦  रोगी कार्ड  ✦",
-    caseNo:          "केस नं.",
-    patientName:     "रोगी का नाम",
-    address:         "पता",
-    clinicPhone:     "क्लिनिक फोन",
-    footer:          "मंगलम हॉस्पिटल  •  मोरबी, गुजरात",
-    footerSub:       "अगली मुलाकात पर यह कार्ड दिखाएं",
-    tapToCall:       "👆 केस लिखने या कॉल करने के लिए यहाँ दबाएं",
-    tapForLocation:  "👆 क्लिनिक का पता देखने के लिए यहाँ दबाएं",
+    clinicName:     "मंगलम क्लिनिक",
+    doctor:         "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.",
+    tagline:        "आयुर्वेदिक एवं सामान्य चिकित्सा",
+    patientCard:    "✦  रोगी कार्ड  ✦",
+    caseNo:         "केस नं.",
+    patientName:    "रोगी का नाम",
+    address:        "पता",
+    clinicPhone:    "क्लिनिक फोन",
+    footer:         "मंगलम हॉस्पिटल  •  मोरबी, गुजरात",
+    footerSub:      "अगली मुलाकात पर यह कार्ड दिखाएं",
+    tapToCall:      "👆 केस लिखने या कॉल करने के लिए यहाँ दबाएं",
+    tapForLocation: "👆 क्लिनिक का पता देखने के लिए यहाँ दबाएं",
   },
   gu: {
-    clinicName:      "મંગલમ ક્લિનિક",
-    doctor:          "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.",
-    tagline:         "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ",
-    patientCard:     "✦  દર્દી કાર્ડ  ✦",
-    caseNo:          "કેસ નં.",
-    patientName:     "દર્દીનું નામ",
-    address:         "સરનામું",
-    clinicPhone:     "ક્લિનિક ફોન",
-    footer:          "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત",
-    footerSub:       "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો",
-    tapToCall:       "👆 કેસ લખવા અથવા કૉલ કરવા અહીં ટૅપ કરો",
-    tapForLocation:  "👆 ક્લિનિકનું સ્થળ જોવા અહીં ટૅપ કરો",
+    clinicName:     "મંગલમ ક્લિનિક",
+    doctor:         "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.",
+    tagline:        "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ",
+    patientCard:    "✦  દર્દી કાર્ડ  ✦",
+    caseNo:         "કેસ નં.",
+    patientName:    "દર્દીનું નામ",
+    address:        "સરનામું",
+    clinicPhone:    "ક્લિનિક ફોન",
+    footer:         "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત",
+    footerSub:      "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો",
+    tapToCall:      "👆 કેસ લખવા અથવા કૉલ કરવા અહીં ટૅપ કરો",
+    tapForLocation: "👆 ક્લિનિકનું સ્થળ જોવા અહીં ટૅપ કરો",
   },
 };
 
@@ -333,8 +333,10 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   const FTR_L1     = 14;  // footer line 1 height
   const FTR_L2     = 14;  // footer line 2 height
 
+  const HINT_H    = 12; // extra height per row that has a hint line
   const caseBoxH = CASE_PT + CASE_LABEL + CASE_NUM + CASE_PB;
-  const panelInnerH = STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H * 3 + PANEL_PB;
+  // name row (no hint) + address row (+ hint) + phone row (+ hint)
+  const panelInnerH = STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H + (ROW_H + HINT_H) * 2 + PANEL_PB;
   const hdrH = HDR_PT + LOGO_D + LOGO_MB + CNAME_H + CNAME_MB + DR_H + DR_MB + DIV_H + HDR_PB;
   const ftrH = FTR_L1 + FTR_L2 + FTR_PB + 4;
   const H = AMBER_H + hdrH + panelInnerH + PANEL_MB + ftrH + AMBER_H;
@@ -468,9 +470,10 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   const rowPX = pX + 12; // left padding inside panel
   const rowPXR = pX + pW - 12; // right edge
 
-  const infoRow = (emoji: string, label: string, value: string, isLast: boolean, isLink = false) => {
+  const infoRow = (emoji: string, label: string, value: string, isLast: boolean, isLink = false, hint = "") => {
+    const totalH = ROW_H + (hint ? HINT_H : 0);
     const rowMid = py + ROW_H / 2;
-    // icon bubble
+    // icon bubble — vertically centered to ROW_H only (not hint area)
     const iBubR = 11;
     ctx.fillStyle = "#fdf0e6";
     ctx.beginPath(); ctx.arc(rowPX + iBubR, rowMid, iBubR, 0, Math.PI * 2); ctx.fill();
@@ -478,16 +481,15 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
     ctx.fillText(emoji, rowPX + iBubR, rowMid);
 
     const textX = rowPX + iBubR * 2 + 8;
-    // label (small, above)
+    // label (small, above value)
     ctx.fillStyle = "#94a3b8"; ctx.font = `700 7px sans-serif`;
     ctx.letterSpacing = "0.8px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     ctx.fillText(label, textX, rowMid - 2);
     ctx.letterSpacing = "0px";
-    // value (larger, below) — amber + underline for links
+    // value (larger, below label) — amber + underline for links
     ctx.fillStyle = isLink ? "#c45e10" : "#1e293b";
     ctx.font = `700 11px sans-serif`;
     ctx.textBaseline = "alphabetic";
-    // truncate if needed
     let v = value;
     const maxW = rowPXR - textX - 4;
     while (ctx.measureText(v).width > maxW && v.length > 2) v = v.slice(0, -1);
@@ -499,8 +501,14 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
       ctx.strokeStyle = "rgba(196,94,16,0.5)"; ctx.lineWidth = 0.8;
       ctx.beginPath(); ctx.moveTo(textX, rowMid + 14); ctx.lineTo(textX + vW, rowMid + 14); ctx.stroke();
     }
+    // hint text (green, below value)
+    if (hint) {
+      ctx.fillStyle = "#15803d"; ctx.font = `600 7.5px sans-serif`;
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+      ctx.fillText(hint, textX, py + ROW_H + HINT_H - 2);
+    }
 
-    py += ROW_H;
+    py += totalH;
     // divider
     if (!isLast) {
       ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.8;
@@ -509,8 +517,8 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   };
 
   infoRow("👤", L.patientName, patient.name.toUpperCase(), false);
-  infoRow("📍", L.address, "maps.app.goo.gl/manglam", false, true);
-  infoRow("📞", L.clinicPhone, "+91 96381 81875", true);
+  infoRow("📍", L.address, "maps.app.goo.gl/manglam", false, true, L.tapForLocation);
+  infoRow("📞", L.clinicPhone, "+91 96381 81875", true, true, L.tapToCall);
 
   ctx.restore(); // end panel clip
 
@@ -741,9 +749,9 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                 </div>
 
                 {[
-                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null, hint: null },
+                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null,                        hint: null },
                   { icon: "📍", label: L.address,     value: patient.address || CLINIC_ADDRESS, href: "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D", hint: L.tapForLocation },
-                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: `tel:+91${CLINIC_MOBILE}`, hint: L.tapToCall },
+                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: `tel:+91${CLINIC_MOBILE}`,          hint: L.tapToCall },
                 ].map((row, i, arr) => (
                   <div key={i}>
                     <div className="flex items-center gap-2 py-2">
