@@ -292,229 +292,234 @@ const CARD_LABELS: Record<CardLang, {
   },
 };
 
-// ── Draw patient card ────────────────────────────────────────────────────────
+// ── Draw patient card — exactly mirrors the HTML preview ────────────────
 function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasElement {
   const L = CARD_LABELS[lang];
   const scale = 3;
+
+  // ── Layout constants (logical px) — match HTML exactly ──
   const W = 360;
+  const AMBER_H    = 5;   // top/bottom amber bar
+  const HDR_PT     = 24;  // header paddingTop
+  const LOGO_D     = 64;  // logo circle diameter
+  const LOGO_MB    = 10;  // margin below logo
+  const CNAME_H    = 22;  // clinic name line height
+  const CNAME_MB   = 3;   // margin after clinic name
+  const DR_H       = 14;  // doctor line height
+  const DR_MB      = 10;  // margin after doctor
+  const DIV_H      = 12;  // divider row height
+  const HDR_PB     = 16;  // header paddingBottom
+  const PANEL_MX   = 16;  // panel horizontal margin
+  const PANEL_MB   = 16;  // panel margin bottom
+  const STRIPE_H   = 3;   // panel top stripe
+  const PANEL_PX   = 16;  // panel inner padding x
+  const PANEL_PT   = 16;  // panel inner padding top
+  const PC_LABEL_H = 18;  // "✦ PATIENT CARD ✦" + mb
+  const CASE_PT    = 10;  // case box padding top
+  const CASE_LABEL = 12;  // case label line
+  const CASE_NUM   = 28;  // case number line
+  const CASE_PB    = 10;  // case box padding bottom
+  const CASE_MB    = 16;  // case box margin bottom
+  const ROW_H      = 40;  // each info row height
+  const PANEL_PB   = 16;  // panel inner padding bottom
+  const FTR_PB     = 16;  // footer padding bottom
+  const FTR_L1     = 14;  // footer line 1 height
+  const FTR_L2     = 14;  // footer line 2 height
 
-  // Layout constants
-  const AMBER_H=5, HDR_PT=24, LOGO_D=64, LOGO_MB=10, CNAME_H=22, CNAME_MB=3,
-        DR_H=14, DR_MB=10, DIV_H=12, HDR_PB=16, PANEL_MX=16, PANEL_MB=16,
-        STRIPE_H=3, PANEL_PT=16, PC_LABEL_H=18,
-        CASE_PT=10, CASE_LABEL=12, CASE_NUM=28, CASE_PB=10, CASE_MB=12,
-        ROW_H=40, LOC_H=52, PANEL_PB=16, FTR_PB=16, FTR_L1=14, FTR_L2=14;
-
-  const caseBoxH   = CASE_PT + CASE_LABEL + CASE_NUM + CASE_PB;
-  const PHONE_H    = ROW_H + 12; // phone highlight block is taller than a normal row
-  // 1 normal row (name) + phone highlight block + location block
-  const panelInnerH = STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H + PHONE_H + LOC_H + PANEL_PB;
-  const hdrH       = HDR_PT + LOGO_D + LOGO_MB + CNAME_H + CNAME_MB + DR_H + DR_MB + DIV_H + HDR_PB;
-  const ftrH       = FTR_L1 + FTR_L2 + FTR_PB + 4;
-  const H          = AMBER_H + hdrH + panelInnerH + PANEL_MB + ftrH + AMBER_H;
+  const caseBoxH = CASE_PT + CASE_LABEL + CASE_NUM + CASE_PB;
+  const panelInnerH = STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H * 3 + PANEL_PB;
+  const hdrH = HDR_PT + LOGO_D + LOGO_MB + CNAME_H + CNAME_MB + DR_H + DR_MB + DIV_H + HDR_PB;
+  const ftrH = FTR_L1 + FTR_L2 + FTR_PB + 4;
+  const H = AMBER_H + hdrH + panelInnerH + PANEL_MB + ftrH + AMBER_H;
 
   const canvas = document.createElement("canvas");
-  canvas.width = W * scale; canvas.height = H * scale;
+  canvas.width  = W * scale;
+  canvas.height = H * scale;
   const ctx = canvas.getContext("2d")!;
   ctx.scale(scale, scale);
 
+  // ── helpers ──
   const rr = (x: number, y: number, w: number, h: number, r: number) => {
     ctx.beginPath();
-    ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
-    ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
-    ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
-    ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
     ctx.closePath();
   };
 
-  const amberGrad = ctx.createLinearGradient(0,0,W,0);
-  amberGrad.addColorStop(0,"#c45e10"); amberGrad.addColorStop(0.5,"#e07828"); amberGrad.addColorStop(1,"#c45e10");
+  // ── Amber gradient (reused) ──
+  const amberGrad = ctx.createLinearGradient(0, 0, W, 0);
+  amberGrad.addColorStop(0, "#c45e10"); amberGrad.addColorStop(0.5, "#e07828"); amberGrad.addColorStop(1, "#c45e10");
 
-  // Background
-  const bgGrad = ctx.createLinearGradient(0,0,0,H);
-  bgGrad.addColorStop(0,"#1a3a0f"); bgGrad.addColorStop(0.5,"#1f4a12"); bgGrad.addColorStop(1,"#0f2208");
-  rr(0,0,W,H,24); ctx.fillStyle=bgGrad; ctx.fill();
-  ctx.save(); ctx.clip();
+  // ── Card background (dark green rounded rect) ──
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, "#1a3a0f"); bgGrad.addColorStop(0.5, "#1f4a12"); bgGrad.addColorStop(1, "#0f2208");
+  rr(0, 0, W, H, 24); ctx.fillStyle = bgGrad; ctx.fill();
+  ctx.save(); ctx.clip(); // clip everything to rounded card
 
-  // Decorative circles
-  ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#ffffff";
-  ctx.beginPath(); ctx.arc(W-30,50,100,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(-20,H-50,110,0,Math.PI*2); ctx.fill();
+  // decorative circles
+  ctx.save(); ctx.globalAlpha = 0.05; ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.arc(W - 30, 50, 100, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-20, H - 50, 110, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 
-  // Top amber bar
-  ctx.fillStyle=amberGrad; ctx.fillRect(0,0,W,AMBER_H);
+  // ── Top amber bar ──
+  ctx.fillStyle = amberGrad; ctx.fillRect(0, 0, W, AMBER_H);
 
   // ── Header ──
   let cy = AMBER_H + HDR_PT;
-  const logoX=W/2, logoY=cy+LOGO_D/2;
-  ctx.save(); ctx.shadowColor="rgba(224,120,40,0.5)"; ctx.shadowBlur=14;
-  ctx.strokeStyle="rgba(224,120,40,0.4)"; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.arc(logoX,logoY,LOGO_D/2+3,0,Math.PI*2); ctx.stroke();
+
+  // Logo circle — centered
+  const logoX = W / 2, logoY = cy + LOGO_D / 2;
+  // glow ring
+  ctx.save(); ctx.shadowColor = "rgba(224,120,40,0.5)"; ctx.shadowBlur = 14;
+  ctx.strokeStyle = "rgba(224,120,40,0.4)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(logoX, logoY, LOGO_D / 2 + 3, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
-  const logoGrad = ctx.createRadialGradient(logoX-10,logoY-10,4,logoX,logoY,LOGO_D/2);
-  logoGrad.addColorStop(0,"#e07828"); logoGrad.addColorStop(1,"#b84f0a");
-  ctx.fillStyle=logoGrad;
-  ctx.beginPath(); ctx.arc(logoX,logoY,LOGO_D/2,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle="#ffffff"; ctx.font=`900 28px serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText("M",logoX,logoY+1);
-  cy += LOGO_D+LOGO_MB;
+  // fill
+  const logoGrad = ctx.createRadialGradient(logoX - 10, logoY - 10, 4, logoX, logoY, LOGO_D / 2);
+  logoGrad.addColorStop(0, "#e07828"); logoGrad.addColorStop(1, "#b84f0a");
+  ctx.fillStyle = logoGrad;
+  ctx.beginPath(); ctx.arc(logoX, logoY, LOGO_D / 2, 0, Math.PI * 2); ctx.fill();
+  // M letter
+  ctx.fillStyle = "#ffffff"; ctx.font = `900 28px serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("M", logoX, logoY + 1);
 
-  ctx.fillStyle="#ffffff"; ctx.font=`bold 20px serif`;
-  ctx.textAlign="center"; ctx.textBaseline="alphabetic";
-  ctx.fillText(L.clinicName,W/2,cy+CNAME_H-4);
-  cy += CNAME_H+CNAME_MB;
+  cy += LOGO_D + LOGO_MB;
 
-  ctx.fillStyle="#d4a574"; ctx.font=`italic 10.5px serif`;
-  ctx.fillText(L.doctor,W/2,cy+DR_H-3);
-  cy += DR_H+DR_MB;
+  // Clinic name
+  ctx.fillStyle = "#ffffff"; ctx.font = `bold 20px serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.clinicName, W / 2, cy + CNAME_H - 4);
+  cy += CNAME_H + CNAME_MB;
 
-  const lineY=cy+DIV_H/2;
-  ctx.strokeStyle="rgba(212,165,116,0.3)"; ctx.lineWidth=0.8;
-  ctx.beginPath(); ctx.moveTo(20,lineY); ctx.lineTo(W/2-62,lineY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(W/2+62,lineY); ctx.lineTo(W-20,lineY); ctx.stroke();
-  ctx.fillStyle="rgba(212,165,116,0.8)"; ctx.font=`600 7px sans-serif`;
-  ctx.textBaseline="middle"; ctx.fillText(L.tagline,W/2,lineY);
-  cy += DIV_H+HDR_PB;
+  // Doctor name
+  ctx.fillStyle = "#d4a574"; ctx.font = `italic 10.5px serif`;
+  ctx.fillText(L.doctor, W / 2, cy + DR_H - 3);
+  cy += DR_H + DR_MB;
+
+  // Tagline divider row
+  const lineY = cy + DIV_H / 2;
+  ctx.strokeStyle = "rgba(212,165,116,0.3)"; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(20, lineY); ctx.lineTo(W / 2 - 62, lineY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W / 2 + 62, lineY); ctx.lineTo(W - 20, lineY); ctx.stroke();
+  ctx.fillStyle = "rgba(212,165,116,0.8)"; ctx.font = `600 7px sans-serif`;
+  ctx.textBaseline = "middle";
+  ctx.fillText(L.tagline, W / 2, lineY);
+  cy += DIV_H + HDR_PB;
 
   // ── White panel ──
-  const pX=PANEL_MX, pW=W-PANEL_MX*2, pY=cy;
-  ctx.save(); ctx.shadowColor="rgba(0,0,0,0.35)"; ctx.shadowBlur=18; ctx.shadowOffsetY=4;
-  rr(pX,pY,pW,panelInnerH,16); ctx.fillStyle="#ffffff"; ctx.fill();
+  const pX = PANEL_MX, pW = W - PANEL_MX * 2;
+  const pY = cy;
+
+  // panel shadow + fill
+  ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 4;
+  rr(pX, pY, pW, panelInnerH, 16); ctx.fillStyle = "#ffffff"; ctx.fill();
   ctx.restore();
-  ctx.save(); rr(pX,pY,pW,panelInnerH,16); ctx.clip();
 
-  ctx.fillStyle=amberGrad; ctx.fillRect(pX,pY,pW,STRIPE_H);
+  // clip to panel
+  ctx.save(); rr(pX, pY, pW, panelInnerH, 16); ctx.clip();
 
-  let py = pY+STRIPE_H+PANEL_PT;
+  // stripe
+  ctx.fillStyle = amberGrad; ctx.fillRect(pX, pY, pW, STRIPE_H);
 
-  ctx.fillStyle="#7c3a0a"; ctx.font=`700 7.5px sans-serif`;
-  ctx.letterSpacing="2px"; ctx.textAlign="center"; ctx.textBaseline="alphabetic";
-  ctx.fillText(L.patientCard,W/2,py+10);
-  ctx.letterSpacing="0px"; py+=PC_LABEL_H;
+  let py = pY + STRIPE_H + PANEL_PT;
 
-  // Case number box — uses patient mobile as case no
-  const cBX=pX+12, cBW=pW-24;
-  rr(cBX,py,cBW,caseBoxH,10); ctx.fillStyle="#fdf0e6"; ctx.fill();
-  ctx.fillStyle="#b8825a"; ctx.font=`700 6.5px sans-serif`;
-  ctx.letterSpacing="1.5px"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-  ctx.fillText(L.caseNo,cBX+14,py+CASE_PT+CASE_LABEL-2);
-  ctx.letterSpacing="0px";
-  // ✅ FIX: use patient.mobile digits directly as the case number
-  const rawD = patient.mobile.replace(/\D/g,"");
-  const displayNo = rawD.slice(-10).padStart(10,"0");
-  ctx.fillStyle="#c45e10"; ctx.font=`900 22px monospace`;
-  ctx.textBaseline="alphabetic";
-  ctx.fillText(displayNo,cBX+14,py+CASE_PT+CASE_LABEL+CASE_NUM-4);
-  const icX=cBX+cBW-46, icY=py+caseBoxH/2-14;
-  ctx.fillStyle="rgba(196,94,16,0.1)"; rr(icX,icY,28,28,7); ctx.fill();
-  ctx.strokeStyle="#c45e10"; ctx.lineWidth=1.5;
-  rr(icX+4,icY+6,20,16,3); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(icX+4,icY+11); ctx.lineTo(icX+24,icY+11); ctx.stroke();
-  py += caseBoxH+CASE_MB;
+  // ✦ PATIENT CARD ✦
+  ctx.fillStyle = "#7c3a0a"; ctx.font = `700 7.5px sans-serif`;
+  ctx.letterSpacing = "2px"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.patientCard, W / 2, py + 10);
+  ctx.letterSpacing = "0px";
+  py += PC_LABEL_H;
 
-  const rowPX=pX+12, rowPXR=pX+pW-12;
+  // Case number box
+  const cBX = pX + 12, cBW = pW - 24;
+  rr(cBX, py, cBW, caseBoxH, 10); ctx.fillStyle = "#fdf0e6"; ctx.fill();
+  // label
+  ctx.fillStyle = "#b8825a"; ctx.font = `700 6.5px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.caseNo, cBX + 14, py + CASE_PT + CASE_LABEL - 2);
+  ctx.letterSpacing = "0px";
+  // number
+  const rawD = patient.mobile.replace(/\D/g, "");
+  const caseNo = rawD.padStart(10, "0");
+  ctx.fillStyle = "#c45e10"; ctx.font = `900 22px monospace`;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(caseNo, cBX + 14, py + CASE_PT + CASE_LABEL + CASE_NUM - 4);
+  // card icon (right side of box)
+  const icX = cBX + cBW - 46, icY = py + caseBoxH / 2 - 14;
+  ctx.fillStyle = "rgba(196,94,16,0.1)"; rr(icX, icY, 28, 28, 7); ctx.fill();
+  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.5;
+  rr(icX + 4, icY + 6, 20, 16, 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(icX + 4, icY + 11); ctx.lineTo(icX + 24, icY + 11); ctx.stroke();
+  py += caseBoxH + CASE_MB;
 
-  // ── Patient name row ──
-  const nameRowMid=py+ROW_H/2, iBubR=11;
-  ctx.fillStyle="#fdf0e6";
-  ctx.beginPath(); ctx.arc(rowPX+iBubR,nameRowMid,iBubR,0,Math.PI*2); ctx.fill();
-  ctx.font=`11px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText("👤",rowPX+iBubR,nameRowMid);
-  const nameTextX=rowPX+iBubR*2+8;
-  ctx.fillStyle="#94a3b8"; ctx.font=`700 7px sans-serif`;
-  ctx.letterSpacing="0.8px"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-  ctx.fillText(L.patientName,nameTextX,nameRowMid-2); ctx.letterSpacing="0px";
-  ctx.fillStyle="#1e293b"; ctx.font=`700 11px sans-serif`; ctx.textBaseline="alphabetic";
-  let pname=patient.name.toUpperCase();
-  const pnameMaxW=rowPXR-nameTextX-4;
-  while(ctx.measureText(pname).width>pnameMaxW && pname.length>2) pname=pname.slice(0,-1);
-  if(pname!==patient.name.toUpperCase()) pname=pname.trimEnd()+"…";
-  ctx.fillText(pname,nameTextX,nameRowMid+12);
-  py+=ROW_H;
-  ctx.strokeStyle="#f1f5f9"; ctx.lineWidth=0.8;
-  ctx.beginPath(); ctx.moveTo(rowPX,py); ctx.lineTo(rowPXR,py); ctx.stroke();
+  // ── Info rows (icon circle LEFT + label top + value bottom — matches HTML) ──
+  const rowPX = pX + 12; // left padding inside panel
+  const rowPXR = pX + pW - 12; // right edge
 
-  // ── Phone highlight block (green, mirrors location block style) ──
-  const PHONE_H=ROW_H+12;
-  const phBX=rowPX-4, phBW=rowPXR-rowPX+8;
-  const phGrad=ctx.createLinearGradient(phBX,0,phBX+phBW,0);
-  phGrad.addColorStop(0,"#f0fdf4"); phGrad.addColorStop(1,"#dcfce7");
-  rr(phBX,py,phBW,PHONE_H,10); ctx.fillStyle=phGrad; ctx.fill();
-  // green left accent
-  ctx.fillStyle="#22c55e"; rr(phBX,py,4,PHONE_H,2); ctx.fill();
-  // phone icon bubble
-  const phCX=phBX+22, phCY=py+PHONE_H/2, phR=13;
-  ctx.fillStyle="#22c55e";
-  ctx.beginPath(); ctx.arc(phCX,phCY,phR,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle="#ffffff"; ctx.font=`bold 13px sans-serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText("📞",phCX,phCY);
-  // text
-  const phTextX=phBX+42;
-  ctx.fillStyle="#15803d"; ctx.font=`700 7px sans-serif`;
-  ctx.letterSpacing="0.8px"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-  ctx.fillText(L.clinicPhone.toUpperCase(),phTextX,py+14); ctx.letterSpacing="0px";
-  ctx.fillStyle="#166534"; ctx.font=`900 12px monospace`;
-  ctx.fillText("+91 96381 81875",phTextX,py+27);
-  // TAP TO CALL button
-  const ctaPhBX=phTextX, ctaPhBY=py+32, ctaPhBW=100, ctaPhBH=13;
-  rr(ctaPhBX,ctaPhBY,ctaPhBW,ctaPhBH,6); ctx.fillStyle="#22c55e"; ctx.fill();
-  ctx.fillStyle="#ffffff"; ctx.font=`700 7px sans-serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText("📞 TAP TO CALL",ctaPhBX+ctaPhBW/2,ctaPhBY+ctaPhBH/2);
-  py+=PHONE_H;
-  ctx.strokeStyle="#f1f5f9"; ctx.lineWidth=0.8;
-  ctx.beginPath(); ctx.moveTo(rowPX,py); ctx.lineTo(rowPXR,py); ctx.stroke();
+  const infoRow = (emoji: string, label: string, value: string, isLast: boolean, isLink = false) => {
+    const rowMid = py + ROW_H / 2;
+    // icon bubble
+    const iBubR = 11;
+    ctx.fillStyle = "#fdf0e6";
+    ctx.beginPath(); ctx.arc(rowPX + iBubR, rowMid, iBubR, 0, Math.PI * 2); ctx.fill();
+    ctx.font = `11px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(emoji, rowPX + iBubR, rowMid);
 
-  // ── Location highlight block (replaces plain address row) ──
-  const locBX=rowPX-4, locBW=rowPXR-rowPX+8, locBH=LOC_H;
-  // Amber gradient background
-  const locGrad=ctx.createLinearGradient(locBX,0,locBX+locBW,0);
-  locGrad.addColorStop(0,"#fff3e6"); locGrad.addColorStop(1,"#ffe8cc");
-  rr(locBX,py,locBW,locBH,10); ctx.fillStyle=locGrad; ctx.fill();
-  // Amber left accent bar
-  ctx.fillStyle="#e07828";
-  rr(locBX,py,4,locBH,2); ctx.fill();
-  // Pin icon bubble
-  const pinCX=locBX+22, pinCY=py+locBH/2, pinR=13;
-  ctx.fillStyle="#c45e10";
-  ctx.beginPath(); ctx.arc(pinCX,pinCY,pinR,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle="#ffffff"; ctx.font=`bold 13px sans-serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText("📍",pinCX,pinCY);
-  // Text block
-  const locTextX=locBX+42;
-  ctx.fillStyle="#7c3a0a"; ctx.font=`700 7px sans-serif`;
-  ctx.letterSpacing="0.8px"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-  ctx.fillText(L.address.toUpperCase(), locTextX, py+14);
-  ctx.letterSpacing="0px";
-  ctx.fillStyle="#1a1a1a"; ctx.font=`700 10px sans-serif`;
-  ctx.fillText("Pipaliya Char Rasta, Morbi", locTextX, py+27);
-  // "Tap to open in Maps" CTA
-  const ctaBX=locTextX, ctaBY=py+32, ctaBW=110, ctaBH=13;
-  const ctaGrad=ctx.createLinearGradient(ctaBX,0,ctaBX+ctaBW,0);
-  ctaGrad.addColorStop(0,"#c45e10"); ctaGrad.addColorStop(1,"#e07828");
-  rr(ctaBX,ctaBY,ctaBW,ctaBH,6); ctx.fillStyle=ctaGrad; ctx.fill();
-  ctx.fillStyle="#ffffff"; ctx.font=`700 7px sans-serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText("👆 TAP HERE FOR LOCATION",ctaBX+ctaBW/2,ctaBY+ctaBH/2);
-  py+=locBH;
+    const textX = rowPX + iBubR * 2 + 8;
+    // label (small, above)
+    ctx.fillStyle = "#94a3b8"; ctx.font = `700 7px sans-serif`;
+    ctx.letterSpacing = "0.8px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(label, textX, rowMid - 2);
+    ctx.letterSpacing = "0px";
+    // value (larger, below) — amber + underline for links
+    ctx.fillStyle = isLink ? "#c45e10" : "#1e293b";
+    ctx.font = `700 11px sans-serif`;
+    ctx.textBaseline = "alphabetic";
+    // truncate if needed
+    let v = value;
+    const maxW = rowPXR - textX - 4;
+    while (ctx.measureText(v).width > maxW && v.length > 2) v = v.slice(0, -1);
+    if (v !== value) v = v.trimEnd() + "…";
+    ctx.fillText(v, textX, rowMid + 12);
+    // underline for link
+    if (isLink) {
+      const vW = ctx.measureText(v).width;
+      ctx.strokeStyle = "rgba(196,94,16,0.5)"; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(textX, rowMid + 14); ctx.lineTo(textX + vW, rowMid + 14); ctx.stroke();
+    }
+
+    py += ROW_H;
+    // divider
+    if (!isLast) {
+      ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(rowPX, py); ctx.lineTo(rowPXR, py); ctx.stroke();
+    }
+  };
+
+  infoRow("👤", L.patientName, patient.name.toUpperCase(), false);
+  infoRow("📍", L.address, "maps.app.goo.gl/manglam", false, true);
+  infoRow("📞", L.clinicPhone, "+91 96381 81875", true);
 
   ctx.restore(); // end panel clip
 
   // ── Footer ──
-  const fY=pY+panelInnerH+PANEL_MB;
-  ctx.fillStyle="rgba(212,165,116,0.75)"; ctx.font=`700 8px sans-serif`;
-  ctx.letterSpacing="1.5px"; ctx.textAlign="center"; ctx.textBaseline="alphabetic";
-  ctx.fillText(L.footer,W/2,fY+FTR_L1); ctx.letterSpacing="0px";
-  ctx.fillStyle="rgba(255,255,255,0.35)"; ctx.font=`9px sans-serif`;
-  ctx.fillText(L.footerSub,W/2,fY+FTR_L1+FTR_L2+2);
+  const fY = pY + panelInnerH + PANEL_MB;
+  ctx.fillStyle = "rgba(212,165,116,0.75)"; ctx.font = `700 8px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.footer, W / 2, fY + FTR_L1);
+  ctx.letterSpacing = "0px";
+  ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.font = `9px sans-serif`;
+  ctx.fillText(L.footerSub, W / 2, fY + FTR_L1 + FTR_L2 + 2);
 
-  // Bottom amber bar
-  ctx.fillStyle=amberGrad; ctx.fillRect(0,H-AMBER_H,W,AMBER_H);
-  ctx.restore();
+  // ── Bottom amber bar ──
+  ctx.fillStyle = amberGrad; ctx.fillRect(0, H - AMBER_H, W, AMBER_H);
+
+  ctx.restore(); // end card clip
   return canvas;
 }
 
@@ -575,40 +580,42 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       // Full-bleed card image
       doc.addImage(imgData, "JPEG", 0, 0, PDF_W, PDF_H, undefined, "FAST");
 
-      // ── 4. Clickable link annotation — covers the location highlight block ──
-      // Location block comes after: header + panel top + case box + 2 normal rows
+      // ── 4. Invisible clickable link annotation over the address row ──
+      // The address row is the 2nd info row. Compute its position in mm.
+      // Canvas layout (logical px, scale=3 so divide physical by 3):
+      const scale = 3;
       const AMBER_H=5, HDR_PT=24, LOGO_D=64, LOGO_MB=10, CNAME_H=22, CNAME_MB=3,
             DR_H=14, DR_MB=10, DIV_H=12, HDR_PB=16, PANEL_MX=16, STRIPE_H=3,
             PANEL_PT=16, PC_LABEL_H=18, CASE_PT=10, CASE_LABEL=12, CASE_NUM=28,
-            CASE_PB=10, CASE_MB=12, ROW_H=40, LOC_H=52;
-      const hdrH    = HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
+            CASE_PB=10, CASE_MB=16, ROW_H=40;
+      const hdrH = HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
       const caseBoxH = CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
-      const panelTop = AMBER_H + hdrH;
-      // name row + phone row, then location block starts
-      const PHONE_H_pdf = ROW_H + 12;
-      const locTop  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H + PHONE_H_pdf;
-      const W_log   = 360;
-      const toMM    = (px: number) => (px / W_log) * PDF_W;
-      // cover the full location block width (panel inner)
-      // Phone block link
-      const phoneTop = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H;
-      doc.link(toMM(PANEL_MX), toMM(phoneTop), toMM(W_log - PANEL_MX*2), toMM(PHONE_H_pdf), { url: "tel:+919638181875" });
-      // Location block link
-      doc.link(toMM(PANEL_MX), toMM(locTop), toMM(W_log - PANEL_MX*2), toMM(LOC_H), { url: MAPS_URL });
+      const panelTop = AMBER_H + hdrH; // top of white panel (logical px)
+      const row1Top  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB; // Patient Name row
+      const row2Top  = row1Top + ROW_H; // Address row (📍)
+      const W_log = 360; // logical card width in px
+
+      // Convert logical px → mm
+      const toMM = (px: number) => (px / W_log) * PDF_W;
+      const linkX  = toMM(PANEL_MX);           // left edge of panel
+      const linkY  = toMM(row2Top);             // top of address row
+      const linkW  = toMM(W_log - PANEL_MX*2); // panel width
+      const linkH  = toMM(ROW_H);              // row height
+
+      doc.link(linkX, linkY, linkW, linkH, { url: MAPS_URL });
 
       // ── 5. Output as Blob ──
       const pdfBlob = doc.output("blob");
 
-      // ✅ FIX: correctly build WhatsApp number from patient mobile
-      const waRaw = patient.mobile.replace(/\D/g, "");
-      const waNumber = waRaw.length === 10 ? `91${waRaw}`
-        : waRaw.startsWith("91") && waRaw.length === 12 ? waRaw : waRaw;
+      const waNumber = rawDigits.length === 10
+        ? `91${rawDigits}`
+        : rawDigits.startsWith("91") && rawDigits.length === 12
+          ? rawDigits : rawDigits;
 
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       const pdfFile = new File([pdfBlob], "manglam-patient-card.pdf", { type: "application/pdf" });
 
       if (isMobile) {
-        // ── Mobile: Web Share API → patient picks WhatsApp from sheet ──
         if (
           typeof navigator.share === "function" &&
           typeof navigator.canShare === "function" &&
@@ -616,25 +623,25 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
         ) {
           try {
             await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
-            setSharing(false); return;
+            setSharing(false);
+            return;
           } catch (e: any) {
             if (e?.name === "AbortError") { setSharing(false); return; }
           }
         }
-        // Mobile fallback: open WhatsApp to number directly
+        // Fallback: download PDF
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
         window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
 
       } else {
-        // ── Desktop: auto-download PDF + open WhatsApp to exact patient number ──
-        // Download is automatic — file goes to Downloads, then attach in the open chat
+        // Desktop: download PDF + open WhatsApp
         const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement("a");
-        a.href = url; a.download = `patient-card-${waNumber}.pdf`; a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
-
-        // Open WhatsApp desktop to the patient's chat immediately
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
         window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
-        setShareError(`attach:${waNumber}`);
+        setShareError("✅ PDF downloaded! Attach it in the WhatsApp chat — the location link will be tappable.");
       }
     } catch (err: any) {
       console.error("Card share error:", err);
@@ -726,54 +733,33 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                   <p style={{ fontSize: 20, fontWeight: 900, fontFamily: "monospace", color: "#c45e10", letterSpacing: 1 }}>{caseNo}</p>
                 </div>
 
-                {/* Patient name row */}
-                <div className="flex items-center gap-2 py-2">
-                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>👤</div>
-                  <div className="flex-1 min-w-0">
-                    <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{L.patientName}</p>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{patient.name.toUpperCase()}</p>
+                {[
+                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null },
+                  { icon: "📍", label: L.address,     value: patient.address || CLINIC_ADDRESS, href: "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D" },
+                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: null },
+                ].map((row, i, arr) => (
+                  <div key={i}>
+                    <div className="flex items-center gap-2 py-2">
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
+                        {row.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{row.label}</p>
+                        {row.href ? (
+                          <a
+                            href={row.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: 11, fontWeight: 700, color: "#c45e10", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", textDecoration: "underline", textDecorationColor: "rgba(196,94,16,0.4)", textUnderlineOffset: 2 }}
+                          >{row.value}</a>
+                        ) : (
+                          <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
+                        )}
+                      </div>
+                    </div>
+                    {i < arr.length - 1 && <div style={{ height: 1, background: "#f1f5f9" }} />}
                   </div>
-                </div>
-                <div style={{ height: 1, background: "#f1f5f9" }} />
-
-                {/* Phone row — tappable call link */}
-                <a href={`tel:+91${CLINIC_MOBILE}`} style={{ textDecoration: "none", display: "block" }}>
-                  <div style={{ background: "linear-gradient(90deg,#f0fdf4,#dcfce7)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", display: "flex", alignItems: "center", gap: 10, border: "1px solid rgba(37,211,102,0.3)" }}>
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>📞</div>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#15803d", marginBottom: 2 }}>{L.clinicPhone}</p>
-                      <p style={{ fontSize: 13, fontWeight: 900, color: "#166534", fontFamily: "monospace" }}>+91 {clinicPhone}</p>
-                    </div>
-                    <div style={{ background: "#22c55e", borderRadius: 8, padding: "4px 8px" }}>
-                      <p style={{ fontSize: 8, fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }}>👆 TAP TO CALL</p>
-                    </div>
-                  </div>
-                </a>
-                <div style={{ height: 1, background: "#f1f5f9" }} />
-
-                {/* Location row — maps link */}
-                <a href={"https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D"} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block" }}>
-                  <div style={{ background: "linear-gradient(90deg,#fff7ed,#ffedd5)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", display: "flex", alignItems: "center", gap: 10, border: "1px solid rgba(196,94,16,0.25)" }}>
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#c45e10", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>📍</div>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#7c3a0a", marginBottom: 2 }}>{L.address}</p>
-                      <p style={{ fontSize: 10, fontWeight: 700, color: "#1e293b" }}>Pipaliya Char Rasta, Morbi</p>
-                    </div>
-                    <div style={{ background: "#c45e10", borderRadius: 8, padding: "4px 8px" }}>
-                      <p style={{ fontSize: 8, fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }}>👆 GET LOCATION</p>
-                    </div>
-                  </div>
-                </a>
-
-                {/* Note */}
-                <div style={{ background: "#fdf0e6", borderRadius: 8, padding: "6px 10px", marginTop: 6, textAlign: "center" }}>
-                  <p style={{ fontSize: 9, color: "#7c3a0a", fontWeight: 600, margin: 0 }}>
-                    📝 Note your <b>Case No.</b> above for future visits
-                  </p>
-                  <p style={{ fontSize: 9, color: "#15803d", fontWeight: 600, margin: "3px 0 0 0" }}>
-                    👆 <b>Tap the phone number above</b> to write your case or make a call
-                  </p>
-                </div>
+                ))}
               </div>
             </div>
 
@@ -787,30 +773,12 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           </div>
 
           {/* hint */}
-          {shareError && (() => {
-            if (shareError.startsWith("attach:")) {
-              return (
-                <div className="mt-2 rounded-2xl overflow-hidden"
-                  style={{ border: "1px solid rgba(37,211,102,0.4)", background: "#f0fdf4" }}>
-                  <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 26, lineHeight: 1 }}>✅</div>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "#15803d" }}>WhatsApp opened to patient!</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#166534" }}>PDF saved to <b>Downloads</b> — attach it in the chat 📎</p>
-                    </div>
-                    <button onClick={() => setShareError("")}
-                      style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 16, cursor: "pointer", padding: 4 }}>✕</button>
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
-                style={{ background: shareError.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)", color: shareError.startsWith("✅") ? "#15803d" : "#92400e", border: `1px solid ${shareError.startsWith("✅") ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.3)"}` }}>
-                {shareError}
-              </div>
-            );
-          })()}
+          {shareError && (
+            <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
+              style={{ background: shareError.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)", color: shareError.startsWith("✅") ? "#15803d" : "#92400e", border: `1px solid ${shareError.startsWith("✅") ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.3)"}` }}>
+              {shareError}
+            </div>
+          )}
 
           {/* ── Language picker overlay (shown before share) ── */}
           <AnimatePresence>
@@ -1820,14 +1788,7 @@ export default function Home() {
                           </div>
                           <div className="min-w-0">
                             <p className="font-bold text-slate-900 truncate">{historyName || patientHistory[0]?.name}</p>
-                            <a
-                              href={`tel:+91${(historyMobile || patientHistory[0]?.mobile || "").replace(/\D/g, "")}`}
-                              className="text-xs font-mono text-blue-600 flex items-center gap-1 underline underline-offset-2"
-                              style={{ width: "fit-content" }}
-                            >
-                              <Phone className="w-3 h-3 shrink-0" />
-                              {historyMobile || patientHistory[0]?.mobile}
-                            </a>
+                            <p className="text-xs font-mono text-slate-500">{historyMobile || patientHistory[0]?.mobile}</p>
                           </div>
                           <span className="ml-auto text-xs text-slate-400 shrink-0">{patientHistory.length} visits</span>
                         </div>
