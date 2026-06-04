@@ -570,33 +570,37 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
         : waRaw.startsWith("91") && waRaw.length === 12 ? waRaw : waRaw;
 
       const pdfFile = new File([pdfBlob], "manglam-patient-card.pdf", { type: "application/pdf" });
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-      // ── Try Web Share API first (works on mobile AND modern desktop Chrome/Edge)
-      // This opens the OS share sheet directly — no download, no file saved
-      if (
-        typeof navigator.share === "function" &&
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [pdfFile] })
-      ) {
-        try {
-          await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
-          setSharing(false);
-          return;
-        } catch (e: any) {
-          if (e?.name === "AbortError") { setSharing(false); return; }
-          // Share failed for other reason — fall through to WhatsApp direct open
+      if (isMobile) {
+        // ── Mobile: Web Share API opens WhatsApp share sheet directly ──
+        if (
+          typeof navigator.share === "function" &&
+          typeof navigator.canShare === "function" &&
+          navigator.canShare({ files: [pdfFile] })
+        ) {
+          try {
+            await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
+            setSharing(false);
+            return;
+          } catch (e: any) {
+            if (e?.name === "AbortError") { setSharing(false); return; }
+          }
         }
+        // Mobile fallback: open WhatsApp to patient number directly
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+        setSharing(false);
+        return;
       }
 
-      // ── Fallback: open WhatsApp to patient number, show blob URL the user can attach
-      // Create an object URL that stays alive so user can open it in WhatsApp manually
-      const blobUrl = URL.createObjectURL(pdfBlob);
+      // ── Desktop: open WhatsApp directly to patient's chat, then show attach button ──
+      // Step 1: open WhatsApp desktop app to exact patient number
       window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
 
-      // Show a clickable "Open PDF" link in the UI so user can attach it themselves
-      // Object URL lives until tab closes — no file saved to disk
-      setShareError(`pdf:${blobUrl}`);
-      // Auto-revoke after 5 minutes
+      // Step 2: create a blob URL (lives in memory only, no file saved to disk)
+      // User taps the "📎 Attach PDF" button below which opens it, then they drag into WA
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      setShareError(`pdf:${blobUrl}|${waNumber}`);
       setTimeout(() => URL.revokeObjectURL(blobUrl), 300_000);
     } catch (err: any) {
       console.error("Card share error:", err);
@@ -728,28 +732,56 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           </div>
 
           {/* hint */}
-          {shareError && (
-            shareError.startsWith("pdf:") ? (
-              // Blob URL fallback — no file saved, just open in browser so user can attach
-              <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
-                style={{ background: "rgba(251,191,36,0.15)", color: "#92400e", border: "1px solid rgba(251,191,36,0.3)" }}>
-                <p className="mb-2">WhatsApp opened! Tap below to open the PDF, then share it from your browser into the chat.</p>
-                <a
-                  href={shareError.slice(4)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: "inline-block", background: "#c45e10", color: "#fff", borderRadius: 8, padding: "5px 14px", fontWeight: 700, fontSize: 11, textDecoration: "none" }}
-                >
-                  📄 Open PDF
-                </a>
-              </div>
-            ) : (
+          {shareError && (() => {
+            if (shareError.startsWith("pdf:")) {
+              const parts = shareError.slice(4).split("|");
+              const blobUrl = parts[0];
+              const waNum   = parts[1] || "";
+              return (
+                <div className="mt-2 rounded-xl overflow-hidden"
+                  style={{ border: "1px solid rgba(196,94,16,0.3)", background: "#fffbf5" }}>
+                  {/* Header */}
+                  <div style={{ background: "linear-gradient(90deg,#c45e10,#e07828)", padding: "8px 12px" }}>
+                    <p style={{ color: "#fff", fontWeight: 700, fontSize: 11, margin: 0 }}>
+                      ✅ WhatsApp opened to patient's chat
+                    </p>
+                  </div>
+                  {/* Steps */}
+                  <div style={{ padding: "10px 12px", fontSize: 11, color: "#7c3a0a" }}>
+                    <p style={{ margin: "0 0 8px 0", fontWeight: 600 }}>Now attach the card:</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ background: "#c45e10", color: "#fff", borderRadius: "50%", width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>1</span>
+                        <span>Click <b>📎 Attach PDF</b> below — opens card in browser</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ background: "#c45e10", color: "#fff", borderRadius: "50%", width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>2</span>
+                        <span>Right-click the PDF → <b>Download</b> or drag it into WhatsApp</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <a href={blobUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ flex: 1, textAlign: "center", background: "linear-gradient(90deg,#c45e10,#e07828)", color: "#fff", borderRadius: 8, padding: "7px 0", fontWeight: 700, fontSize: 12, textDecoration: "none", display: "block" }}>
+                        📎 Attach PDF
+                      </a>
+                      {waNum && (
+                        <a href={`whatsapp://send?phone=${waNum}`} target="_blank" rel="noopener noreferrer"
+                          style={{ flex: 1, textAlign: "center", background: "#25d366", color: "#fff", borderRadius: 8, padding: "7px 0", fontWeight: 700, fontSize: 12, textDecoration: "none", display: "block" }}>
+                          💬 Reopen Chat
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            return (
               <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
                 style={{ background: shareError.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)", color: shareError.startsWith("✅") ? "#15803d" : "#92400e", border: `1px solid ${shareError.startsWith("✅") ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.3)"}` }}>
                 {shareError}
               </div>
-            )
-          )}
+            );
+          })()}
 
           {/* ── Language picker overlay (shown before share) ── */}
           <AnimatePresence>
