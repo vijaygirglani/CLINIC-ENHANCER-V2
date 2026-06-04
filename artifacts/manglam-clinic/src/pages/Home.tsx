@@ -569,10 +569,13 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       const waNumber = waRaw.length === 10 ? `91${waRaw}`
         : waRaw.startsWith("91") && waRaw.length === 12 ? waRaw : waRaw;
 
-      // Open WhatsApp directly to the patient's chat — simplest and most reliable
+      // 1. Open WhatsApp directly to patient's chat
       window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
-      setSharing(false);
-      return;
+
+      // 2. Keep PDF alive in memory (no download) — show floating attach button
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      setShareError(`pdf:${blobUrl}`);
+      setTimeout(() => { URL.revokeObjectURL(blobUrl); setShareError(""); }, 300_000);
     } catch (err: any) {
       console.error("Card share error:", err);
       setShareError("Could not generate card. Please try again.");
@@ -705,43 +708,21 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           {/* hint */}
           {shareError && (() => {
             if (shareError.startsWith("pdf:")) {
-              const parts = shareError.slice(4).split("|");
-              const blobUrl = parts[0];
-              const waNum   = parts[1] || "";
+              const blobUrl = shareError.slice(4);
               return (
-                <div className="mt-2 rounded-xl overflow-hidden"
-                  style={{ border: "1px solid rgba(196,94,16,0.3)", background: "#fffbf5" }}>
-                  {/* Header */}
-                  <div style={{ background: "linear-gradient(90deg,#c45e10,#e07828)", padding: "8px 12px" }}>
-                    <p style={{ color: "#fff", fontWeight: 700, fontSize: 11, margin: 0 }}>
-                      ✅ WhatsApp opened to patient's chat
-                    </p>
-                  </div>
-                  {/* Steps */}
-                  <div style={{ padding: "10px 12px", fontSize: 11, color: "#7c3a0a" }}>
-                    <p style={{ margin: "0 0 8px 0", fontWeight: 600 }}>Now attach the card:</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ background: "#c45e10", color: "#fff", borderRadius: "50%", width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>1</span>
-                        <span>Click <b>📎 Attach PDF</b> below — opens card in browser</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ background: "#c45e10", color: "#fff", borderRadius: "50%", width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>2</span>
-                        <span>Right-click the PDF → <b>Download</b> or drag it into WhatsApp</span>
-                      </div>
+                <div className="mt-2 rounded-2xl overflow-hidden"
+                  style={{ border: "1px solid rgba(37,211,102,0.4)", background: "#f0fdf4" }}>
+                  <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ fontSize: 28, lineHeight: 1 }}>💬</div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "#15803d" }}>WhatsApp chat opened!</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#166534" }}>Tap <b>📎 Attach Card</b> → send in that chat</p>
                     </div>
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                      <a href={blobUrl} target="_blank" rel="noopener noreferrer"
-                        style={{ flex: 1, textAlign: "center", background: "linear-gradient(90deg,#c45e10,#e07828)", color: "#fff", borderRadius: 8, padding: "7px 0", fontWeight: 700, fontSize: 12, textDecoration: "none", display: "block" }}>
-                        📎 Attach PDF
-                      </a>
-                      {waNum && (
-                        <a href={`whatsapp://send?phone=${waNum}`} target="_blank" rel="noopener noreferrer"
-                          style={{ flex: 1, textAlign: "center", background: "#25d366", color: "#fff", borderRadius: 8, padding: "7px 0", fontWeight: 700, fontSize: 12, textDecoration: "none", display: "block" }}>
-                          💬 Reopen Chat
-                        </a>
-                      )}
-                    </div>
+                    <a href={blobUrl} target="_blank" rel="noopener noreferrer"
+                      onClick={() => setTimeout(() => setShareError(""), 500)}
+                      style={{ background: "linear-gradient(135deg,#c45e10,#e07828)", color: "#fff", borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 11, textDecoration: "none", whiteSpace: "nowrap", textAlign: "center" }}>
+                      📎 Attach Card
+                    </a>
                   </div>
                 </div>
               );
