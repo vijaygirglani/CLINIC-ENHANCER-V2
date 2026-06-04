@@ -10,7 +10,8 @@ import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
   TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
-  WalletCards, Loader2, MessageSquare,
+  WalletCards, Loader2, MessageSquare, Search, Bell, Clock, Keyboard,
+  CalendarCheck, AlertCircle,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -76,7 +77,164 @@ function useUndoManager(toast: ReturnType<typeof useToast>["toast"], onAfterUndo
   return { pushUndo };
 }
 
-const editSchema = z.object({
+// ── Follow-up Reminder helpers ────────────────────────────────────────────────
+const PATIENTS_STORE_KEY = "manglam_patients";
+interface FollowUpDue { patientId: number; name: string; mobile: string; advice: string; visitDate: string; dueDate: string; }
+
+function parseFollowUpDays(advice: string): number | null {
+  if (!advice) return null;
+  // Match patterns: F5, F 5, follow-up 5, followup in 5, f/5, f-5, "5 days", "after 5 days"
+  const patterns = [
+    /\bF\s*[-\/]?\s*(\d+)\b/i,
+    /follow\s*[-–]?\s*up\s+(?:in\s+|after\s+)?(\d+)/i,
+    /after\s+(\d+)\s*days?/i,
+    /(\d+)\s*days?\s*(?:follow|f\/u)/i,
+  ];
+  for (const re of patterns) {
+    const m = advice.match(re);
+    if (m) return parseInt(m[1]);
+  }
+  return null;
+}
+
+function getFollowUpsDueToday(): FollowUpDue[] {
+  try {
+    const all: any[] = JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]");
+    const today = format(new Date(), "yyyy-MM-dd");
+    const due: FollowUpDue[] = [];
+    for (const p of all) {
+      const days = parseFollowUpDays(p.advice || "");
+      if (!days) continue;
+      const visit = new Date(p.visitDate + "T00:00:00");
+      visit.setDate(visit.getDate() + days);
+      const dueDate = format(visit, "yyyy-MM-dd");
+      if (dueDate === today) {
+        due.push({ patientId: p.id, name: p.name, mobile: p.mobile, advice: p.advice, visitDate: p.visitDate, dueDate });
+      }
+    }
+    return due;
+  } catch { return []; }
+}
+
+// ── Global Search helpers (for DailyRegister) ────────────────────────────────
+function searchAllPatientsGlobal(query: string): any[] {
+  if (!query || query.trim().length < 2) return [];
+  const q = query.toLowerCase().trim();
+  try {
+    const all: any[] = JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]");
+    return all.filter(p =>
+      p.name?.toLowerCase().includes(q) ||
+      p.mobile?.toLowerCase().includes(q) ||
+      p.complaint?.toLowerCase().includes(q) ||
+      p.address?.toLowerCase().includes(q)
+    ).slice(0, 30);
+  } catch { return []; }
+}
+
+// ── Global Search Modal (DailyRegister) ──────────────────────────────────────
+function GlobalSearchModal({ onClose, onJumpToDate }: { onClose: () => void; onJumpToDate: (date: string) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  const [selected, setSelected] = useState<any | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => { setResults(searchAllPatientsGlobal(query)); }, [query]);
+
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 backdrop-blur-sm pt-16 px-4"
+        onClick={onClose}>
+        <motion.div initial={{ scale: 0.95, opacity: 0, y: -10 }} animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.95, opacity: 0 }} className="w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+          onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+            <Search className="w-5 h-5 text-slate-400 shrink-0" />
+            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Search all patients by name, mobile, complaint, address…"
+              className="flex-1 text-base outline-none text-slate-800 placeholder:text-slate-400" />
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X className="w-4 h-4" /></button>
+          </div>
+          {results.length > 0 ? (
+            <div className="max-h-[55vh] overflow-y-auto divide-y divide-slate-50">
+              {results.map(p => (
+                <button key={p.id} onClick={() => setSelected(p)}
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-primary/5 text-left transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5 text-primary font-bold text-xs">
+                    {p.name?.[0]?.toUpperCase() || "?"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-900 text-sm">{p.name}</p>
+                    <p className="text-xs text-slate-500 font-mono">{p.mobile} · {format(new Date(p.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+                    {p.complaint && <p className="text-xs text-slate-400 truncate mt-0.5">{p.complaint}</p>}
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 mt-1 ${p.registerType === "ayurvedic" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                    {p.registerType === "ayurvedic" ? "Ayurvedic" : "General"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : query.length >= 2 ? (
+            <div className="px-6 py-10 text-center text-slate-400">
+              <Search className="w-10 h-10 mx-auto mb-2 text-slate-200" />
+              <p className="font-medium">No patients found for "{query}"</p>
+            </div>
+          ) : (
+            <div className="px-6 py-8 text-center text-slate-400 text-sm">Type at least 2 characters to search all patients…</div>
+          )}
+          <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 flex items-center gap-2 text-xs text-slate-400">
+            <Keyboard className="w-3.5 h-3.5" />
+            <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+F</kbd> to open · <kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Esc</kbd> to close</span>
+          </div>
+        </motion.div>
+      </motion.div>
+
+      {/* Patient detail popup */}
+      {selected && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setSelected(null)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }} className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <div className="bg-gradient-to-r from-primary to-blue-500 px-5 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-bold text-lg">{selected.name}</h3>
+                <p className="text-blue-100 text-xs font-mono">{selected.mobile} · {format(new Date(selected.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { onJumpToDate(selected.visitDate); setSelected(null); onClose(); }}
+                  className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold flex items-center gap-1.5 transition-colors">
+                  <CalendarCheck className="w-3.5 h-3.5" /> Go to Date
+                </button>
+                <button onClick={() => setSelected(null)} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white"><X className="w-4 h-4" /></button>
+              </div>
+            </div>
+            <div className="p-5 space-y-3">
+              {[
+                { label: "Age / Weight", value: `${selected.age ? selected.age + "y" : ""}${selected.ageMonths ? " " + selected.ageMonths + "m" : ""} ${selected.weight ? "· " + selected.weight : ""}`.trim() || "-" },
+                { label: "Address", value: selected.address || "-" },
+                { label: "Complaint", value: selected.complaint ? `${selected.complaintCode ? "[" + selected.complaintCode + "] " : ""}${selected.complaint}` : "-" },
+                { label: "Treatment", value: selected.treatment || "-" },
+                { label: "Advice", value: selected.advice || "-" },
+                { label: "Reports", value: selected.reports || "-" },
+                { label: "Fees", value: selected.fees ? `₹${selected.fees?.toLocaleString("en-IN")} (${selected.paymentMode || "cash"})` : "-" },
+              ].map(row => (
+                <div key={row.label} className="flex gap-3">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wide w-24 shrink-0 pt-0.5">{row.label}</span>
+                  <span className="text-sm text-slate-800 flex-1">{row.value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 pb-5">
+              <button onClick={() => setSelected(null)} className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">Close</button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
   name: z.string().min(1),
   age: z.coerce.number().optional(),
   ageMonths: z.coerce.number().optional(),
@@ -405,6 +563,22 @@ export default function DailyRegister() {
   const refreshRef = useRef<() => void>(() => {});
   const { pushUndo } = useUndoManager(toast, () => refreshRef.current());
 
+  // ── Global Search state ──
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+
+  // ── Follow-up Reminders state ──
+  const [followUpsDue, setFollowUpsDue] = useState<FollowUpDue[]>([]);
+  const [showFollowUps, setShowFollowUps] = useState(false);
+  const [dismissedFollowUps, setDismissedFollowUps] = useState<number[]>([]);
+
+  useEffect(() => {
+    const due = getFollowUpsDueToday();
+    setFollowUpsDue(due);
+    if (due.length > 0) setShowFollowUps(true);
+  }, []);
+
+  const visibleFollowUps = followUpsDue.filter(f => !dismissedFollowUps.includes(f.patientId));
+
   // Loose sales for selected date
   const [looseSalesForDay, setLooseSalesForDay] = useState<LooseSaleEntry[]>(() => getLooseSalesForDate(format(new Date(), "yyyy-MM-dd")));
   const looseDayTotal = looseSalesForDay.reduce((s, e) => s + e.amount, 0);
@@ -419,6 +593,36 @@ export default function DailyRegister() {
   refreshRef.current = refresh;
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // ── Keyboard Shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      // Ctrl+F — Global Search
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault();
+        setShowGlobalSearch(true);
+        return;
+      }
+      // Ctrl+G — Jump to today
+      if ((e.ctrlKey || e.metaKey) && e.key === "g") {
+        if (inInput) return;
+        e.preventDefault();
+        setSelectedDate(format(new Date(), "yyyy-MM-dd"));
+        toast({ title: "📅 Jumped to Today" });
+        return;
+      }
+      // Ctrl+P — Print (no patient selected — just hint)
+      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
+        if (inInput) return;
+        // Don't preventDefault — let browser handle if no patient
+      }
+      if (e.key === "Escape") setShowGlobalSearch(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [toast]);
 
   const editForm = useForm({ resolver: zodResolver(editSchema), values: editingPatient || {} });
 
@@ -574,10 +778,52 @@ Manglam Hospital, Morbi`;
     <Layout>
       {printPatient && <PrintPrescription patient={printPatient} />}
       {cardPatient && <PatientCardModal patient={cardPatient} onClose={() => setCardPatient(null)} />}
+      {showGlobalSearch && <GlobalSearchModal onClose={() => setShowGlobalSearch(false)} onJumpToDate={date => { setSelectedDate(date); }} />}
       <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleRestoreFile} />
       <input ref={excelImportRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportExcel} />
 
       <div className="space-y-5">
+
+        {/* ── FOLLOW-UP REMINDERS BANNER ── */}
+        <AnimatePresence>
+          {showFollowUps && visibleFollowUps.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+              className="rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 overflow-hidden shadow-sm">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-orange-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center">
+                    <Bell className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  <span className="font-bold text-orange-800 text-sm">
+                    🔔 {visibleFollowUps.length} Follow-up{visibleFollowUps.length > 1 ? "s" : ""} Due Today
+                  </span>
+                </div>
+                <button onClick={() => setShowFollowUps(false)} className="p-1 rounded-lg hover:bg-orange-100 text-orange-400 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="divide-y divide-orange-100 max-h-48 overflow-y-auto">
+                {visibleFollowUps.map(f => (
+                  <div key={f.patientId} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center shrink-0 text-xs font-black text-orange-600">
+                      {f.name[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-900 text-sm">{f.name}</p>
+                      <p className="text-xs text-slate-500 font-mono">{f.mobile} · visited {format(new Date(f.visitDate + "T00:00:00"), "dd MMM")}</p>
+                      <p className="text-xs text-orange-600 mt-0.5 italic">"{f.advice}"</p>
+                    </div>
+                    <button onClick={() => setDismissedFollowUps(p => [...p, f.patientId])}
+                      className="shrink-0 px-2.5 py-1 rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-700 text-xs font-semibold transition-colors">
+                      Dismiss
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* ── STICKY HEADER ── */}
         <div className="sticky top-16 z-30 -mx-4 md:-mx-8 px-4 md:px-8 bg-white/95 backdrop-blur-md border-b border-slate-200/80 py-3 shadow-sm">
           <div className="flex flex-row flex-wrap items-center justify-between gap-2">
@@ -586,6 +832,28 @@ Manglam Hospital, Morbi`;
               <p className="text-slate-500 text-xs">General + Ayurvedic patients for selected date</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* Follow-up badge */}
+              {visibleFollowUps.length > 0 && (
+                <button onClick={() => setShowFollowUps(v => !v)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-orange-100 border border-orange-200 text-orange-700 text-sm font-semibold hover:bg-orange-200 transition-colors">
+                  <Bell className="w-4 h-4" />
+                  {visibleFollowUps.length} Follow-up{visibleFollowUps.length > 1 ? "s" : ""}
+                </button>
+              )}
+              {/* Search button */}
+              <button onClick={() => setShowGlobalSearch(true)}
+                title="Global Search (Ctrl+F)"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary transition-all text-sm font-semibold">
+                <Search className="w-4 h-4" />
+                <span className="hidden sm:inline">Search</span>
+                <kbd className="hidden sm:inline px-1 py-0.5 rounded bg-white border border-slate-200 text-xs font-mono text-slate-400">Ctrl+F</kbd>
+              </button>
+              {/* Jump to Today button */}
+              <button onClick={() => { setSelectedDate(format(new Date(), "yyyy-MM-dd")); toast({ title: "📅 Jumped to Today" }); }}
+                title="Jump to Today (Ctrl+G)"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition-all">
+                <CalendarCheck className="w-4 h-4" /> Today
+              </button>
               <div className="relative">
                 <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
@@ -609,6 +877,14 @@ Manglam Hospital, Morbi`;
               </button>
             </div>
           </div>
+        </div>
+
+        {/* ── KEYBOARD SHORTCUTS HINT ── */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-400">
+          <span className="flex items-center gap-1"><Keyboard className="w-3 h-3" /> Shortcuts:</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+F</kbd> Search</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+G</kbd> Jump to Today</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+Z</kbd> Undo</span>
         </div>
 
         {/* ── STATS CARDS ── */}
