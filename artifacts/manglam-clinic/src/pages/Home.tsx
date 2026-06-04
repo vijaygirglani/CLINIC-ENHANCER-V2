@@ -612,37 +612,35 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
         : rawDigits.startsWith("91") && rawDigits.length === 12
           ? rawDigits : rawDigits;
 
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       const pdfFile = new File([pdfBlob], "manglam-patient-card.pdf", { type: "application/pdf" });
 
-      if (isMobile) {
-        if (
-          typeof navigator.share === "function" &&
-          typeof navigator.canShare === "function" &&
-          navigator.canShare({ files: [pdfFile] })
-        ) {
-          try {
-            await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
-            setSharing(false);
-            return;
-          } catch (e: any) {
-            if (e?.name === "AbortError") { setSharing(false); return; }
-          }
+      // ── Try Web Share API first (works on mobile AND modern desktop Chrome/Edge)
+      // This opens the OS share sheet directly — no download, no file saved
+      if (
+        typeof navigator.share === "function" &&
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [pdfFile] })
+      ) {
+        try {
+          await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
+          setSharing(false);
+          return;
+        } catch (e: any) {
+          if (e?.name === "AbortError") { setSharing(false); return; }
+          // Share failed for other reason — fall through to WhatsApp direct open
         }
-        // Fallback: download PDF
-        const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
-
-      } else {
-        // Desktop: download PDF + open WhatsApp
-        const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
-        setShareError("✅ PDF downloaded! Attach it in the WhatsApp chat — the location link will be tappable.");
       }
+
+      // ── Fallback: open WhatsApp to patient number, show blob URL the user can attach
+      // Create an object URL that stays alive so user can open it in WhatsApp manually
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+
+      // Show a clickable "Open PDF" link in the UI so user can attach it themselves
+      // Object URL lives until tab closes — no file saved to disk
+      setShareError(`pdf:${blobUrl}`);
+      // Auto-revoke after 5 minutes
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 300_000);
     } catch (err: any) {
       console.error("Card share error:", err);
       setShareError("Could not generate card. Please try again.");
@@ -774,10 +772,26 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
 
           {/* hint */}
           {shareError && (
-            <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
-              style={{ background: shareError.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)", color: shareError.startsWith("✅") ? "#15803d" : "#92400e", border: `1px solid ${shareError.startsWith("✅") ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.3)"}` }}>
-              {shareError}
-            </div>
+            shareError.startsWith("pdf:") ? (
+              // Blob URL fallback — no file saved, just open in browser so user can attach
+              <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
+                style={{ background: "rgba(251,191,36,0.15)", color: "#92400e", border: "1px solid rgba(251,191,36,0.3)" }}>
+                <p className="mb-2">WhatsApp opened! Tap below to open the PDF, then share it from your browser into the chat.</p>
+                <a
+                  href={shareError.slice(4)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: "inline-block", background: "#c45e10", color: "#fff", borderRadius: 8, padding: "5px 14px", fontWeight: 700, fontSize: 11, textDecoration: "none" }}
+                >
+                  📄 Open PDF
+                </a>
+              </div>
+            ) : (
+              <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
+                style={{ background: shareError.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)", color: shareError.startsWith("✅") ? "#15803d" : "#92400e", border: `1px solid ${shareError.startsWith("✅") ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.3)"}` }}>
+                {shareError}
+              </div>
+            )
           )}
 
           {/* ── Language picker overlay (shown before share) ── */}
