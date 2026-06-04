@@ -461,7 +461,7 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   const rowPX = pX + 12; // left padding inside panel
   const rowPXR = pX + pW - 12; // right edge
 
-  const infoRow = (emoji: string, label: string, value: string, isLast: boolean) => {
+  const infoRow = (emoji: string, label: string, value: string, isLast: boolean, isLink = false) => {
     const rowMid = py + ROW_H / 2;
     // icon bubble
     const iBubR = 11;
@@ -476,16 +476,22 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
     ctx.letterSpacing = "0.8px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     ctx.fillText(label, textX, rowMid - 2);
     ctx.letterSpacing = "0px";
-    // value (larger, below)
-    ctx.fillStyle = "#1e293b"; ctx.font = `700 11px sans-serif`;
+    // value (larger, below) — amber + underline for links
+    ctx.fillStyle = isLink ? "#c45e10" : "#1e293b";
+    ctx.font = `700 11px sans-serif`;
     ctx.textBaseline = "alphabetic";
     // truncate if needed
     let v = value;
     const maxW = rowPXR - textX - 4;
-    ctx.font = `700 11px sans-serif`;
     while (ctx.measureText(v).width > maxW && v.length > 2) v = v.slice(0, -1);
     if (v !== value) v = v.trimEnd() + "…";
     ctx.fillText(v, textX, rowMid + 12);
+    // underline for link
+    if (isLink) {
+      const vW = ctx.measureText(v).width;
+      ctx.strokeStyle = "rgba(196,94,16,0.5)"; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(textX, rowMid + 14); ctx.lineTo(textX + vW, rowMid + 14); ctx.stroke();
+    }
 
     py += ROW_H;
     // divider
@@ -496,7 +502,7 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   };
 
   infoRow("👤", L.patientName, patient.name.toUpperCase(), false);
-  infoRow("📍", L.address, patient.address || "Pipaliya Char Rasta", false);
+  infoRow("📍", L.address, "maps.app.goo.gl/manglam", false, true);
   infoRow("📞", L.clinicPhone, "+91 96381 81875", true);
 
   ctx.restore(); // end panel clip
@@ -523,6 +529,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
   const caseNo = rawDigits.padStart(10, "0");
   const CLINIC_MOBILE = "9638181875";
   const CLINIC_ADDRESS = "Pipaliya Char Rasta";
+  const MAPS_URL = "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D";
   const clinicPhone = CLINIC_MOBILE.replace(/(\d{5})(\d{5})/, "$1 $2");
   const cardRef = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
@@ -536,17 +543,69 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
     ? `Send to ${rawDigits.slice(-10)}`
     : "Send on WhatsApp";
 
+  // ── Load jsPDF dynamically (only once) ──
+  const getJsPDF = async () => {
+    if ((window as any).__jsPDF) return (window as any).__jsPDF;
+    await new Promise<void>((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.onload = () => res(); s.onerror = () => rej(new Error("jsPDF load failed"));
+      document.head.appendChild(s);
+    });
+    (window as any).__jsPDF = (window as any).jspdf.jsPDF;
+    return (window as any).__jsPDF;
+  };
+
   const doShare = async (chosenLang: CardLang) => {
     setShowLangPicker(false);
     setLang(chosenLang);
     setSharing(true);
     setShareError("");
     try {
+      // ── 1. Draw card to canvas ──
       const canvas = drawPatientCard(patient, chosenLang);
+      const W_px = canvas.width;   // physical pixels (360 * scale=3 = 1080)
+      const H_px = canvas.height;
 
-      const blob: Blob = await new Promise((res, rej) =>
-        canvas.toBlob((b: Blob | null) => b ? res(b) : rej(new Error("toBlob failed")), "image/png", 1.0)
-      );
+      // ── 2. Convert canvas → JPEG (much smaller than PNG, quality still great) ──
+      const imgData = canvas.toDataURL("image/jpeg", 0.88);
+
+      // ── 3. Build PDF — same aspect ratio as canvas, in mm ──
+      const jsPDF = await getJsPDF();
+      // Card is portrait; keep 90mm wide to stay compact
+      const PDF_W = 90;
+      const PDF_H = Math.round((H_px / W_px) * PDF_W);
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [PDF_W, PDF_H], compress: true });
+
+      // Full-bleed card image
+      doc.addImage(imgData, "JPEG", 0, 0, PDF_W, PDF_H, undefined, "FAST");
+
+      // ── 4. Invisible clickable link annotation over the address row ──
+      // The address row is the 2nd info row. Compute its position in mm.
+      // Canvas layout (logical px, scale=3 so divide physical by 3):
+      const scale = 3;
+      const AMBER_H=5, HDR_PT=24, LOGO_D=64, LOGO_MB=10, CNAME_H=22, CNAME_MB=3,
+            DR_H=14, DR_MB=10, DIV_H=12, HDR_PB=16, PANEL_MX=16, STRIPE_H=3,
+            PANEL_PT=16, PC_LABEL_H=18, CASE_PT=10, CASE_LABEL=12, CASE_NUM=28,
+            CASE_PB=10, CASE_MB=16, ROW_H=40;
+      const hdrH = HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
+      const caseBoxH = CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
+      const panelTop = AMBER_H + hdrH; // top of white panel (logical px)
+      const row1Top  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB; // Patient Name row
+      const row2Top  = row1Top + ROW_H; // Address row (📍)
+      const W_log = 360; // logical card width in px
+
+      // Convert logical px → mm
+      const toMM = (px: number) => (px / W_log) * PDF_W;
+      const linkX  = toMM(PANEL_MX);           // left edge of panel
+      const linkY  = toMM(row2Top);             // top of address row
+      const linkW  = toMM(W_log - PANEL_MX*2); // panel width
+      const linkH  = toMM(ROW_H);              // row height
+
+      doc.link(linkX, linkY, linkW, linkH, { url: MAPS_URL });
+
+      // ── 5. Output as Blob ──
+      const pdfBlob = doc.output("blob");
 
       const waNumber = rawDigits.length === 10
         ? `91${rawDigits}`
@@ -554,44 +613,35 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           ? rawDigits : rawDigits;
 
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const pdfFile = new File([pdfBlob], "manglam-patient-card.pdf", { type: "application/pdf" });
 
       if (isMobile) {
-        // Mobile: Web Share API — image appears in WhatsApp directly, just tap Send
-        const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
         if (
           typeof navigator.share === "function" &&
           typeof navigator.canShare === "function" &&
-          navigator.canShare({ files: [file] })
+          navigator.canShare({ files: [pdfFile] })
         ) {
           try {
-            await navigator.share({ files: [file], title: "Manglam Clinic — Patient Card" });
+            await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
             setSharing(false);
             return;
           } catch (e: any) {
             if (e?.name === "AbortError") { setSharing(false); return; }
           }
         }
-        // Mobile fallback: open WhatsApp app directly to that number's chat
+        // Fallback: download PDF
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
         window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
 
       } else {
-        // Desktop: copy image to clipboard silently, then open WhatsApp to that number's chat
-        // Do NOT use navigator.share — it triggers the Windows share sheet
-        let copied = false;
-        try {
-          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-          copied = true;
-        } catch (_) {}
-
-        // Open WhatsApp desktop app directly to the patient's chat
-        // window.open with whatsapp:// opens the installed desktop app (not the browser)
+        // Desktop: download PDF + open WhatsApp
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
         window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
-
-        setShareError(
-          copied
-            ? `✅ Image copied! Just press Ctrl+V in the chat to send.`
-            : `⚠️ Could not copy image — paste manually after opening chat.`
-        );
+        setShareError("✅ PDF downloaded! Attach it in the WhatsApp chat — the location link will be tappable.");
       }
     } catch (err: any) {
       console.error("Card share error:", err);
