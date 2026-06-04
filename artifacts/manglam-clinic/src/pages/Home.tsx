@@ -569,13 +569,38 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       const waNumber = waRaw.length === 10 ? `91${waRaw}`
         : waRaw.startsWith("91") && waRaw.length === 12 ? waRaw : waRaw;
 
-      // 1. Open WhatsApp directly to patient's chat
-      window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const pdfFile = new File([pdfBlob], "manglam-patient-card.pdf", { type: "application/pdf" });
 
-      // 2. Keep PDF alive in memory (no download) — show floating attach button
-      const blobUrl = URL.createObjectURL(pdfBlob);
-      setShareError(`pdf:${blobUrl}`);
-      setTimeout(() => { URL.revokeObjectURL(blobUrl); setShareError(""); }, 300_000);
+      if (isMobile) {
+        // ── Mobile: Web Share API → patient picks WhatsApp from sheet ──
+        if (
+          typeof navigator.share === "function" &&
+          typeof navigator.canShare === "function" &&
+          navigator.canShare({ files: [pdfFile] })
+        ) {
+          try {
+            await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
+            setSharing(false); return;
+          } catch (e: any) {
+            if (e?.name === "AbortError") { setSharing(false); return; }
+          }
+        }
+        // Mobile fallback: open WhatsApp to number directly
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+
+      } else {
+        // ── Desktop: auto-download PDF + open WhatsApp to exact patient number ──
+        // Download is automatic — file goes to Downloads, then attach in the open chat
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `patient-card-${waNumber}.pdf`; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+
+        // Open WhatsApp desktop to the patient's chat immediately
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+        setShareError(`attach:${waNumber}`);
+      }
     } catch (err: any) {
       console.error("Card share error:", err);
       setShareError("Could not generate card. Please try again.");
@@ -707,22 +732,18 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
 
           {/* hint */}
           {shareError && (() => {
-            if (shareError.startsWith("pdf:")) {
-              const blobUrl = shareError.slice(4);
+            if (shareError.startsWith("attach:")) {
               return (
                 <div className="mt-2 rounded-2xl overflow-hidden"
                   style={{ border: "1px solid rgba(37,211,102,0.4)", background: "#f0fdf4" }}>
                   <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 28, lineHeight: 1 }}>💬</div>
+                    <div style={{ fontSize: 26, lineHeight: 1 }}>✅</div>
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "#15803d" }}>WhatsApp chat opened!</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#166534" }}>Tap <b>📎 Attach Card</b> → send in that chat</p>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "#15803d" }}>WhatsApp opened to patient!</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#166534" }}>PDF saved to <b>Downloads</b> — attach it in the chat 📎</p>
                     </div>
-                    <a href={blobUrl} target="_blank" rel="noopener noreferrer"
-                      onClick={() => setTimeout(() => setShareError(""), 500)}
-                      style={{ background: "linear-gradient(135deg,#c45e10,#e07828)", color: "#fff", borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 11, textDecoration: "none", whiteSpace: "nowrap", textAlign: "center" }}>
-                      📎 Attach Card
-                    </a>
+                    <button onClick={() => setShareError("")}
+                      style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 16, cursor: "pointer", padding: 4 }}>✕</button>
                   </div>
                 </div>
               );
