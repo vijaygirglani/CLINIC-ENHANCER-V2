@@ -253,42 +253,49 @@ const CARD_LABELS: Record<CardLang, {
   patientCard: string; caseNo: string;
   patientName: string; address: string; clinicPhone: string;
   footer: string; footerSub: string;
+  tapToCall: string; tapForLocation: string;
 }> = {
   en: {
-    clinicName:  "Manglam Clinic",
-    doctor:      "Dr. Vijay Girglani  |  B.A.M.S.",
-    tagline:     "AYURVEDIC & GENERAL PRACTICE",
-    patientCard: "✦  PATIENT CARD  ✦",
-    caseNo:      "CASE NO.",
-    patientName: "PATIENT NAME",
-    address:     "ADDRESS",
-    clinicPhone: "CLINIC PHONE",
-    footer:      "MANGLAM HOSPITAL  •  MORBI, GUJARAT",
-    footerSub:   "Show this card on your next visit",
+    clinicName:      "Manglam Clinic",
+    doctor:          "Dr. Vijay Girglani  |  B.A.M.S.",
+    tagline:         "AYURVEDIC & GENERAL PRACTICE",
+    patientCard:     "✦  PATIENT CARD  ✦",
+    caseNo:          "CASE NO.",
+    patientName:     "PATIENT NAME",
+    address:         "ADDRESS",
+    clinicPhone:     "CLINIC PHONE",
+    footer:          "MANGLAM HOSPITAL  •  MORBI, GUJARAT",
+    footerSub:       "Show this card on your next visit",
+    tapToCall:       "👆 Tap here to write your case or call us",
+    tapForLocation:  "👆 Tap here for clinic location",
   },
   hi: {
-    clinicName:  "मंगलम क्लिनिक",
-    doctor:      "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.",
-    tagline:     "आयुर्वेदिक एवं सामान्य चिकित्सा",
-    patientCard: "✦  रोगी कार्ड  ✦",
-    caseNo:      "केस नं.",
-    patientName: "रोगी का नाम",
-    address:     "पता",
-    clinicPhone: "क्लिनिक फोन",
-    footer:      "मंगलम हॉस्पिटल  •  मोरबी, गुजरात",
-    footerSub:   "अगली मुलाकात पर यह कार्ड दिखाएं",
+    clinicName:      "मंगलम क्लिनिक",
+    doctor:          "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.",
+    tagline:         "आयुर्वेदिक एवं सामान्य चिकित्सा",
+    patientCard:     "✦  रोगी कार्ड  ✦",
+    caseNo:          "केस नं.",
+    patientName:     "रोगी का नाम",
+    address:         "पता",
+    clinicPhone:     "क्लिनिक फोन",
+    footer:          "मंगलम हॉस्पिटल  •  मोरबी, गुजरात",
+    footerSub:       "अगली मुलाकात पर यह कार्ड दिखाएं",
+    tapToCall:       "👆 केस लिखने या कॉल करने के लिए यहाँ दबाएं",
+    tapForLocation:  "👆 क्लिनिक का पता देखने के लिए यहाँ दबाएं",
   },
   gu: {
-    clinicName:  "મંગલમ ક્લિનિક",
-    doctor:      "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.",
-    tagline:     "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ",
-    patientCard: "✦  દર્દી કાર્ડ  ✦",
-    caseNo:      "કેસ નં.",
-    patientName: "દર્દીનું નામ",
-    address:     "સરનામું",
-    clinicPhone: "ક્લિનિક ફોન",
-    footer:      "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત",
-    footerSub:   "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો",
+    clinicName:      "મંગલમ ક્લિનિક",
+    doctor:          "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.",
+    tagline:         "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ",
+    patientCard:     "✦  દર્દી કાર્ડ  ✦",
+    caseNo:          "કેસ નં.",
+    patientName:     "દર્દીનું નામ",
+    address:         "સરનામું",
+    clinicPhone:     "ક્લિનિક ફોન",
+    footer:          "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત",
+    footerSub:       "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો",
+    tapToCall:       "👆 કેસ લખવા અથવા કૉલ કરવા અહીં ટૅપ કરો",
+    tapForLocation:  "👆 ક્લિનિકનું સ્થળ જોવા અહીં ટૅપ કરો",
   },
 };
 
@@ -734,9 +741,9 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                 </div>
 
                 {[
-                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null },
-                  { icon: "📍", label: L.address,     value: patient.address || CLINIC_ADDRESS, href: "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D" },
-                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: null },
+                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null, hint: null },
+                  { icon: "📍", label: L.address,     value: patient.address || CLINIC_ADDRESS, href: "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D", hint: L.tapForLocation },
+                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: `tel:+91${CLINIC_MOBILE}`, hint: L.tapToCall },
                 ].map((row, i, arr) => (
                   <div key={i}>
                     <div className="flex items-center gap-2 py-2">
@@ -746,12 +753,17 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                       <div className="flex-1 min-w-0">
                         <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{row.label}</p>
                         {row.href ? (
-                          <a
-                            href={row.href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ fontSize: 11, fontWeight: 700, color: "#c45e10", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", textDecoration: "underline", textDecorationColor: "rgba(196,94,16,0.4)", textUnderlineOffset: 2 }}
-                          >{row.value}</a>
+                          <>
+                            <a
+                              href={row.href}
+                              target={row.href.startsWith("tel:") ? undefined : "_blank"}
+                              rel={row.href.startsWith("tel:") ? undefined : "noopener noreferrer"}
+                              style={{ fontSize: 11, fontWeight: 700, color: "#c45e10", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", textDecoration: "underline", textDecorationColor: "rgba(196,94,16,0.4)", textUnderlineOffset: 2 }}
+                            >{row.value}</a>
+                            {row.hint && (
+                              <p style={{ fontSize: 7.5, fontWeight: 600, color: "#15803d", marginTop: 2, lineHeight: 1.3 }}>{row.hint}</p>
+                            )}
+                          </>
                         ) : (
                           <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
                         )}
