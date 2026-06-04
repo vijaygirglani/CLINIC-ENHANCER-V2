@@ -602,22 +602,25 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       const AMBER_H=5, HDR_PT=24, LOGO_D=64, LOGO_MB=10, CNAME_H=22, CNAME_MB=3,
             DR_H=14, DR_MB=10, DIV_H=12, HDR_PB=16, PANEL_MX=16, STRIPE_H=3,
             PANEL_PT=16, PC_LABEL_H=18, CASE_PT=10, CASE_LABEL=12, CASE_NUM=28,
-            CASE_PB=10, CASE_MB=16, ROW_H=40;
+            CASE_PB=10, CASE_MB=16, ROW_H=40, HINT_H=12;
       const hdrH = HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
       const caseBoxH = CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
-      const panelTop = AMBER_H + hdrH; // top of white panel (logical px)
-      const row1Top  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB; // Patient Name row
-      const row2Top  = row1Top + ROW_H; // Address row (📍)
+      const panelTop = AMBER_H + hdrH;                              // top of white panel (logical px)
+      const row1Top  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB; // Patient Name row (no hint)
+      const row2Top  = row1Top + ROW_H;                             // Address row (📍) — starts here
+      const row3Top  = row2Top + ROW_H + HINT_H;                    // Phone row (📞) — address row height includes hint
       const W_log = 360; // logical card width in px
 
       // Convert logical px → mm
       const toMM = (px: number) => (px / W_log) * PDF_W;
-      const linkX  = toMM(PANEL_MX);           // left edge of panel
-      const linkY  = toMM(row2Top);             // top of address row
-      const linkW  = toMM(W_log - PANEL_MX*2); // panel width
-      const linkH  = toMM(ROW_H);              // row height
+      const panelX = toMM(PANEL_MX);
+      const panelW = toMM(W_log - PANEL_MX * 2);
 
-      doc.link(linkX, linkY, linkW, linkH, { url: MAPS_URL });
+      // 📍 Address row — tappable maps link
+      doc.link(panelX, toMM(row2Top), panelW, toMM(ROW_H + HINT_H), { url: MAPS_URL });
+
+      // 📞 Phone row — tappable tel: link (opens dialler on mobile)
+      doc.link(panelX, toMM(row3Top), panelW, toMM(ROW_H + HINT_H), { url: "tel:+919638181875" });
 
       // ── 5. Output as Blob ──
       const pdfBlob = doc.output("blob");
