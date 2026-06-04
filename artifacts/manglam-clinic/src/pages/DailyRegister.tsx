@@ -71,7 +71,6 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   const CASE_PT=10,CASE_LABEL=12,CASE_NUM=28,CASE_PB=10,CASE_MB=16,ROW_H=40,PANEL_PB=16,FTR_PB=16,FTR_L1=14,FTR_L2=14;
   const HINT_H=12;
   const caseBoxH=CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
-  // name row (no hint) + address row (+hint) + phone row (+hint)
   const panelInnerH=STRIPE_H+PANEL_PT+PC_LABEL_H+caseBoxH+CASE_MB+ROW_H+(ROW_H+HINT_H)*2+PANEL_PB;
   const hdrH=HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
   const ftrH=FTR_L1+FTR_L2+FTR_PB+4;
@@ -124,26 +123,94 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
   const L = CARD_LABELS[lang];
   const patientWaLabel = rawDigits.length >= 10 ? `Send to ${rawDigits.slice(-10)}` : "Send on WhatsApp";
 
+  // ── Load jsPDF dynamically (only once) ──
+  const getJsPDF = async () => {
+    if ((window as any).__jsPDF) return (window as any).__jsPDF;
+    await new Promise<void>((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.onload = () => res(); s.onerror = () => rej(new Error("jsPDF load failed"));
+      document.head.appendChild(s);
+    });
+    (window as any).__jsPDF = (window as any).jspdf.jsPDF;
+    return (window as any).__jsPDF;
+  };
+
+  const MAPS_URL = "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D";
+
   const doShare = async (chosenLang: CardLang) => {
     setShowLangPicker(false); setLang(chosenLang); setSharing(true); setShareError("");
     try {
+      // 1. Draw card to canvas
       const canvas = drawPatientCard(patient, chosenLang);
-      const blob: Blob = await new Promise((res, rej) => canvas.toBlob((b: Blob | null) => b ? res(b) : rej(new Error("toBlob failed")), "image/png", 1.0));
+      const W_px = canvas.width;
+      const H_px = canvas.height;
+
+      // 2. Canvas → JPEG
+      const imgData = canvas.toDataURL("image/jpeg", 0.88);
+
+      // 3. Build PDF — same aspect ratio, 90mm wide
+      const jsPDF = await getJsPDF();
+      const PDF_W = 90;
+      const PDF_H = Math.round((H_px / W_px) * PDF_W);
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [PDF_W, PDF_H], compress: true });
+      doc.addImage(imgData, "JPEG", 0, 0, PDF_W, PDF_H, undefined, "FAST");
+
+      // 4. Invisible tappable link annotations (same layout constants as drawPatientCard)
+      const AMBER_H=5, HDR_PT=24, LOGO_D=64, LOGO_MB=10, CNAME_H=22, CNAME_MB=3,
+            DR_H=14, DR_MB=10, DIV_H=12, HDR_PB=16, PANEL_MX=16, STRIPE_H=3,
+            PANEL_PT=16, PC_LABEL_H=18, CASE_PT=10, CASE_LABEL=12, CASE_NUM=28,
+            CASE_PB=10, CASE_MB=16, ROW_H=40, HINT_H=12;
+      const hdrH = HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
+      const caseBoxH = CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
+      const panelTop = AMBER_H + hdrH;
+      const row1Top  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB; // Name row (no hint)
+      const row2Top  = row1Top + ROW_H;              // Address row
+      const row3Top  = row2Top + ROW_H + HINT_H;    // Phone row (after address row + its hint)
+      const W_log = 360;
+      const toMM = (px: number) => (px / W_log) * PDF_W;
+      const panelX = toMM(PANEL_MX);
+      const panelW = toMM(W_log - PANEL_MX * 2);
+
+      // 📍 Address — opens Google Maps
+      doc.link(panelX, toMM(row2Top), panelW, toMM(ROW_H + HINT_H), { url: MAPS_URL });
+      // 📞 Phone — opens dialler
+      doc.link(panelX, toMM(row3Top), panelW, toMM(ROW_H + HINT_H), { url: "tel:+919638181875" });
+
+      // 5. Output as Blob and download
+      const pdfBlob = doc.output("blob");
       const waNumber = rawDigits.length === 10 ? `91${rawDigits}` : rawDigits.startsWith("91") && rawDigits.length === 12 ? rawDigits : rawDigits;
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const pdfFile = new File([pdfBlob], "manglam-patient-card.pdf", { type: "application/pdf" });
+
       if (isMobile) {
-        const file = new File([blob], "manglam-patient-card.png", { type: "image/png" });
-        if (typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
-          try { await navigator.share({ files: [file], title: "Manglam Clinic — Patient Card" }); setSharing(false); return; } catch (e: any) { if (e?.name === "AbortError") { setSharing(false); return; } }
+        if (
+          typeof navigator.share === "function" &&
+          typeof navigator.canShare === "function" &&
+          navigator.canShare({ files: [pdfFile] })
+        ) {
+          try {
+            await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
+            setSharing(false); return;
+          } catch (e: any) { if (e?.name === "AbortError") { setSharing(false); return; } }
         }
+        // Fallback: download + open WhatsApp
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
         window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
       } else {
-        let copied = false;
-        try { await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copied = true; } catch (_) {}
+        // Desktop: download PDF + open WhatsApp
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
         window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
-        setShareError(copied ? `✅ Image copied! Just press Ctrl+V in the chat to send.` : `⚠️ Could not copy image — paste manually after opening chat.`);
+        setShareError("✅ PDF downloaded! Attach it in the WhatsApp chat — the phone & location links will be tappable.");
       }
-    } catch (err: any) { setShareError("Could not generate card. Please try again."); }
+    } catch (err: any) {
+      console.error("Card share error:", err);
+      setShareError("Could not generate card. Please try again.");
+    }
     setSharing(false);
   };
 
@@ -195,7 +262,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                 </div>
                 {[
                   { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null, hint: null },
-                  { icon: "📍", label: L.address, value: patient.address || CLINIC_ADDRESS, href: "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D", hint: L.tapForLocation },
+                  { icon: "📍", label: L.address, value: patient.address || CLINIC_ADDRESS, href: MAPS_URL, hint: L.tapForLocation },
                   { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: `tel:+91${CLINIC_MOBILE}`, hint: L.tapToCall },
                 ].map((row, i, arr) => (
                   <div key={i}>
