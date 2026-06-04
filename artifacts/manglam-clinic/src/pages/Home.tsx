@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Layout } from "@/components/Layout";
 import {
-  addPatient, deletePatient, lookupByMobile, lookupByName, findComplaintCode,
+  addPatient, lookupByMobile, lookupByName, findComplaintCode,
   getNextPatientNo, getNextCaseNo, lookupByComplaint, lookupByAddress,
   searchPatientSuggestions,
   type Patient, type PatientSuggestion,
@@ -47,25 +47,36 @@ import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 
 // ── Undo Manager Hook ─────────────────────────────────────────────────────────
-function useUndoManager(toast: ReturnType<typeof useToast>["toast"]) {
-  const stackRef = useRef<Array<{ label: string; fn: () => void }>>([]);
+function useUndoManager(toast: ReturnType<typeof useToast>["toast"], onAfterUndo?: () => void) {
+  const stackRef = useRef<Array<{ label: string; snapshot: Record<string, string> }>>([]);
+  const onAfterUndoRef = useRef(onAfterUndo);
+  useEffect(() => { onAfterUndoRef.current = onAfterUndo; }, [onAfterUndo]);
 
-  const pushUndo = useCallback((label: string, fn: () => void) => {
-    stackRef.current.push({ label, fn });
-    // Keep max 20 entries
+  const pushUndo = useCallback((label: string) => {
+    const snapshot: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) snapshot[key] = localStorage.getItem(key) ?? "";
+    }
+    stackRef.current.push({ label, snapshot });
     if (stackRef.current.length > 20) stackRef.current.shift();
   }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-        // Don't intercept if user is typing in an input/textarea
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA") return;
         e.preventDefault();
         const entry = stackRef.current.pop();
         if (entry) {
-          entry.fn();
+          const keysNow = new Set<string>();
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i); if (k) keysNow.add(k);
+          }
+          keysNow.forEach(k => { if (!(k in entry.snapshot)) localStorage.removeItem(k); });
+          Object.entries(entry.snapshot).forEach(([k, v]) => localStorage.setItem(k, v));
+          onAfterUndoRef.current?.();
           toast({ title: "↩ Undone", description: entry.label });
         } else {
           toast({ title: "Nothing to undo", description: "No recent actions to undo." });
@@ -898,7 +909,8 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
 
 export default function Home() {
   const { toast } = useToast();
-  const { pushUndo } = useUndoManager(toast);
+  const refreshLooseSalesRef = useRef<() => void>(() => {});
+  const { pushUndo } = useUndoManager(toast, () => refreshLooseSalesRef.current());
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [patientHistory, setPatientHistory] = useState<Patient[]>([]);
   const [historyName, setHistoryName] = useState("");
@@ -925,6 +937,7 @@ export default function Home() {
   const [looseProduct, setLooseProduct]     = useState("");
   const [looseAmount, setLooseAmount]       = useState("");
   const refreshLooseSales = () => setLooseSales(getLooseSales(getLiveToday()));
+  refreshLooseSalesRef.current = refreshLooseSales;
   const looseTodayTotal = looseSales.reduce((s, e) => s + e.amount, 0);
 
   // ── Auto-refresh at midnight so the panel resets without page reload ──
@@ -944,26 +957,18 @@ export default function Home() {
       date: getLiveToday(),
       time: format(new Date(), "hh:mm a"),
     };
+    pushUndo(`Undo loose sale: ${product} ₹${amount}`);
     addLooseSale(entry);
     refreshLooseSales();
     setLooseProduct("");
     setLooseAmount("");
-    pushUndo(`Undo loose sale: ${product} ₹${amount}`, () => {
-      removeLooseSale(entry.id);
-      refreshLooseSales();
-    });
   };
 
   const handleRemoveLooseSale = (id: string) => {
     const entry = looseSales.find(e => e.id === id);
+    pushUndo(`Undo delete loose sale: ${entry?.product ?? "item"}`);
     removeLooseSale(id);
     refreshLooseSales();
-    if (entry) {
-      pushUndo(`Undo delete loose sale: ${entry.product}`, () => {
-        addLooseSale(entry);
-        refreshLooseSales();
-      });
-    }
   };
 
   // ── Pathya-Apathya suggest state ──
@@ -1208,6 +1213,8 @@ export default function Home() {
   const savePatient = (data: PatientFormValues, registerType: "general" | "ayurvedic") => {
     const visitDate = data.visitDate || todayStr;
     const autoPatientNo = getNextPatientNo(visitDate);
+    // Push undo: snapshot taken before save, restores on Ctrl+Z
+    pushUndo(`Undo save for ${data.name}`);
     const saved = addPatient({
       name: data.name, mobile: data.mobile, patientNo: autoPatientNo,
       age: data.age || 0, ageMonths: data.ageMonths || 0,
@@ -1227,11 +1234,6 @@ export default function Home() {
     setLastSaved(saved);
     setFeesMarkedPending(false);
     setPendingAmount("");
-    // Push undo: deletes the patient that was just saved
-    pushUndo(`Undo save for ${saved.name}`, () => {
-      deletePatient(saved.id);
-      if (feesMarkedPending) removePendingFee(saved.id);
-    });
     toast({
       title: "Saved!",
       description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
