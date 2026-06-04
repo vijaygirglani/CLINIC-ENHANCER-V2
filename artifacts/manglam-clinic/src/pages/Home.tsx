@@ -569,39 +569,10 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       const waNumber = waRaw.length === 10 ? `91${waRaw}`
         : waRaw.startsWith("91") && waRaw.length === 12 ? waRaw : waRaw;
 
-      const pdfFile = new File([pdfBlob], "manglam-patient-card.pdf", { type: "application/pdf" });
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-      if (isMobile) {
-        // ── Mobile: Web Share API opens WhatsApp share sheet directly ──
-        if (
-          typeof navigator.share === "function" &&
-          typeof navigator.canShare === "function" &&
-          navigator.canShare({ files: [pdfFile] })
-        ) {
-          try {
-            await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
-            setSharing(false);
-            return;
-          } catch (e: any) {
-            if (e?.name === "AbortError") { setSharing(false); return; }
-          }
-        }
-        // Mobile fallback: open WhatsApp to patient number directly
-        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
-        setSharing(false);
-        return;
-      }
-
-      // ── Desktop: open WhatsApp directly to patient's chat, then show attach button ──
-      // Step 1: open WhatsApp desktop app to exact patient number
+      // Open WhatsApp directly to the patient's chat — simplest and most reliable
       window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
-
-      // Step 2: create a blob URL (lives in memory only, no file saved to disk)
-      // User taps the "📎 Attach PDF" button below which opens it, then they drag into WA
-      const blobUrl = URL.createObjectURL(pdfBlob);
-      setShareError(`pdf:${blobUrl}|${waNumber}`);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 300_000);
+      setSharing(false);
+      return;
     } catch (err: any) {
       console.error("Card share error:", err);
       setShareError("Could not generate card. Please try again.");
