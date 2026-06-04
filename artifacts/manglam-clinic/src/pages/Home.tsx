@@ -306,8 +306,9 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
         ROW_H=40, LOC_H=52, PANEL_PB=16, FTR_PB=16, FTR_L1=14, FTR_L2=14;
 
   const caseBoxH   = CASE_PT + CASE_LABEL + CASE_NUM + CASE_PB;
-  // 2 normal rows (name, phone) + 1 tall location block
-  const panelInnerH = STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H * 2 + LOC_H + PANEL_PB;
+  const PHONE_H    = ROW_H + 12; // phone highlight block is taller than a normal row
+  // 1 normal row (name) + phone highlight block + location block
+  const panelInnerH = STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H + PHONE_H + LOC_H + PANEL_PB;
   const hdrH       = HDR_PT + LOGO_D + LOGO_MB + CNAME_H + CNAME_MB + DR_H + DR_MB + DIV_H + HDR_PB;
   const ftrH       = FTR_L1 + FTR_L2 + FTR_PB + 4;
   const H          = AMBER_H + hdrH + panelInnerH + PANEL_MB + ftrH + AMBER_H;
@@ -415,28 +416,57 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
 
   const rowPX=pX+12, rowPXR=pX+pW-12;
 
-  const infoRow = (emoji: string, label: string, value: string) => {
-    const rowMid=py+ROW_H/2, iBubR=11;
-    ctx.fillStyle="#fdf0e6";
-    ctx.beginPath(); ctx.arc(rowPX+iBubR,rowMid,iBubR,0,Math.PI*2); ctx.fill();
-    ctx.font=`11px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText(emoji,rowPX+iBubR,rowMid);
-    const textX=rowPX+iBubR*2+8;
-    ctx.fillStyle="#94a3b8"; ctx.font=`700 7px sans-serif`;
-    ctx.letterSpacing="0.8px"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-    ctx.fillText(label,textX,rowMid-2); ctx.letterSpacing="0px";
-    ctx.fillStyle="#1e293b"; ctx.font=`700 11px sans-serif`; ctx.textBaseline="alphabetic";
-    let v=value; const maxW=rowPXR-textX-4;
-    while(ctx.measureText(v).width>maxW && v.length>2) v=v.slice(0,-1);
-    if(v!==value) v=v.trimEnd()+"…";
-    ctx.fillText(v,textX,rowMid+12);
-    py+=ROW_H;
-    ctx.strokeStyle="#f1f5f9"; ctx.lineWidth=0.8;
-    ctx.beginPath(); ctx.moveTo(rowPX,py); ctx.lineTo(rowPXR,py); ctx.stroke();
-  };
+  // ── Patient name row ──
+  const nameRowMid=py+ROW_H/2, iBubR=11;
+  ctx.fillStyle="#fdf0e6";
+  ctx.beginPath(); ctx.arc(rowPX+iBubR,nameRowMid,iBubR,0,Math.PI*2); ctx.fill();
+  ctx.font=`11px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText("👤",rowPX+iBubR,nameRowMid);
+  const nameTextX=rowPX+iBubR*2+8;
+  ctx.fillStyle="#94a3b8"; ctx.font=`700 7px sans-serif`;
+  ctx.letterSpacing="0.8px"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillText(L.patientName,nameTextX,nameRowMid-2); ctx.letterSpacing="0px";
+  ctx.fillStyle="#1e293b"; ctx.font=`700 11px sans-serif`; ctx.textBaseline="alphabetic";
+  let pname=patient.name.toUpperCase();
+  const pnameMaxW=rowPXR-nameTextX-4;
+  while(ctx.measureText(pname).width>pnameMaxW && pname.length>2) pname=pname.slice(0,-1);
+  if(pname!==patient.name.toUpperCase()) pname=pname.trimEnd()+"…";
+  ctx.fillText(pname,nameTextX,nameRowMid+12);
+  py+=ROW_H;
+  ctx.strokeStyle="#f1f5f9"; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(rowPX,py); ctx.lineTo(rowPXR,py); ctx.stroke();
 
-  infoRow("👤", L.patientName, patient.name.toUpperCase());
-  infoRow("📞", L.clinicPhone, "+91 96381 81875");
+  // ── Phone highlight block (green, mirrors location block style) ──
+  const PHONE_H=ROW_H+12;
+  const phBX=rowPX-4, phBW=rowPXR-rowPX+8;
+  const phGrad=ctx.createLinearGradient(phBX,0,phBX+phBW,0);
+  phGrad.addColorStop(0,"#f0fdf4"); phGrad.addColorStop(1,"#dcfce7");
+  rr(phBX,py,phBW,PHONE_H,10); ctx.fillStyle=phGrad; ctx.fill();
+  // green left accent
+  ctx.fillStyle="#22c55e"; rr(phBX,py,4,PHONE_H,2); ctx.fill();
+  // phone icon bubble
+  const phCX=phBX+22, phCY=py+PHONE_H/2, phR=13;
+  ctx.fillStyle="#22c55e";
+  ctx.beginPath(); ctx.arc(phCX,phCY,phR,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="#ffffff"; ctx.font=`bold 13px sans-serif`;
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText("📞",phCX,phCY);
+  // text
+  const phTextX=phBX+42;
+  ctx.fillStyle="#15803d"; ctx.font=`700 7px sans-serif`;
+  ctx.letterSpacing="0.8px"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillText(L.clinicPhone.toUpperCase(),phTextX,py+14); ctx.letterSpacing="0px";
+  ctx.fillStyle="#166534"; ctx.font=`900 12px monospace`;
+  ctx.fillText("+91 96381 81875",phTextX,py+27);
+  // TAP TO CALL button
+  const ctaPhBX=phTextX, ctaPhBY=py+32, ctaPhBW=100, ctaPhBH=13;
+  rr(ctaPhBX,ctaPhBY,ctaPhBW,ctaPhBH,6); ctx.fillStyle="#22c55e"; ctx.fill();
+  ctx.fillStyle="#ffffff"; ctx.font=`700 7px sans-serif`;
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText("📞 TAP TO CALL",ctaPhBX+ctaPhBW/2,ctaPhBY+ctaPhBH/2);
+  py+=PHONE_H;
+  ctx.strokeStyle="#f1f5f9"; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(rowPX,py); ctx.lineTo(rowPXR,py); ctx.stroke();
 
   // ── Location highlight block (replaces plain address row) ──
   const locBX=rowPX-4, locBW=rowPXR-rowPX+8, locBH=LOC_H;
@@ -555,10 +585,15 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       const caseBoxH = CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
       const panelTop = AMBER_H + hdrH;
       // name row + phone row, then location block starts
-      const locTop  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H * 2;
+      const PHONE_H_pdf = ROW_H + 12;
+      const locTop  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H + PHONE_H_pdf;
       const W_log   = 360;
       const toMM    = (px: number) => (px / W_log) * PDF_W;
       // cover the full location block width (panel inner)
+      // Phone block link
+      const phoneTop = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H;
+      doc.link(toMM(PANEL_MX), toMM(phoneTop), toMM(W_log - PANEL_MX*2), toMM(PHONE_H_pdf), { url: "tel:+919638181875" });
+      // Location block link
       doc.link(toMM(PANEL_MX), toMM(locTop), toMM(W_log - PANEL_MX*2), toMM(LOC_H), { url: MAPS_URL });
 
       // ── 5. Output as Blob ──
@@ -691,33 +726,51 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                   <p style={{ fontSize: 20, fontWeight: 900, fontFamily: "monospace", color: "#c45e10", letterSpacing: 1 }}>{caseNo}</p>
                 </div>
 
-                {[
-                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null },
-                  { icon: "📍", label: L.address,     value: patient.address || CLINIC_ADDRESS, href: "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D" },
-                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: null },
-                ].map((row, i, arr) => (
-                  <div key={i}>
-                    <div className="flex items-center gap-2 py-2">
-                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
-                        {row.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{row.label}</p>
-                        {row.href ? (
-                          <a
-                            href={row.href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ fontSize: 11, fontWeight: 700, color: "#c45e10", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", textDecoration: "underline", textDecorationColor: "rgba(196,94,16,0.4)", textUnderlineOffset: 2 }}
-                          >{row.value}</a>
-                        ) : (
-                          <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
-                        )}
-                      </div>
-                    </div>
-                    {i < arr.length - 1 && <div style={{ height: 1, background: "#f1f5f9" }} />}
+                {/* Patient name row */}
+                <div className="flex items-center gap-2 py-2">
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>👤</div>
+                  <div className="flex-1 min-w-0">
+                    <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{L.patientName}</p>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{patient.name.toUpperCase()}</p>
                   </div>
-                ))}
+                </div>
+                <div style={{ height: 1, background: "#f1f5f9" }} />
+
+                {/* Phone row — tappable call link */}
+                <a href={`tel:+91${CLINIC_MOBILE}`} style={{ textDecoration: "none", display: "block" }}>
+                  <div style={{ background: "linear-gradient(90deg,#f0fdf4,#dcfce7)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", display: "flex", alignItems: "center", gap: 10, border: "1px solid rgba(37,211,102,0.3)" }}>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>📞</div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#15803d", marginBottom: 2 }}>{L.clinicPhone}</p>
+                      <p style={{ fontSize: 13, fontWeight: 900, color: "#166534", fontFamily: "monospace" }}>+91 {clinicPhone}</p>
+                    </div>
+                    <div style={{ background: "#22c55e", borderRadius: 8, padding: "4px 8px" }}>
+                      <p style={{ fontSize: 8, fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }}>👆 TAP TO CALL</p>
+                    </div>
+                  </div>
+                </a>
+                <div style={{ height: 1, background: "#f1f5f9" }} />
+
+                {/* Location row — maps link */}
+                <a href={"https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D"} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block" }}>
+                  <div style={{ background: "linear-gradient(90deg,#fff7ed,#ffedd5)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", display: "flex", alignItems: "center", gap: 10, border: "1px solid rgba(196,94,16,0.25)" }}>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#c45e10", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>📍</div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#7c3a0a", marginBottom: 2 }}>{L.address}</p>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: "#1e293b" }}>Pipaliya Char Rasta, Morbi</p>
+                    </div>
+                    <div style={{ background: "#c45e10", borderRadius: 8, padding: "4px 8px" }}>
+                      <p style={{ fontSize: 8, fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }}>👆 GET LOCATION</p>
+                    </div>
+                  </div>
+                </a>
+
+                {/* Note */}
+                <div style={{ background: "#fdf0e6", borderRadius: 8, padding: "6px 10px", marginTop: 6, textAlign: "center" }}>
+                  <p style={{ fontSize: 9, color: "#7c3a0a", fontWeight: 600, margin: 0 }}>
+                    📝 Note your <b>Case No.</b> above for future visits &nbsp;|&nbsp; 📞 Call us to book appointment
+                  </p>
+                </div>
               </div>
             </div>
 
