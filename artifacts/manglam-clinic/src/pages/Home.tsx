@@ -768,7 +768,10 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                 {/* Note */}
                 <div style={{ background: "#fdf0e6", borderRadius: 8, padding: "6px 10px", marginTop: 6, textAlign: "center" }}>
                   <p style={{ fontSize: 9, color: "#7c3a0a", fontWeight: 600, margin: 0 }}>
-                    📝 Note your <b>Case No.</b> above for future visits &nbsp;|&nbsp; 📞 Call us to book appointment
+                    📝 Note your <b>Case No.</b> above for future visits
+                  </p>
+                  <p style={{ fontSize: 9, color: "#15803d", fontWeight: 600, margin: "3px 0 0 0" }}>
+                    👆 <b>Tap the phone number above</b> to write your case or make a call
                   </p>
                 </div>
               </div>
@@ -1817,7 +1820,14 @@ export default function Home() {
                           </div>
                           <div className="min-w-0">
                             <p className="font-bold text-slate-900 truncate">{historyName || patientHistory[0]?.name}</p>
-                            <p className="text-xs font-mono text-slate-500">{historyMobile || patientHistory[0]?.mobile}</p>
+                            <a
+                              href={`tel:+91${(historyMobile || patientHistory[0]?.mobile || "").replace(/\D/g, "")}`}
+                              className="text-xs font-mono text-blue-600 flex items-center gap-1 underline underline-offset-2"
+                              style={{ width: "fit-content" }}
+                            >
+                              <Phone className="w-3 h-3 shrink-0" />
+                              {historyMobile || patientHistory[0]?.mobile}
+                            </a>
                           </div>
                           <span className="ml-auto text-xs text-slate-400 shrink-0">{patientHistory.length} visits</span>
                         </div>
