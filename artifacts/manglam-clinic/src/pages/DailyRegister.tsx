@@ -30,6 +30,37 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
 import * as z from "zod";
 
+// ── Undo Manager Hook ─────────────────────────────────────────────────────────
+function useUndoManager(toast: ReturnType<typeof useToast>["toast"]) {
+  const stackRef = useRef<Array<{ label: string; fn: () => void }>>([]);
+
+  const pushUndo = useCallback((label: string, fn: () => void) => {
+    stackRef.current.push({ label, fn });
+    if (stackRef.current.length > 20) stackRef.current.shift();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        const entry = stackRef.current.pop();
+        if (entry) {
+          entry.fn();
+          toast({ title: "↩ Undone", description: entry.label });
+        } else {
+          toast({ title: "Nothing to undo", description: "No recent actions to undo." });
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toast]);
+
+  return { pushUndo };
+}
+
 const editSchema = z.object({
   name: z.string().min(1),
   age: z.coerce.number().optional(),
@@ -354,6 +385,7 @@ export default function DailyRegister() {
   const [showWaReport, setShowWaReport] = useState(false);
   const [waCustomNote, setWaCustomNote] = useState("");
   const { toast } = useToast();
+  const { pushUndo } = useUndoManager(toast);
 
   // Loose sales for selected date
   const [looseSalesForDay, setLooseSalesForDay] = useState<LooseSaleEntry[]>(() => getLooseSalesForDate(format(new Date(), "yyyy-MM-dd")));
@@ -450,15 +482,43 @@ export default function DailyRegister() {
 
   const onEditSubmit = (data: any) => {
     if (!editingPatient) return;
+    const before = { ...editingPatient };
     updatePatient(editingPatient.id, { ...data, fees: Number(data.fees || 0) });
     toast({ title: "Updated", description: "Patient record updated." });
+    pushUndo(`Undo edit for ${editingPatient.name}`, () => {
+      updatePatient(before.id, {
+        name: before.name, mobile: before.mobile, age: before.age, ageMonths: before.ageMonths,
+        weight: before.weight, address: before.address, complaintCode: before.complaintCode,
+        complaint: before.complaint, treatment: before.treatment, advice: before.advice,
+        reports: before.reports, fees: before.fees,
+      });
+      refresh();
+    });
     setEditingPatient(null); refresh();
   };
 
   const handleDelete = (id: number) => {
     if (!confirm("Delete this record?")) return;
+    const patient = stats?.patients?.find(p => p.id === id);
     deletePatient(id);
-    toast({ title: "Deleted" }); refresh();
+    toast({ title: "Deleted" });
+    if (patient) {
+      pushUndo(`Undo delete for ${patient.name}`, () => {
+        addPatient({
+          name: patient.name, mobile: patient.mobile, patientNo: patient.patientNo || "",
+          age: patient.age || 0, ageMonths: patient.ageMonths || 0,
+          weight: patient.weight || "", address: patient.address || "",
+          complaintCode: patient.complaintCode || "", complaint: patient.complaint || "",
+          treatment: patient.treatment || "", advice: patient.advice || "",
+          reports: patient.reports || "", fees: patient.fees || 0,
+          paymentMode: patient.paymentMode || "cash",
+          registerType: patient.registerType || "general",
+          visitDate: patient.visitDate,
+        });
+        refresh();
+      });
+    }
+    refresh();
   };
 
   const exportMonthlyReport = () => {
