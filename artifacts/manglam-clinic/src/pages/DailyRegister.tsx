@@ -31,11 +31,19 @@ import { PrintPrescription, printPatientPrescription } from "@/components/PrintP
 import * as z from "zod";
 
 // ── Undo Manager Hook ─────────────────────────────────────────────────────────
-function useUndoManager(toast: ReturnType<typeof useToast>["toast"]) {
-  const stackRef = useRef<Array<{ label: string; fn: () => void }>>([]);
+function useUndoManager(toast: ReturnType<typeof useToast>["toast"], onAfterUndo?: () => void) {
+  const stackRef = useRef<Array<{ label: string; snapshot: Record<string, string> }>>([]);
+  const onAfterUndoRef = useRef(onAfterUndo);
+  useEffect(() => { onAfterUndoRef.current = onAfterUndo; }, [onAfterUndo]);
 
-  const pushUndo = useCallback((label: string, fn: () => void) => {
-    stackRef.current.push({ label, fn });
+  // Call this BEFORE making a destructive change — saves full localStorage state
+  const pushUndo = useCallback((label: string) => {
+    const snapshot: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) snapshot[key] = localStorage.getItem(key) ?? "";
+    }
+    stackRef.current.push({ label, snapshot });
     if (stackRef.current.length > 20) stackRef.current.shift();
   }, []);
 
@@ -47,7 +55,14 @@ function useUndoManager(toast: ReturnType<typeof useToast>["toast"]) {
         e.preventDefault();
         const entry = stackRef.current.pop();
         if (entry) {
-          entry.fn();
+          // Restore every key that existed before, remove any that didn't
+          const keysNow = new Set<string>();
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i); if (k) keysNow.add(k);
+          }
+          keysNow.forEach(k => { if (!(k in entry.snapshot)) localStorage.removeItem(k); });
+          Object.entries(entry.snapshot).forEach(([k, v]) => localStorage.setItem(k, v));
+          onAfterUndoRef.current?.();
           toast({ title: "↩ Undone", description: entry.label });
         } else {
           toast({ title: "Nothing to undo", description: "No recent actions to undo." });
@@ -385,7 +400,10 @@ export default function DailyRegister() {
   const [showWaReport, setShowWaReport] = useState(false);
   const [waCustomNote, setWaCustomNote] = useState("");
   const { toast } = useToast();
-  const { pushUndo } = useUndoManager(toast);
+
+  // refreshRef lets useUndoManager call refresh() without a circular dependency
+  const refreshRef = useRef<() => void>(() => {});
+  const { pushUndo } = useUndoManager(toast, () => refreshRef.current());
 
   // Loose sales for selected date
   const [looseSalesForDay, setLooseSalesForDay] = useState<LooseSaleEntry[]>(() => getLooseSalesForDate(format(new Date(), "yyyy-MM-dd")));
@@ -396,6 +414,9 @@ export default function DailyRegister() {
     setAllDates(getAllDates());
     setLooseSalesForDay(getLooseSalesForDate(selectedDate));
   }, [selectedDate]);
+
+  // Keep ref in sync so undo can call refresh after restoring localStorage
+  refreshRef.current = refresh;
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -482,42 +503,18 @@ export default function DailyRegister() {
 
   const onEditSubmit = (data: any) => {
     if (!editingPatient) return;
-    const before = { ...editingPatient };
+    pushUndo(`Undo edit for ${editingPatient.name}`);
     updatePatient(editingPatient.id, { ...data, fees: Number(data.fees || 0) });
     toast({ title: "Updated", description: "Patient record updated." });
-    pushUndo(`Undo edit for ${editingPatient.name}`, () => {
-      updatePatient(before.id, {
-        name: before.name, mobile: before.mobile, age: before.age, ageMonths: before.ageMonths,
-        weight: before.weight, address: before.address, complaintCode: before.complaintCode,
-        complaint: before.complaint, treatment: before.treatment, advice: before.advice,
-        reports: before.reports, fees: before.fees,
-      });
-      refresh();
-    });
     setEditingPatient(null); refresh();
   };
 
   const handleDelete = (id: number) => {
     if (!confirm("Delete this record?")) return;
     const patient = stats?.patients?.find(p => p.id === id);
+    pushUndo(`Undo delete for ${patient?.name ?? "patient"}`);
     deletePatient(id);
-    toast({ title: "Deleted" });
-    if (patient) {
-      pushUndo(`Undo delete for ${patient.name}`, () => {
-        addPatient({
-          name: patient.name, mobile: patient.mobile, patientNo: patient.patientNo || "",
-          age: patient.age || 0, ageMonths: patient.ageMonths || 0,
-          weight: patient.weight || "", address: patient.address || "",
-          complaintCode: patient.complaintCode || "", complaint: patient.complaint || "",
-          treatment: patient.treatment || "", advice: patient.advice || "",
-          reports: patient.reports || "", fees: patient.fees || 0,
-          paymentMode: patient.paymentMode || "cash",
-          registerType: patient.registerType || "general",
-          visitDate: patient.visitDate,
-        });
-        refresh();
-      });
-    }
+    toast({ title: "Deleted", description: "Press Ctrl+Z to undo." });
     refresh();
   };
 
