@@ -15,7 +15,7 @@ import {
   FileText, Printer, Paperclip, X, Leaf, Weight, Calendar,
   Zap, Search, SlidersHorizontal, Sheet, Link, ClipboardPaste,
   Hourglass, CheckCircle2, WalletCards, MessageSquare, ChevronDown, Stethoscope,
-  ShoppingBag, PackagePlus, Trash2, IndianRupee,
+  ShoppingBag, PackagePlus, Trash2, IndianRupee, Keyboard, Clock,
 } from "lucide-react";
 
 // ── Pending Fees helpers ──────────────────────────────────────────────
@@ -90,7 +90,132 @@ function useUndoManager(toast: ReturnType<typeof useToast>["toast"], onAfterUndo
   return { pushUndo };
 }
 
-// ── Pathya-Apathya Disease helpers ───────────────────────────────────────────
+// ── Global Search helpers ─────────────────────────────────────────────────────
+const PATIENTS_STORE_KEY = "manglam_patients"; // must match store.ts
+function getAllPatientsForSearch(): Patient[] {
+  try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); }
+  catch { return []; }
+}
+function searchAllPatients(query: string): Patient[] {
+  if (!query || query.trim().length < 2) return [];
+  const q = query.toLowerCase().trim();
+  const all = getAllPatientsForSearch();
+  return all.filter(p =>
+    p.name?.toLowerCase().includes(q) ||
+    p.mobile?.toLowerCase().includes(q) ||
+    p.complaint?.toLowerCase().includes(q) ||
+    p.address?.toLowerCase().includes(q)
+  ).slice(0, 30);
+}
+
+// ── Global Search Modal ───────────────────────────────────────────────────────
+function GlobalSearchModal({ onClose }: { onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Patient[]>([]);
+  const [selected, setSelected] = useState<Patient | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => { setResults(searchAllPatients(query)); }, [query]);
+
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 backdrop-blur-sm pt-16 px-4"
+        onClick={onClose}>
+        <motion.div initial={{ scale: 0.95, opacity: 0, y: -10 }} animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.95, opacity: 0 }} className="w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+          onClick={e => e.stopPropagation()}>
+          {/* Search input */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+            <Search className="w-5 h-5 text-slate-400 shrink-0" />
+            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Search by name, mobile, complaint, address…"
+              className="flex-1 text-base outline-none text-slate-800 placeholder:text-slate-400" />
+            <div className="flex items-center gap-2 shrink-0">
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-xs font-mono">Esc</kbd>
+              <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X className="w-4 h-4" /></button>
+            </div>
+          </div>
+          {/* Results */}
+          {results.length > 0 ? (
+            <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-50">
+              {results.map(p => (
+                <button key={p.id} onClick={() => setSelected(p)}
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-primary/5 text-left transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <User className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-900 text-sm">{p.name}</p>
+                    <p className="text-xs text-slate-500 font-mono">{p.mobile} · {p.age ? `${p.age}y` : ""} · {format(new Date(p.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+                    {p.complaint && <p className="text-xs text-slate-400 truncate mt-0.5">{p.complaint}</p>}
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 mt-1 ${p.registerType === "ayurvedic" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                    {p.registerType === "ayurvedic" ? "Ayurvedic" : "General"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : query.length >= 2 ? (
+            <div className="px-6 py-10 text-center text-slate-400">
+              <Search className="w-10 h-10 mx-auto mb-2 text-slate-200" />
+              <p className="font-medium">No patients found for "{query}"</p>
+            </div>
+          ) : (
+            <div className="px-6 py-8 text-center text-slate-400 text-sm">
+              Type at least 2 characters to search across all patients…
+            </div>
+          )}
+          <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 flex items-center gap-3 text-xs text-slate-400">
+            <Keyboard className="w-3.5 h-3.5" />
+            <span>Press <kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+F</kbd> to open · <kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Esc</kbd> to close</span>
+          </div>
+        </motion.div>
+      </motion.div>
+
+      {/* Patient Detail Popup */}
+      {selected && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setSelected(null)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }} className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <div className="bg-gradient-to-r from-primary to-blue-500 px-5 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-bold text-lg">{selected.name}</h3>
+                <p className="text-blue-100 text-xs font-mono">{selected.mobile} · {format(new Date(selected.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+              </div>
+              <button onClick={() => setSelected(null)} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              {[
+                { label: "Age / Weight", value: `${selected.age ? selected.age + "y" : ""}${selected.ageMonths ? " " + selected.ageMonths + "m" : ""} ${selected.weight ? "· " + selected.weight : ""}`.trim() || "-" },
+                { label: "Address", value: selected.address || "-" },
+                { label: "Complaint", value: selected.complaint ? `${selected.complaintCode ? "[" + selected.complaintCode + "] " : ""}${selected.complaint}` : "-" },
+                { label: "Treatment", value: selected.treatment || "-" },
+                { label: "Advice", value: selected.advice || "-" },
+                { label: "Reports", value: selected.reports || "-" },
+                { label: "Fees", value: selected.fees ? `₹${selected.fees.toLocaleString("en-IN")} (${selected.paymentMode || "cash"})` : "-" },
+                { label: "Register", value: selected.registerType === "ayurvedic" ? "Ayurvedic" : "General" },
+              ].map(row => (
+                <div key={row.label} className="flex gap-3">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wide w-24 shrink-0 pt-0.5">{row.label}</span>
+                  <span className="text-sm text-slate-800 flex-1">{row.value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 pb-5">
+              <button onClick={() => setSelected(null)}
+                className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">Close</button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 const PA_STORAGE_KEY = "mc_imported_diseases";
 interface PADisease {
   id: string; group: string;
@@ -1253,6 +1378,65 @@ export default function Home() {
   const onSubmit = (data: PatientFormValues) => savePatient(data, "general");
   const onSaveAyurvedic = () => form.handleSubmit(data => savePatient(data, "ayurvedic"))();
 
+  // ── Global Search state ──
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+
+  // ── Keyboard Shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+      // Ctrl+F — Global Search (works even in inputs)
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault();
+        setShowGlobalSearch(true);
+        return;
+      }
+      // Ctrl+S — Save General (skip if typing in input)
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        form.handleSubmit(onSubmit)();
+        return;
+      }
+      // Ctrl+N — New patient (clear form)
+      if ((e.ctrlKey || e.metaKey) && e.key === "n") {
+        if (inInput) return;
+        e.preventDefault();
+        const visitDate = form.getValues("visitDate") || todayStr;
+        form.reset({ ...emptyDefaults, visitDate });
+        if (mobileRef.current) mobileRef.current.value = "";
+        if (nameRef.current) nameRef.current.value = "";
+        setAttachments([]);
+        setPatientHistory([]);
+        setHistoryName("");
+        setHistoryMobile("");
+        setSelectedPADisease(null);
+        setPaMatches([]);
+        setShowPAPanel(false);
+        toast({ title: "🆕 New Patient", description: "Form cleared. Ready for next patient." });
+        return;
+      }
+      // Ctrl+P — Print last saved
+      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
+        if (inInput) return;
+        e.preventDefault();
+        if (lastSaved) {
+          printPatientPrescription(lastSaved);
+        } else {
+          toast({ title: "Nothing to print", description: "Save a patient first." });
+        }
+        return;
+      }
+      // Escape — close global search
+      if (e.key === "Escape") {
+        setShowGlobalSearch(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [form, lastSaved, toast, onSubmit]);
+
   // Register mobile/name with RHF but also attach our DOM ref
   const { ref: mobileRHFRef, ...mobileRest } = form.register("mobile");
   const { ref: nameRHFRef, ...nameRest } = form.register("name");
@@ -1261,6 +1445,7 @@ export default function Home() {
     <Layout>
       {lastSaved && <PrintPrescription patient={lastSaved} />}
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
+      {showGlobalSearch && <GlobalSearchModal onClose={() => setShowGlobalSearch(false)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* ── MAIN FORM ── */}
@@ -1276,6 +1461,13 @@ export default function Home() {
               </div>
               {/* Sheet action buttons */}
               <div className="ml-auto flex items-center gap-2">
+                <button type="button" onClick={() => setShowGlobalSearch(true)}
+                  title="Global Search (Ctrl+F)"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all text-sm font-semibold">
+                  <Search className="w-4 h-4" />
+                  <span className="hidden sm:inline">Search</span>
+                  <kbd className="hidden sm:inline px-1 py-0.5 rounded bg-white border border-slate-200 text-xs font-mono text-slate-400">Ctrl+F</kbd>
+                </button>
                 <button type="button" onClick={handleSync}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all shadow-md shadow-emerald-200">
                   {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -1287,6 +1479,16 @@ export default function Home() {
                   <Sheet className="w-4 h-4" />
                 </button>
               </div>
+            </div>
+
+            {/* Keyboard shortcuts hint bar */}
+            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-400">
+              <span className="flex items-center gap-1"><Keyboard className="w-3 h-3" /> Shortcuts:</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+S</kbd> Save General</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+N</kbd> New Patient</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+P</kbd> Print Last</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+F</kbd> Search</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+Z</kbd> Undo</span>
             </div>
 
             {/* Sheet connected banner */}
