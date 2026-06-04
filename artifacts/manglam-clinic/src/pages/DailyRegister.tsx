@@ -55,10 +55,11 @@ const CARD_LABELS: Record<CardLang, {
   patientCard: string; caseNo: string;
   patientName: string; address: string; clinicPhone: string;
   footer: string; footerSub: string;
+  tapToCall: string; tapForLocation: string;
 }> = {
-  en: { clinicName: "Manglam Clinic", doctor: "Dr. Vijay Girglani  |  B.A.M.S.", tagline: "AYURVEDIC & GENERAL PRACTICE", patientCard: "✦  PATIENT CARD  ✦", caseNo: "CASE NO.", patientName: "PATIENT NAME", address: "ADDRESS", clinicPhone: "CLINIC PHONE", footer: "MANGLAM HOSPITAL  •  MORBI, GUJARAT", footerSub: "Show this card on your next visit" },
-  hi: { clinicName: "मंगलम क्लिनिक", doctor: "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.", tagline: "आयुर्वेदिक एवं सामान्य चिकित्सा", patientCard: "✦  रोगी कार्ड  ✦", caseNo: "केस नं.", patientName: "रोगी का नाम", address: "पता", clinicPhone: "क्लिनिक फोन", footer: "मंगलम हॉस्पिटल  •  मोरबी, गुजरात", footerSub: "अगली मुलाकात पर यह कार्ड दिखाएं" },
-  gu: { clinicName: "મંગલમ ક્લિનિક", doctor: "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.", tagline: "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ", patientCard: "✦  દર્દી કાર્ડ  ✦", caseNo: "કેસ નં.", patientName: "દર્દીનું નામ", address: "સરનામું", clinicPhone: "ક્લિનિક ફોન", footer: "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત", footerSub: "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો" },
+  en: { clinicName: "Manglam Clinic", doctor: "Dr. Vijay Girglani  |  B.A.M.S.", tagline: "AYURVEDIC & GENERAL PRACTICE", patientCard: "✦  PATIENT CARD  ✦", caseNo: "CASE NO.", patientName: "PATIENT NAME", address: "ADDRESS", clinicPhone: "CLINIC PHONE", footer: "MANGLAM HOSPITAL  •  MORBI, GUJARAT", footerSub: "Show this card on your next visit", tapToCall: "👆 Tap here to write your case or call us", tapForLocation: "👆 Tap here for clinic location" },
+  hi: { clinicName: "मंगलम क्लिनिक", doctor: "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.", tagline: "आयुर्वेदिक एवं सामान्य चिकित्सा", patientCard: "✦  रोगी कार्ड  ✦", caseNo: "केस नं.", patientName: "रोगी का नाम", address: "पता", clinicPhone: "क्लिनिक फोन", footer: "मंगलम हॉस्पिटल  •  मोरबी, गुजरात", footerSub: "अगली मुलाकात पर यह कार्ड दिखाएं", tapToCall: "👆 केस लिखने या कॉल करने के लिए यहाँ दबाएं", tapForLocation: "👆 क्लिनिक का पता देखने के लिए यहाँ दबाएं" },
+  gu: { clinicName: "મંગલમ ક્લિનિક", doctor: "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.", tagline: "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ", patientCard: "✦  દર્દી કાર્ડ  ✦", caseNo: "કેસ નં.", patientName: "દર્દીનું નામ", address: "સરનામું", clinicPhone: "ક્લિનિક ફોન", footer: "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત", footerSub: "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો", tapToCall: "👆 કેસ લખવા અથવા કૉલ કરવા અહીં ટૅપ કરો", tapForLocation: "👆 ક્લિનિકનું સ્થળ જોવા અહીં ટૅપ કરો" },
 };
 
 function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasElement {
@@ -68,8 +69,10 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   const AMBER_H=5,HDR_PT=24,LOGO_D=64,LOGO_MB=10,CNAME_H=22,CNAME_MB=3,DR_H=14,DR_MB=10,DIV_H=12,HDR_PB=16;
   const PANEL_MX=16,PANEL_MB=16,STRIPE_H=3,PANEL_PX=16,PANEL_PT=16,PC_LABEL_H=18;
   const CASE_PT=10,CASE_LABEL=12,CASE_NUM=28,CASE_PB=10,CASE_MB=16,ROW_H=40,PANEL_PB=16,FTR_PB=16,FTR_L1=14,FTR_L2=14;
+  const HINT_H=12;
   const caseBoxH=CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
-  const panelInnerH=STRIPE_H+PANEL_PT+PC_LABEL_H+caseBoxH+CASE_MB+ROW_H*3+PANEL_PB;
+  // name row (no hint) + address row (+hint) + phone row (+hint)
+  const panelInnerH=STRIPE_H+PANEL_PT+PC_LABEL_H+caseBoxH+CASE_MB+ROW_H+(ROW_H+HINT_H)*2+PANEL_PB;
   const hdrH=HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
   const ftrH=FTR_L1+FTR_L2+FTR_PB+4;
   const H=AMBER_H+hdrH+panelInnerH+PANEL_MB+ftrH+AMBER_H;
@@ -100,8 +103,8 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   const rawD=patient.mobile.replace(/\D/g,"");const caseNo=rawD.padStart(10,"0");ctx.fillStyle="#c45e10";ctx.font=`900 22px monospace`;ctx.textBaseline="alphabetic";ctx.fillText(caseNo,cBX+14,py+CASE_PT+CASE_LABEL+CASE_NUM-4);
   const icX=cBX+cBW-46,icY=py+caseBoxH/2-14;ctx.fillStyle="rgba(196,94,16,0.1)";rr(icX,icY,28,28,7);ctx.fill();ctx.strokeStyle="#c45e10";ctx.lineWidth=1.5;rr(icX+4,icY+6,20,16,3);ctx.stroke();ctx.beginPath();ctx.moveTo(icX+4,icY+11);ctx.lineTo(icX+24,icY+11);ctx.stroke();py+=caseBoxH+CASE_MB;
   const rowPX=pX+12,rowPXR=pX+pW-12;
-  const infoRow=(emoji:string,label:string,value:string,isLast:boolean)=>{const rowMid=py+ROW_H/2;ctx.fillStyle="#fdf0e6";ctx.beginPath();ctx.arc(rowPX+11,rowMid,11,0,Math.PI*2);ctx.fill();ctx.font=`11px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(emoji,rowPX+11,rowMid);const textX=rowPX+22+8;ctx.fillStyle="#94a3b8";ctx.font=`700 7px sans-serif`;(ctx as any).letterSpacing="0.8px";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText(label,textX,rowMid-2);(ctx as any).letterSpacing="0px";ctx.fillStyle="#1e293b";ctx.font=`700 11px sans-serif`;ctx.textBaseline="alphabetic";let v=value;const maxW=rowPXR-textX-4;while(ctx.measureText(v).width>maxW&&v.length>2)v=v.slice(0,-1);if(v!==value)v=v.trimEnd()+"…";ctx.fillText(v,textX,rowMid+12);py+=ROW_H;if(!isLast){ctx.strokeStyle="#f1f5f9";ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(rowPX,py);ctx.lineTo(rowPXR,py);ctx.stroke();}};
-  infoRow("👤",L.patientName,patient.name.toUpperCase(),false);infoRow("📍",L.address,patient.address||"Pipaliya Char Rasta",false);infoRow("📞",L.clinicPhone,"+91 96381 81875",true);
+  const infoRow=(emoji:string,label:string,value:string,isLast:boolean,isLink=false,hint="")=>{const totalH=ROW_H+(hint?HINT_H:0);const rowMid=py+ROW_H/2;ctx.fillStyle="#fdf0e6";ctx.beginPath();ctx.arc(rowPX+11,rowMid,11,0,Math.PI*2);ctx.fill();ctx.font=`11px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(emoji,rowPX+11,rowMid);const textX=rowPX+22+8;ctx.fillStyle="#94a3b8";ctx.font=`700 7px sans-serif`;(ctx as any).letterSpacing="0.8px";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText(label,textX,rowMid-2);(ctx as any).letterSpacing="0px";ctx.fillStyle=isLink?"#c45e10":"#1e293b";ctx.font=`700 11px sans-serif`;ctx.textBaseline="alphabetic";let v=value;const maxW=rowPXR-textX-4;while(ctx.measureText(v).width>maxW&&v.length>2)v=v.slice(0,-1);if(v!==value)v=v.trimEnd()+"…";ctx.fillText(v,textX,rowMid+12);if(isLink){const vW=ctx.measureText(v).width;ctx.strokeStyle="rgba(196,94,16,0.5)";ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(textX,rowMid+14);ctx.lineTo(textX+vW,rowMid+14);ctx.stroke();}if(hint){ctx.fillStyle="#15803d";ctx.font=`600 7.5px sans-serif`;ctx.textBaseline="alphabetic";ctx.textAlign="left";ctx.fillText(hint,textX,py+ROW_H+HINT_H-2);}py+=totalH;if(!isLast){ctx.strokeStyle="#f1f5f9";ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(rowPX,py);ctx.lineTo(rowPXR,py);ctx.stroke();}};
+  infoRow("👤",L.patientName,patient.name.toUpperCase(),false);infoRow("📍",L.address,patient.address||"Pipaliya Char Rasta",false,true,L.tapForLocation);infoRow("📞",L.clinicPhone,"+91 96381 81875",true,true,L.tapToCall);
   ctx.restore();
   const fY=pY+panelInnerH+PANEL_MB;ctx.fillStyle="rgba(212,165,116,0.75)";ctx.font=`700 8px sans-serif`;(ctx as any).letterSpacing="1.5px";ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.fillText(L.footer,W/2,fY+FTR_L1);(ctx as any).letterSpacing="0px";ctx.fillStyle="rgba(255,255,255,0.35)";ctx.font=`9px sans-serif`;ctx.fillText(L.footerSub,W/2,fY+FTR_L1+FTR_L2+2);
   ctx.fillStyle=amberGrad;ctx.fillRect(0,H-AMBER_H,W,AMBER_H);ctx.restore();
@@ -191,16 +194,28 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                   <p style={{ fontSize: 20, fontWeight: 900, fontFamily: "monospace", color: "#c45e10", letterSpacing: 1 }}>{caseNo}</p>
                 </div>
                 {[
-                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase() },
-                  { icon: "📍", label: L.address, value: patient.address || CLINIC_ADDRESS },
-                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}` },
+                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null, hint: null },
+                  { icon: "📍", label: L.address, value: patient.address || CLINIC_ADDRESS, href: "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D", hint: L.tapForLocation },
+                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: `tel:+91${CLINIC_MOBILE}`, hint: L.tapToCall },
                 ].map((row, i, arr) => (
                   <div key={i}>
                     <div className="flex items-center gap-2 py-2">
                       <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>{row.icon}</div>
                       <div className="flex-1 min-w-0">
                         <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{row.label}</p>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
+                        {row.href ? (
+                          <>
+                            <a
+                              href={row.href}
+                              target={row.href.startsWith("tel:") ? undefined : "_blank"}
+                              rel={row.href.startsWith("tel:") ? undefined : "noopener noreferrer"}
+                              style={{ fontSize: 11, fontWeight: 700, color: "#c45e10", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", textDecoration: "underline", textDecorationColor: "rgba(196,94,16,0.4)", textUnderlineOffset: 2 }}
+                            >{row.value}</a>
+                            {row.hint && <p style={{ fontSize: 7.5, fontWeight: 600, color: "#15803d", marginTop: 2, lineHeight: 1.3 }}>{row.hint}</p>}
+                          </>
+                        ) : (
+                          <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
+                        )}
                       </div>
                     </div>
                     {i < arr.length - 1 && <div style={{ height: 1, background: "#f1f5f9" }} />}
