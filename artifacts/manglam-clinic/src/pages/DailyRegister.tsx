@@ -10,7 +10,7 @@ import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
   TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
-  WalletCards, Loader2, MessageSquare, Search, Bell, AlertCircle, ArrowRight,
+  WalletCards, Loader2, MessageSquare, Search, ArrowRight,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -21,23 +21,6 @@ function getLooseSalesForDate(date: string): LooseSaleEntry[] {
   catch { return []; }
 }
 // ── Follow-up reminder helpers ────────────────────────────────────────────────
-function parseFollowUpDays(advice: string): number | null {
-  if (!advice) return null;
-  // Matches: F5, F 5, follow-up in 5 days, after 7 days, followup 3, f/u 10, etc.
-  const m =
-    advice.match(/\bF\s*(\d+)\b/i) ||
-    advice.match(/follow[-\s]?up\s+(?:in\s+)?(\d+)\s*days?/i) ||
-    advice.match(/after\s+(\d+)\s*days?/i) ||
-    advice.match(/f\/u\s+(\d+)/i) ||
-    advice.match(/\bFU\s*(\d+)\b/i);
-  return m ? parseInt(m[1], 10) : null;
-}
-
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 import { exportToExcel, parseExcelFile } from "@/lib/export";
 import { motion, AnimatePresence } from "framer-motion";
@@ -427,9 +410,6 @@ export default function DailyRegister() {
   const [searchDetailPatient, setSearchDetailPatient] = useState<(Patient & { visitDate: string }) | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Follow-up Reminders ───────────────────────────────────────────────────
-  const [followUpReminders, setFollowUpReminders] = useState<{ patient: Patient; visitDate: string; days: number }[]>([]);
-  const [dismissedReminders, setDismissedReminders] = useState<Set<number>>(new Set());
 
   // refreshRef lets useUndoManager call refresh() without a circular dependency
   const refreshRef = useRef<() => void>(() => {});
@@ -450,23 +430,6 @@ export default function DailyRegister() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // ── Scan follow-up reminders on load ─────────────────────────────────────
-  useEffect(() => {
-    const today = format(new Date(), "yyyy-MM-dd");
-    const dates = getAllDates();
-    const reminders: { patient: Patient; visitDate: string; days: number }[] = [];
-    for (const { date } of dates) {
-      const dayStats = getDailyStats(date);
-      for (const p of dayStats.patients || []) {
-        if (!p.advice) continue;
-        const days = parseFollowUpDays(p.advice);
-        if (days === null) continue;
-        const dueDate = addDays(date, days);
-        if (dueDate === today) reminders.push({ patient: p, visitDate: date, days });
-      }
-    }
-    setFollowUpReminders(reminders);
-  }, []); // only on mount
 
   // ── Global search across all dates ───────────────────────────────────────
   useEffect(() => {
@@ -700,14 +663,6 @@ Manglam Hospital, Morbi`;
                 title="Global search (Ctrl+F)"
                 className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-sm flex items-center gap-1.5">
                 <Search className="w-4 h-4" /> Search
-                {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).length > 0 && (
-                  <span className="relative">
-                    <Bell className="w-4 h-4 text-orange-500 ml-1" />
-                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-orange-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                      {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).length}
-                    </span>
-                  </span>
-                )}
               </button>
               <div className="relative">
                 <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1031,33 +986,6 @@ Manglam Hospital, Morbi`;
           )}
         </div>
 
-        {/* ── FOLLOW-UP REMINDERS ── */}
-        {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).length > 0 && (
-          <div className="space-y-2">
-            {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).map(({ patient, visitDate, days }) => (
-              <div key={patient.id} className="flex items-start gap-3 px-4 py-3 rounded-xl bg-orange-50 border border-orange-200 text-sm">
-                <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <span className="font-bold text-orange-800">{patient.name}</span>
-                  {patient.mobile && <span className="text-orange-600 ml-2 font-mono text-xs">{patient.mobile}</span>}
-                  <span className="text-orange-700 ml-2">— follow-up due today</span>
-                  <span className="text-orange-500 ml-1 text-xs">(visited {format(new Date(visitDate + "T00:00:00"), "dd MMM")}, F{days})</span>
-                  {patient.advice && <p className="text-xs text-orange-500 mt-0.5 truncate">Advice: {patient.advice}</p>}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => setSelectedDate(visitDate)}
-                    className="text-xs font-semibold text-orange-600 hover:text-orange-800 flex items-center gap-0.5">
-                    View <ArrowRight className="w-3 h-3" />
-                  </button>
-                  <button onClick={() => setDismissedReminders(s => new Set(s).add(patient.id))}
-                    className="text-slate-400 hover:text-slate-600">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
       {searchOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-20 px-4"
