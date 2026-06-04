@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Layout } from "@/components/Layout";
 import {
-  addPatient, lookupByMobile, lookupByName, findComplaintCode,
+  addPatient, deletePatient, lookupByMobile, lookupByName, findComplaintCode,
   getNextPatientNo, getNextCaseNo, lookupByComplaint, lookupByAddress,
   searchPatientSuggestions,
   type Patient, type PatientSuggestion,
@@ -45,6 +45,39 @@ function genSaleId() { return Date.now().toString(36) + Math.random().toString(3
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
+
+// ── Undo Manager Hook ─────────────────────────────────────────────────────────
+function useUndoManager(toast: ReturnType<typeof useToast>["toast"]) {
+  const stackRef = useRef<Array<{ label: string; fn: () => void }>>([]);
+
+  const pushUndo = useCallback((label: string, fn: () => void) => {
+    stackRef.current.push({ label, fn });
+    // Keep max 20 entries
+    if (stackRef.current.length > 20) stackRef.current.shift();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        // Don't intercept if user is typing in an input/textarea
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        const entry = stackRef.current.pop();
+        if (entry) {
+          entry.fn();
+          toast({ title: "↩ Undone", description: entry.label });
+        } else {
+          toast({ title: "Nothing to undo", description: "No recent actions to undo." });
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toast]);
+
+  return { pushUndo };
+}
 
 // ── Pathya-Apathya Disease helpers ───────────────────────────────────────────
 const PA_STORAGE_KEY = "mc_imported_diseases";
@@ -865,6 +898,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
 
 export default function Home() {
   const { toast } = useToast();
+  const { pushUndo } = useUndoManager(toast);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [patientHistory, setPatientHistory] = useState<Patient[]>([]);
   const [historyName, setHistoryName] = useState("");
@@ -914,11 +948,22 @@ export default function Home() {
     refreshLooseSales();
     setLooseProduct("");
     setLooseAmount("");
+    pushUndo(`Undo loose sale: ${product} ₹${amount}`, () => {
+      removeLooseSale(entry.id);
+      refreshLooseSales();
+    });
   };
 
   const handleRemoveLooseSale = (id: string) => {
+    const entry = looseSales.find(e => e.id === id);
     removeLooseSale(id);
     refreshLooseSales();
+    if (entry) {
+      pushUndo(`Undo delete loose sale: ${entry.product}`, () => {
+        addLooseSale(entry);
+        refreshLooseSales();
+      });
+    }
   };
 
   // ── Pathya-Apathya suggest state ──
@@ -1182,6 +1227,11 @@ export default function Home() {
     setLastSaved(saved);
     setFeesMarkedPending(false);
     setPendingAmount("");
+    // Push undo: deletes the patient that was just saved
+    pushUndo(`Undo save for ${saved.name}`, () => {
+      deletePatient(saved.id);
+      if (feesMarkedPending) removePendingFee(saved.id);
+    });
     toast({
       title: "Saved!",
       description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
