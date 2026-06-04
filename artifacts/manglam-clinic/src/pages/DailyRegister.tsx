@@ -684,33 +684,6 @@ Manglam Hospital, Morbi`;
           ))}
         </div>
 
-        {/* ── FOLLOW-UP REMINDERS ── */}
-        {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).length > 0 && (
-          <div className="space-y-2">
-            {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).map(({ patient, visitDate, days }) => (
-              <div key={patient.id} className="flex items-start gap-3 px-4 py-3 rounded-xl bg-orange-50 border border-orange-200 text-sm">
-                <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <span className="font-bold text-orange-800">{patient.name}</span>
-                  {patient.mobile && <span className="text-orange-600 ml-2 font-mono text-xs">{patient.mobile}</span>}
-                  <span className="text-orange-700 ml-2">— follow-up due today</span>
-                  <span className="text-orange-500 ml-1 text-xs">(visited {format(new Date(visitDate + "T00:00:00"), "dd MMM")}, F{days})</span>
-                  {patient.advice && <p className="text-xs text-orange-500 mt-0.5 truncate">Advice: {patient.advice}</p>}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => setSelectedDate(visitDate)}
-                    className="text-xs font-semibold text-orange-600 hover:text-orange-800 flex items-center gap-0.5">
-                    View <ArrowRight className="w-3 h-3" />
-                  </button>
-                  <button onClick={() => setDismissedReminders(s => new Set(s).add(patient.id))}
-                    className="text-slate-400 hover:text-slate-600">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
         <div className="sticky top-16 z-30 -mx-4 md:-mx-8 px-4 md:px-8 bg-white/95 backdrop-blur-md border-b border-slate-200/80 py-3 shadow-sm">
           <div className="flex flex-row flex-wrap items-center justify-between gap-2">
             <div>
@@ -1057,9 +1030,35 @@ Manglam Hospital, Morbi`;
             </div>
           )}
         </div>
-      </div>
 
-      {/* ── GLOBAL SEARCH MODAL ── */}
+        {/* ── FOLLOW-UP REMINDERS ── */}
+        {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).length > 0 && (
+          <div className="space-y-2">
+            {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).map(({ patient, visitDate, days }) => (
+              <div key={patient.id} className="flex items-start gap-3 px-4 py-3 rounded-xl bg-orange-50 border border-orange-200 text-sm">
+                <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="font-bold text-orange-800">{patient.name}</span>
+                  {patient.mobile && <span className="text-orange-600 ml-2 font-mono text-xs">{patient.mobile}</span>}
+                  <span className="text-orange-700 ml-2">— follow-up due today</span>
+                  <span className="text-orange-500 ml-1 text-xs">(visited {format(new Date(visitDate + "T00:00:00"), "dd MMM")}, F{days})</span>
+                  {patient.advice && <p className="text-xs text-orange-500 mt-0.5 truncate">Advice: {patient.advice}</p>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => setSelectedDate(visitDate)}
+                    className="text-xs font-semibold text-orange-600 hover:text-orange-800 flex items-center gap-0.5">
+                    View <ArrowRight className="w-3 h-3" />
+                  </button>
+                  <button onClick={() => setDismissedReminders(s => new Set(s).add(patient.id))}
+                    className="text-slate-400 hover:text-slate-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       {searchOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-20 px-4"
           onClick={() => { setSearchOpen(false); setSearchQuery(""); setSearchDetailPatient(null); }}>
