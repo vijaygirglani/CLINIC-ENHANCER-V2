@@ -10,7 +10,7 @@ import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
   TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
-  WalletCards, Loader2, MessageSquare,
+  WalletCards, Loader2, MessageSquare, Search, Bell, AlertCircle, ArrowRight,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -20,6 +20,25 @@ function getLooseSalesForDate(date: string): LooseSaleEntry[] {
   try { return (JSON.parse(localStorage.getItem(LOOSE_SALE_KEY) || "[]") as LooseSaleEntry[]).filter(e => e.date === date); }
   catch { return []; }
 }
+// ── Follow-up reminder helpers ────────────────────────────────────────────────
+function parseFollowUpDays(advice: string): number | null {
+  if (!advice) return null;
+  // Matches: F5, F 5, follow-up in 5 days, after 7 days, followup 3, f/u 10, etc.
+  const m =
+    advice.match(/\bF\s*(\d+)\b/i) ||
+    advice.match(/follow[-\s]?up\s+(?:in\s+)?(\d+)\s*days?/i) ||
+    advice.match(/after\s+(\d+)\s*days?/i) ||
+    advice.match(/f\/u\s+(\d+)/i) ||
+    advice.match(/\bFU\s*(\d+)\b/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 import { exportToExcel, parseExcelFile } from "@/lib/export";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatCurrency } from "@/lib/utils";
@@ -401,6 +420,17 @@ export default function DailyRegister() {
   const [waCustomNote, setWaCustomNote] = useState("");
   const { toast } = useToast();
 
+  // ── Global Search ──────────────────────────────────────────────────────────
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<(Patient & { visitDate: string })[]>([]);
+  const [searchDetailPatient, setSearchDetailPatient] = useState<(Patient & { visitDate: string }) | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Follow-up Reminders ───────────────────────────────────────────────────
+  const [followUpReminders, setFollowUpReminders] = useState<{ patient: Patient; visitDate: string; days: number }[]>([]);
+  const [dismissedReminders, setDismissedReminders] = useState<Set<number>>(new Set());
+
   // refreshRef lets useUndoManager call refresh() without a circular dependency
   const refreshRef = useRef<() => void>(() => {});
   const { pushUndo } = useUndoManager(toast, () => refreshRef.current());
@@ -419,6 +449,68 @@ export default function DailyRegister() {
   refreshRef.current = refresh;
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // ── Scan follow-up reminders on load ─────────────────────────────────────
+  useEffect(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const dates = getAllDates();
+    const reminders: { patient: Patient; visitDate: string; days: number }[] = [];
+    for (const { date } of dates) {
+      const dayStats = getDailyStats(date);
+      for (const p of dayStats.patients || []) {
+        if (!p.advice) continue;
+        const days = parseFollowUpDays(p.advice);
+        if (days === null) continue;
+        const dueDate = addDays(date, days);
+        if (dueDate === today) reminders.push({ patient: p, visitDate: date, days });
+      }
+    }
+    setFollowUpReminders(reminders);
+  }, []); // only on mount
+
+  // ── Global search across all dates ───────────────────────────────────────
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchResults([]); return; }
+    const q = searchQuery.toLowerCase();
+    const dates = getAllDates();
+    const results: (Patient & { visitDate: string })[] = [];
+    for (const { date } of dates) {
+      const dayStats = getDailyStats(date);
+      for (const p of dayStats.patients || []) {
+        if (
+          p.name?.toLowerCase().includes(q) ||
+          p.mobile?.toLowerCase().includes(q) ||
+          p.complaint?.toLowerCase().includes(q) ||
+          p.address?.toLowerCase().includes(q) ||
+          p.treatment?.toLowerCase().includes(q)
+        ) {
+          results.push({ ...p, visitDate: date });
+        }
+      }
+    }
+    setSearchResults(results.slice(0, 50));
+  }, [searchQuery]);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      // Ctrl+F → open search
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault();
+        setSearchOpen(true);
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+      }
+      // Ctrl+G → jump to today
+      if ((e.ctrlKey || e.metaKey) && e.key === "g") {
+        e.preventDefault();
+        setSelectedDate(format(new Date(), "yyyy-MM-dd"));
+        toast({ title: "📅 Jumped to Today" });
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [toast]);
 
   const editForm = useForm({ resolver: zodResolver(editSchema), values: editingPatient || {} });
 
@@ -578,7 +670,47 @@ Manglam Hospital, Morbi`;
       <input ref={excelImportRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportExcel} />
 
       <div className="space-y-5">
-        {/* ── STICKY HEADER ── */}
+        {/* ── SHORTCUT HINT BAR ── */}
+        <div className="flex flex-wrap gap-3 text-xs text-slate-400 items-center px-1">
+          {[
+            { keys: "Ctrl+F", label: "Search patients" },
+            { keys: "Ctrl+G", label: "Jump to today" },
+            { keys: "Ctrl+Z", label: "Undo last action" },
+          ].map(({ keys, label }) => (
+            <span key={keys} className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 font-mono text-[11px] text-slate-600">{keys}</kbd>
+              <span>{label}</span>
+            </span>
+          ))}
+        </div>
+
+        {/* ── FOLLOW-UP REMINDERS ── */}
+        {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).length > 0 && (
+          <div className="space-y-2">
+            {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).map(({ patient, visitDate, days }) => (
+              <div key={patient.id} className="flex items-start gap-3 px-4 py-3 rounded-xl bg-orange-50 border border-orange-200 text-sm">
+                <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="font-bold text-orange-800">{patient.name}</span>
+                  {patient.mobile && <span className="text-orange-600 ml-2 font-mono text-xs">{patient.mobile}</span>}
+                  <span className="text-orange-700 ml-2">— follow-up due today</span>
+                  <span className="text-orange-500 ml-1 text-xs">(visited {format(new Date(visitDate + "T00:00:00"), "dd MMM")}, F{days})</span>
+                  {patient.advice && <p className="text-xs text-orange-500 mt-0.5 truncate">Advice: {patient.advice}</p>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => setSelectedDate(visitDate)}
+                    className="text-xs font-semibold text-orange-600 hover:text-orange-800 flex items-center gap-0.5">
+                    View <ArrowRight className="w-3 h-3" />
+                  </button>
+                  <button onClick={() => setDismissedReminders(s => new Set(s).add(patient.id))}
+                    className="text-slate-400 hover:text-slate-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="sticky top-16 z-30 -mx-4 md:-mx-8 px-4 md:px-8 bg-white/95 backdrop-blur-md border-b border-slate-200/80 py-3 shadow-sm">
           <div className="flex flex-row flex-wrap items-center justify-between gap-2">
             <div>
@@ -586,6 +718,24 @@ Manglam Hospital, Morbi`;
               <p className="text-slate-500 text-xs">General + Ayurvedic patients for selected date</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => setSelectedDate(format(new Date(), "yyyy-MM-dd"))}
+                title="Jump to today (Ctrl+G)"
+                className="px-3 py-2 rounded-xl font-semibold bg-primary text-white hover:bg-primary/90 shadow-sm text-sm flex items-center gap-1.5">
+                <Calendar className="w-4 h-4" /> Today
+              </button>
+              <button onClick={() => { setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+                title="Global search (Ctrl+F)"
+                className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-sm flex items-center gap-1.5">
+                <Search className="w-4 h-4" /> Search
+                {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).length > 0 && (
+                  <span className="relative">
+                    <Bell className="w-4 h-4 text-orange-500 ml-1" />
+                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-orange-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                      {followUpReminders.filter(r => !dismissedReminders.has(r.patient.id)).length}
+                    </span>
+                  </span>
+                )}
+              </button>
               <div className="relative">
                 <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
@@ -908,6 +1058,76 @@ Manglam Hospital, Morbi`;
           )}
         </div>
       </div>
+
+      {/* ── GLOBAL SEARCH MODAL ── */}
+      {searchOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-20 px-4"
+          onClick={() => { setSearchOpen(false); setSearchQuery(""); setSearchDetailPatient(null); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[70vh]"
+            onClick={e => e.stopPropagation()}>
+            {/* Search input */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+              <Search className="w-5 h-5 text-slate-400 shrink-0" />
+              <input
+                ref={searchInputRef}
+                value={searchQuery}
+                onChange={e => { setSearchQuery(e.target.value); setSearchDetailPatient(null); }}
+                placeholder="Search by name, mobile, complaint, address…"
+                className="flex-1 text-sm outline-none text-slate-800 placeholder:text-slate-400"
+              />
+              <button onClick={() => { setSearchOpen(false); setSearchQuery(""); setSearchDetailPatient(null); }}
+                className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            {/* Results */}
+            <div className="overflow-y-auto flex-1">
+              {searchDetailPatient ? (
+                <div className="p-5 space-y-3">
+                  <button onClick={() => setSearchDetailPatient(null)} className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">← Back to results</button>
+                  <div className="rounded-xl bg-slate-50 p-4 space-y-2 text-sm">
+                    <p className="font-bold text-lg text-slate-900">{searchDetailPatient.name}</p>
+                    <p className="text-slate-500 font-mono text-xs">{searchDetailPatient.mobile}</p>
+                    {searchDetailPatient.age ? <p><span className="text-slate-400 text-xs">Age:</span> {searchDetailPatient.age}y{searchDetailPatient.ageMonths ? ` ${searchDetailPatient.ageMonths}m` : ""}</p> : null}
+                    {searchDetailPatient.address && <p><span className="text-slate-400 text-xs">Address:</span> {searchDetailPatient.address}</p>}
+                    {searchDetailPatient.complaint && <p><span className="text-slate-400 text-xs">Complaint:</span> {searchDetailPatient.complaint}</p>}
+                    {searchDetailPatient.treatment && <p><span className="text-slate-400 text-xs">Treatment:</span> {searchDetailPatient.treatment}</p>}
+                    {searchDetailPatient.advice && <p><span className="text-slate-400 text-xs">Advice:</span> {searchDetailPatient.advice}</p>}
+                    {searchDetailPatient.fees ? <p><span className="text-slate-400 text-xs">Fees:</span> ₹{searchDetailPatient.fees}</p> : null}
+                    <p><span className="text-slate-400 text-xs">Visit:</span> {format(new Date(searchDetailPatient.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedDate(searchDetailPatient.visitDate); setSearchOpen(false); setSearchQuery(""); setSearchDetailPatient(null); }}
+                    className="w-full py-2.5 rounded-xl bg-primary text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-primary/90">
+                    <Calendar className="w-4 h-4" /> Go to {format(new Date(searchDetailPatient.visitDate + "T00:00:00"), "dd MMM yyyy")}
+                  </button>
+                </div>
+              ) : searchQuery.trim() === "" ? (
+                <div className="px-5 py-10 text-center text-slate-400 text-sm">Type to search all patients across all dates</div>
+              ) : searchResults.length === 0 ? (
+                <div className="px-5 py-10 text-center text-slate-400 text-sm">No patients found for "{searchQuery}"</div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {searchResults.map(p => (
+                    <li key={`${p.id}-${p.visitDate}`}
+                      onClick={() => setSearchDetailPatient(p)}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-primary font-bold text-sm">{p.name?.[0]?.toUpperCase()}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-900 text-sm truncate">{p.name}</p>
+                        <p className="text-xs text-slate-400 font-mono">{p.mobile} · {format(new Date(p.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+                        {p.complaint && <p className="text-xs text-slate-500 truncate">{p.complaint}</p>}
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-300 shrink-0" />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── WHATSAPP DAILY REPORT MODAL ── */}
       {showWaReport && (
