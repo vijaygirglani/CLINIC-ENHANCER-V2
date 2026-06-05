@@ -2485,6 +2485,12 @@ export default function Home() {
                               {visit.complaint && <p className="text-xs text-slate-700"><span className="text-[10px] uppercase text-slate-400 font-bold">Complaint: </span>{visit.complaint}</p>}
                               {visit.treatment && <p className="text-xs text-slate-600"><span className="text-[10px] uppercase text-slate-400 font-bold">Treatment: </span>{visit.treatment}</p>}
                               {visit.advice && <p className="text-xs text-slate-500"><span className="text-[10px] uppercase text-slate-400 font-bold">Advice: </span>{visit.advice}</p>}
+                              {visit.reports && (
+                                <p className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-2 py-1 mt-1 flex items-start gap-1.5">
+                                  <FileText className="w-3 h-3 mt-0.5 shrink-0 text-indigo-400" />
+                                  <span><span className="text-[10px] uppercase text-indigo-400 font-bold">Reports: </span>{visit.reports}</span>
+                                </p>
+                              )}
                             </div>
                             <div className="mt-2 flex justify-end">
                               <button type="button" onClick={() => printPatientPrescription(visit)}
