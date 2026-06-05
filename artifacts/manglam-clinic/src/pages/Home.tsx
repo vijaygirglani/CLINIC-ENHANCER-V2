@@ -26,6 +26,42 @@ function getPendingFees(): PendingEntry[] { try { return JSON.parse(localStorage
 function addPendingFee(e: PendingEntry) { const l = getPendingFees().filter(x => x.patientId !== e.patientId); l.push(e); localStorage.setItem(PENDING_KEY, JSON.stringify(l)); }
 function removePendingFee(id: number) { localStorage.setItem(PENDING_KEY, JSON.stringify(getPendingFees().filter(e => e.patientId !== id))); }
 
+// ── Clinic Settings helpers ───────────────────────────────────────────────────
+const CLINIC_SETTINGS_KEY = "manglam_clinic_settings";
+interface ClinicSettings {
+  clinicName: string;
+  doctorName: string;
+  qualification: string;
+  tagline: string;
+  address: string;
+  phone: string;
+  mapsUrl: string;
+  footerCity: string;
+  logoLetter: string;
+}
+const DEFAULT_CLINIC_SETTINGS: ClinicSettings = {
+  clinicName:   "Manglam Clinic",
+  doctorName:   "Dr. Vijay Girglani",
+  qualification:"B.A.M.S.",
+  tagline:      "AYURVEDIC & GENERAL PRACTICE",
+  address:      "Pipaliya Char Rasta",
+  phone:        "9638181875",
+  mapsUrl:      "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z",
+  footerCity:   "Morbi, Gujarat",
+  logoLetter:   "M",
+};
+function getClinicSettings(): ClinicSettings {
+  try {
+    const stored = JSON.parse(localStorage.getItem(CLINIC_SETTINGS_KEY) || "{}");
+    return { ...DEFAULT_CLINIC_SETTINGS, ...stored };
+  } catch { return DEFAULT_CLINIC_SETTINGS; }
+}
+function saveClinicSettings(s: ClinicSettings) {
+  localStorage.setItem(CLINIC_SETTINGS_KEY, JSON.stringify(s));
+  // Also write to a key that PrintPrescription can read
+  localStorage.setItem("manglam_clinic_settings_for_print", JSON.stringify(s));
+}
+
 // ── Loose Medicine Sale helpers ───────────────────────────────────────────────
 const LOOSE_SALE_KEY = "manglam_loose_sales";
 interface LooseSaleEntry { id: string; product: string; amount: number; date: string; time: string; }
@@ -267,6 +303,9 @@ function formatMobileWA(m: string): string {
 
 function buildWhatsAppMsg(disease: PADisease, patientName: string, lang: "en" | "hi" | "gu"): string {
   const today = format(new Date(), "dd/MM/yyyy");
+  const cs = getClinicSettings();
+  const clinicDisplay = cs.clinicName;
+  const doctorDisplay = `${cs.doctorName} | ${cs.qualification}`;
 
   const name    = lang === "gu" ? (disease.nameGu || disease.nameEn) : lang === "hi" ? (disease.nameHi || disease.nameEn) : disease.nameEn;
   const causes  = (lang === "gu" ? disease.causesGu  : lang === "hi" ? disease.causesHi  : disease.causesEn).map(c => `  • ${c}`).join("\n");
@@ -279,16 +318,16 @@ function buildWhatsAppMsg(disease: PADisease, patientName: string, lang: "en" | 
   const pathyaLabel = lang === "gu" ? "પથ્ય — શું ખાવું"   : lang === "hi" ? "पथ्य — क्या खाएं"   : "Pathya — What to Eat";
   const apathyaLbl  = lang === "gu" ? "અપથ્ય — શું ન ખાવું" : lang === "hi" ? "अपथ्य — क्या न खाएं" : "Apathya — What to Avoid";
   const footer      = lang === "gu"
-    ? "_Manglam Clinic તરફથી આયુર્વેદિક માર્ગદર્શન_"
+    ? `_${clinicDisplay} તરફથી આયુર્વેદિક માર્ગદર્શન_`
     : lang === "hi"
-    ? "_Manglam Clinic से आयुर्वेदिक मार्गदर्शन_"
-    : "_Manglam Clinic — Ayurvedic Guidance_";
+    ? `_${clinicDisplay} से आयुर्वेदिक मार्गदर्शन_`
+    : `_${clinicDisplay} — Ayurvedic Guidance_`;
 
   const ptLine = patientName ? `\n*${ptLabel}:* ${patientName}` : "";
 
   return [
-    `*Manglam Clinic*`,
-    `Dr. Vijay Girglani | B.A.M.S.`,
+    `*${clinicDisplay}*`,
+    doctorDisplay,
     ptLine,
     `*${dateLabel}:* ${today}`,
     ``,
@@ -422,60 +461,68 @@ const emptyDefaults: PatientFormValues = {
 // ── Language config ────────────────────────────────────────────────────────
 type CardLang = "en" | "hi" | "gu";
 
-const CARD_LABELS: Record<CardLang, {
-  clinicName: string; doctor: string; tagline: string;
-  patientCard: string; caseNo: string;
-  patientName: string; address: string; clinicPhone: string;
-  footer: string; footerSub: string;
-  tapToCall: string; tapForLocation: string;
-}> = {
-  en: {
-    clinicName:     "Manglam Clinic",
-    doctor:         "Dr. Vijay Girglani  |  B.A.M.S.",
-    tagline:        "AYURVEDIC & GENERAL PRACTICE",
-    patientCard:    "✦  PATIENT CARD  ✦",
-    caseNo:         "CASE NO.",
-    patientName:    "PATIENT NAME",
-    address:        "ADDRESS",
-    clinicPhone:    "CLINIC PHONE",
-    footer:         "MANGLAM HOSPITAL  •  MORBI, GUJARAT",
-    footerSub:      "Show this card on your next visit",
-    tapToCall:      "👆 Tap here to write your case or call us",
-    tapForLocation: "👆 Tap here for clinic location",
-  },
-  hi: {
-    clinicName:     "मंगलम क्लिनिक",
-    doctor:         "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.",
-    tagline:        "आयुर्वेदिक एवं सामान्य चिकित्सा",
-    patientCard:    "✦  रोगी कार्ड  ✦",
-    caseNo:         "केस नं.",
-    patientName:    "रोगी का नाम",
-    address:        "पता",
-    clinicPhone:    "क्लिनिक फोन",
-    footer:         "मंगलम हॉस्पिटल  •  मोरबी, गुजरात",
-    footerSub:      "अगली मुलाकात पर यह कार्ड दिखाएं",
-    tapToCall:      "👆 केस लिखने या कॉल करने के लिए यहाँ दबाएं",
-    tapForLocation: "👆 क्लिनिक का पता देखने के लिए यहाँ दबाएं",
-  },
-  gu: {
-    clinicName:     "મંગલમ ક્લિનિક",
-    doctor:         "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.",
-    tagline:        "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ",
-    patientCard:    "✦  દર્દી કાર્ડ  ✦",
-    caseNo:         "કેસ નં.",
-    patientName:    "દર્દીનું નામ",
-    address:        "સરનામું",
-    clinicPhone:    "ક્લિનિક ફોન",
-    footer:         "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત",
-    footerSub:      "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો",
-    tapToCall:      "👆 કેસ લખવા અથવા કૉલ કરવા અહીં ટૅપ કરો",
-    tapForLocation: "👆 ક્લિનિકનું સ્થળ જોવા અહીં ટૅપ કરો",
-  },
-};
+function getCardLabels(lang: CardLang) {
+  const s = getClinicSettings();
+  const doctorLine = `${s.doctorName}  |  ${s.qualification}`;
+  const footerLine = `${s.clinicName.toUpperCase()}  •  ${s.footerCity.toUpperCase()}`;
+  const CARD_LABELS: Record<CardLang, {
+    clinicName: string; doctor: string; tagline: string;
+    patientCard: string; caseNo: string;
+    patientName: string; address: string; clinicPhone: string;
+    footer: string; footerSub: string;
+    tapToCall: string; tapForLocation: string;
+  }> = {
+    en: {
+      clinicName:     s.clinicName,
+      doctor:         doctorLine,
+      tagline:        s.tagline.toUpperCase(),
+      patientCard:    "✦  PATIENT CARD  ✦",
+      caseNo:         "CASE NO.",
+      patientName:    "PATIENT NAME",
+      address:        "ADDRESS",
+      clinicPhone:    "CLINIC PHONE",
+      footer:         footerLine,
+      footerSub:      "Show this card on your next visit",
+      tapToCall:      "👆 Tap here to write your case or call us",
+      tapForLocation: "👆 Tap here for clinic location",
+    },
+    hi: {
+      clinicName:     s.clinicName,
+      doctor:         doctorLine,
+      tagline:        s.tagline.toUpperCase(),
+      patientCard:    "✦  रोगी कार्ड  ✦",
+      caseNo:         "केस नं.",
+      patientName:    "रोगी का नाम",
+      address:        "पता",
+      clinicPhone:    "क्लिनिक फोन",
+      footer:         footerLine,
+      footerSub:      "अगली मुलाकात पर यह कार्ड दिखाएं",
+      tapToCall:      "👆 केस लिखने या कॉल करने के लिए यहाँ दबाएं",
+      tapForLocation: "👆 क्लिनिक का पता देखने के लिए यहाँ दबाएं",
+    },
+    gu: {
+      clinicName:     s.clinicName,
+      doctor:         doctorLine,
+      tagline:        s.tagline.toUpperCase(),
+      patientCard:    "✦  દર્દી કાર્ડ  ✦",
+      caseNo:         "કેસ નં.",
+      patientName:    "દર્દીનું નામ",
+      address:        "સરનામું",
+      clinicPhone:    "ક્લિનિક ફોન",
+      footer:         footerLine,
+      footerSub:      "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો",
+      tapToCall:      "👆 કેસ લખવા અથવા કૉલ કરવા અહીં ટૅપ કરો",
+      tapForLocation: "👆 ક્લિનિકનું સ્થળ જોવા અહીં ટૅપ કરો",
+    },
+  };
+  return CARD_LABELS[lang];
+}
+
 
 // ── Draw patient card — exactly mirrors the HTML preview ────────────────
 function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasElement {
-  const L = CARD_LABELS[lang];
+  const L = getCardLabels(lang);
+  const cs = getClinicSettings();
   const scale = 3;
 
   // ── Layout constants (logical px) — match HTML exactly ──
@@ -569,7 +616,7 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   // M letter
   ctx.fillStyle = "#ffffff"; ctx.font = `900 28px serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("M", logoX, logoY + 1);
+  ctx.fillText(cs.logoLetter || "M", logoX, logoY + 1);
 
   cy += LOGO_D + LOGO_MB;
 
@@ -712,13 +759,149 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
   return canvas;
 }
 
+// ── Clinic Settings Modal ──────────────────────────────────────────────────
+function ClinicSettingsModal({ onClose }: { onClose: () => void }) {
+  const [form, setForm] = useState<ClinicSettings>(() => getClinicSettings());
+  const [saved, setSaved] = useState(false);
+
+  const field = (
+    label: string,
+    key: keyof ClinicSettings,
+    placeholder?: string,
+    hint?: string
+  ) => (
+    <div className="space-y-1">
+      <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+        {label}
+      </label>
+      <input
+        value={form[key]}
+        onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
+        placeholder={placeholder || ""}
+        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 text-slate-800"
+      />
+      {hint && <p className="text-[11px] text-slate-400">{hint}</p>}
+    </div>
+  );
+
+  const handleSave = () => {
+    saveClinicSettings(form);
+    setSaved(true);
+    setTimeout(() => { setSaved(false); onClose(); }, 900);
+  };
+
+  // Phone formatted preview
+  const phoneFmt = form.phone.replace(/(\d{5})(\d{5})/, "$1 $2");
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0, y: 10 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 300, damping: 26 }}
+          onClick={e => e.stopPropagation()}
+          className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        >
+          {/* Header */}
+          <div
+            className="px-6 py-5 flex items-center gap-3 shrink-0"
+            style={{ background: "linear-gradient(135deg, #cc0000, #991111)" }}
+          >
+            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
+              <Stethoscope className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-white text-base leading-none">Clinic Settings</p>
+              <p className="text-red-100 text-xs mt-0.5">Customize letterhead &amp; patient card</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+            >
+              <X className="w-4 h-4 text-white" />
+            </button>
+          </div>
+
+          {/* Scrollable body */}
+          <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+
+            {/* Section: Clinic Identity */}
+            <p className="text-[10px] font-black uppercase tracking-widest text-red-500">Clinic Identity</p>
+            <div className="grid grid-cols-2 gap-3">
+              {field("Clinic Name", "clinicName", "e.g. Manglam Clinic")}
+              {field("Logo Letter / Symbol", "logoLetter", "e.g. M or ✚", "1–2 chars shown in logo circle")}
+            </div>
+            {field("Tagline / Sub-name", "tagline", "e.g. Family Day-Care Hospital")}
+
+            {/* Section: Doctor */}
+            <p className="text-[10px] font-black uppercase tracking-widest text-red-500 pt-1">Doctor</p>
+            <div className="grid grid-cols-2 gap-3">
+              {field("Doctor Name", "doctorName", "e.g. Dr. Vijay Girglani")}
+              {field("Qualification", "qualification", "e.g. B.A.M.S, C.C.H")}
+            </div>
+            {field("Specialization", "specialization", "e.g. Family Physician & Surgeon")}
+            {field("Clinic Timing", "timing", "e.g. 7:00 AM to 12:00 Midnight")}
+
+            {/* Section: Contact */}
+            <p className="text-[10px] font-black uppercase tracking-widest text-red-500 pt-1">Contact &amp; Location</p>
+            {field("Phone Number", "phone", "e.g. 9638181875", "10-digit mobile — used in footer and patient card")}
+            {field("Clinic Address (short)", "address", "e.g. Pipaliya Char Rasta, Morbi")}
+            {field("Footer Address (print)", "footerAddress", "e.g. Krishna Hotel Same, Pipaliya Char Rasta", "Shown at bottom of printed prescription")}
+            {field("City / Footer Text", "footerCity", "e.g. Morbi, Gujarat")}
+            {field("Google Maps URL", "mapsUrl", "Paste full Google Maps link", "Used as tappable link in patient card PDF")}
+          </div>
+
+          {/* Preview strip */}
+          <div className="mx-6 mb-4 rounded-2xl overflow-hidden border border-slate-100 shrink-0">
+            <div className="bg-slate-50 px-4 py-2 flex items-center gap-2 border-b border-slate-100">
+              <Printer className="w-3.5 h-3.5 text-slate-400" />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Print Footer Preview</p>
+            </div>
+            <div
+              className="px-4 py-2 text-center text-xs font-bold text-white rounded-b-2xl"
+              style={{ background: "#cc0000" }}
+            >
+              {form.footerAddress || form.address}
+              {form.phone ? ` .... Mo. ${phoneFmt}` : ""}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="px-6 pb-5 flex gap-3 shrink-0">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 rounded-2xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="flex-[2] py-3 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all hover:opacity-90"
+              style={{ background: saved ? "linear-gradient(135deg,#16a34a,#15803d)" : "linear-gradient(135deg,#cc0000,#991111)" }}
+            >
+              {saved ? <><CheckCircle2 className="w-4 h-4" /> Saved!</> : <><Save className="w-4 h-4" /> Save Settings</>}
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 // ── Patient Card Modal ─────────────────────────────────────────────────────
 function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
   const rawDigits = patient.mobile.replace(/\D/g, "");
   const caseNo = rawDigits.padStart(10, "0");
-  const CLINIC_MOBILE = "9638181875";
-  const CLINIC_ADDRESS = "Pipaliya Char Rasta";
-  const MAPS_URL = "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D";
+  const cs = getClinicSettings();
+  const CLINIC_MOBILE = cs.phone || "9638181875";
+  const CLINIC_ADDRESS = cs.address || "Pipaliya Char Rasta";
+  const MAPS_URL = cs.mapsUrl || "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z";
   const clinicPhone = CLINIC_MOBILE.replace(/(\d{5})(\d{5})/, "$1 $2");
   const cardRef = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
@@ -727,7 +910,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
   // Show language picker before share
   const [showLangPicker, setShowLangPicker] = useState(false);
 
-  const L = CARD_LABELS[lang];
+  const L = getCardLabels(lang);
   const patientWaLabel = rawDigits.length >= 10
     ? `Send to ${rawDigits.slice(-10)}`
     : "Send on WhatsApp";
@@ -791,10 +974,11 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
       const panelW = toMM(W_log - PANEL_MX * 2);
 
       // 📍 Address row — tappable maps link
-      doc.link(panelX, toMM(row2Top), panelW, toMM(ROW_H + HINT_H), { url: MAPS_URL });
+      const _cs = getClinicSettings();
+      doc.link(panelX, toMM(row2Top), panelW, toMM(ROW_H + HINT_H), { url: _cs.mapsUrl || MAPS_URL });
 
       // 📞 Phone row — tappable tel: link (opens dialler on mobile)
-      doc.link(panelX, toMM(row3Top), panelW, toMM(ROW_H + HINT_H), { url: "tel:+919638181875" });
+      doc.link(panelX, toMM(row3Top), panelW, toMM(ROW_H + HINT_H), { url: `tel:+91${(_cs.phone || CLINIC_MOBILE).replace(/\D/g,"")}` });
 
       // ── 5. Output as Blob ──
       const pdfBlob = doc.output("blob");
@@ -903,7 +1087,7 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
                 boxShadow: "0 0 0 3px rgba(224,120,40,0.3), 0 0 18px rgba(224,120,40,0.25)",
                 display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10,
               }}>
-                <span style={{ color: "#fff", fontFamily: "serif", fontWeight: 900, fontSize: 26 }}>M</span>
+                <span style={{ color: "#fff", fontFamily: "serif", fontWeight: 900, fontSize: 26 }}>{getClinicSettings().logoLetter || "M"}</span>
               </div>
               <p style={{ color: "#ffffff", fontFamily: "serif", fontWeight: 700, fontSize: 18, letterSpacing: 0.5, marginBottom: 3 }}>{L.clinicName}</p>
               <p style={{ color: "#d4a574", fontStyle: "italic", fontSize: 10, marginBottom: 10 }}>{L.doctor}</p>
@@ -1048,6 +1232,7 @@ export default function Home() {
   const [attachments, setAttachments] = useState<string[]>([]);
   const [lastSaved, setLastSaved] = useState<Patient | null>(null);
   const [showCard, setShowCard] = useState(false);
+  const [showClinicSettings, setShowClinicSettings] = useState(false);
 
   // ── Cloud Sync state ──
   const [showSyncModal, setShowSyncModal] = useState(false);
@@ -1558,6 +1743,7 @@ export default function Home() {
       {lastSaved && <PrintPrescription patient={lastSaved} />}
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
       {showGlobalSearch && <GlobalSearchModal onClose={() => setShowGlobalSearch(false)} />}
+      {showClinicSettings && <ClinicSettingsModal onClose={() => setShowClinicSettings(false)} />}
 
       {/* ── EDIT MODE BANNER ── */}
       {editingPatientId !== null && (
@@ -2190,6 +2376,15 @@ export default function Home() {
 
               {/* Action Buttons */}
               <div className="flex flex-wrap justify-end gap-3 pt-2">
+                {/* Clinic Settings button — always visible */}
+                <button
+                  type="button"
+                  onClick={() => setShowClinicSettings(true)}
+                  className="px-4 py-3 rounded-xl font-semibold bg-white border border-slate-200 text-slate-500 hover:bg-red-50 hover:border-red-200 hover:text-red-600 shadow-sm transition-all flex items-center gap-2"
+                  title="Customize clinic name, doctor, address for print"
+                >
+                  <Stethoscope className="w-4 h-4" /> Clinic Setup
+                </button>
                 {lastSaved && (
                   <button type="button" onClick={() => printPatientPrescription(lastSaved)}
                     className="px-5 py-3 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-2">
