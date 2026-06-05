@@ -14,8 +14,9 @@ import {
   Loader2, User, Phone, MapPin, Activity, Save, RefreshCw,
   FileText, Printer, Paperclip, X, Leaf, Weight, Calendar,
   Zap, Search, SlidersHorizontal, Sheet, Link, ClipboardPaste,
-  Hourglass, CheckCircle2, WalletCards, MessageSquare, ChevronDown, Stethoscope, Cloud, CloudOff, CloudUpload, CloudDownload,
-  ShoppingBag, PackagePlus, Trash2, IndianRupee,
+  Hourglass, CheckCircle2, WalletCards, MessageSquare, ChevronDown, Stethoscope,
+  ShoppingBag, PackagePlus, Trash2, IndianRupee, Keyboard, Clock,
+  Cloud, CloudUpload, CloudDownload,
 } from "lucide-react";
 
 // ── Pending Fees helpers ──────────────────────────────────────────────
@@ -47,10 +48,179 @@ import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   pushToCloud, pullFromCloud, fromCloud,
-  getLastSync, setLastSync, getCloudCount, getDeviceLabel,
+  getLastSync, setLastSync as setLastSyncStorage, getDeviceLabel,
 } from "@/lib/supabase-sync";
 
-// ── Pathya-Apathya Disease helpers ───────────────────────────────────────────
+// ── Undo Manager Hook ─────────────────────────────────────────────────────────
+function useUndoManager(toast: ReturnType<typeof useToast>["toast"], onAfterUndo?: () => void) {
+  const stackRef = useRef<Array<{ label: string; snapshot: Record<string, string> }>>([]);
+  const onAfterUndoRef = useRef(onAfterUndo);
+  useEffect(() => { onAfterUndoRef.current = onAfterUndo; }, [onAfterUndo]);
+
+  const pushUndo = useCallback((label: string) => {
+    const snapshot: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) snapshot[key] = localStorage.getItem(key) ?? "";
+    }
+    stackRef.current.push({ label, snapshot });
+    if (stackRef.current.length > 20) stackRef.current.shift();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        const entry = stackRef.current.pop();
+        if (entry) {
+          const keysNow = new Set<string>();
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i); if (k) keysNow.add(k);
+          }
+          keysNow.forEach(k => { if (!(k in entry.snapshot)) localStorage.removeItem(k); });
+          Object.entries(entry.snapshot).forEach(([k, v]) => localStorage.setItem(k, v));
+          onAfterUndoRef.current?.();
+          toast({ title: "↩ Undone", description: entry.label });
+        } else {
+          toast({ title: "Nothing to undo", description: "No recent actions to undo." });
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toast]);
+
+  return { pushUndo };
+}
+
+// ── Global Search helpers ─────────────────────────────────────────────────────
+const PATIENTS_STORE_KEY = "manglam_patients"; // must match store.ts
+function getAllPatientsForSearch(): Patient[] {
+  try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); }
+  catch { return []; }
+}
+function searchAllPatients(query: string): Patient[] {
+  if (!query || query.trim().length < 2) return [];
+  const q = query.toLowerCase().trim();
+  const all = getAllPatientsForSearch();
+  return all.filter(p =>
+    p.name?.toLowerCase().includes(q) ||
+    p.mobile?.toLowerCase().includes(q) ||
+    p.complaint?.toLowerCase().includes(q) ||
+    p.address?.toLowerCase().includes(q)
+  ).slice(0, 30);
+}
+
+// ── Global Search Modal ───────────────────────────────────────────────────────
+function GlobalSearchModal({ onClose }: { onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Patient[]>([]);
+  const [selected, setSelected] = useState<Patient | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => { setResults(searchAllPatients(query)); }, [query]);
+
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 backdrop-blur-sm pt-16 px-4"
+        onClick={onClose}>
+        <motion.div initial={{ scale: 0.95, opacity: 0, y: -10 }} animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.95, opacity: 0 }} className="w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+          onClick={e => e.stopPropagation()}>
+          {/* Search input */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+            <Search className="w-5 h-5 text-slate-400 shrink-0" />
+            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Search by name, mobile, complaint, address…"
+              className="flex-1 text-base outline-none text-slate-800 placeholder:text-slate-400" />
+            <div className="flex items-center gap-2 shrink-0">
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-xs font-mono">Esc</kbd>
+              <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"><X className="w-4 h-4" /></button>
+            </div>
+          </div>
+          {/* Results */}
+          {results.length > 0 ? (
+            <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-50">
+              {results.map(p => (
+                <button key={p.id} onClick={() => setSelected(p)}
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-primary/5 text-left transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <User className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-900 text-sm">{p.name}</p>
+                    <p className="text-xs text-slate-500 font-mono">{p.mobile} · {p.age ? `${p.age}y` : ""} · {format(new Date(p.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+                    {p.complaint && <p className="text-xs text-slate-400 truncate mt-0.5">{p.complaint}</p>}
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 mt-1 ${p.registerType === "ayurvedic" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                    {p.registerType === "ayurvedic" ? "Ayurvedic" : "General"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : query.length >= 2 ? (
+            <div className="px-6 py-10 text-center text-slate-400">
+              <Search className="w-10 h-10 mx-auto mb-2 text-slate-200" />
+              <p className="font-medium">No patients found for "{query}"</p>
+            </div>
+          ) : (
+            <div className="px-6 py-8 text-center text-slate-400 text-sm">
+              Type at least 2 characters to search across all patients…
+            </div>
+          )}
+          <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 flex items-center gap-3 text-xs text-slate-400">
+            <Keyboard className="w-3.5 h-3.5" />
+            <span>Press <kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+F</kbd> to open · <kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Esc</kbd> to close</span>
+          </div>
+        </motion.div>
+      </motion.div>
+
+      {/* Patient Detail Popup */}
+      {selected && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setSelected(null)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }} className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <div className="bg-gradient-to-r from-primary to-blue-500 px-5 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-bold text-lg">{selected.name}</h3>
+                <p className="text-blue-100 text-xs font-mono">{selected.mobile} · {format(new Date(selected.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+              </div>
+              <button onClick={() => setSelected(null)} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              {[
+                { label: "Age / Weight", value: `${selected.age ? selected.age + "y" : ""}${selected.ageMonths ? " " + selected.ageMonths + "m" : ""} ${selected.weight ? "· " + selected.weight : ""}`.trim() || "-" },
+                { label: "Address", value: selected.address || "-" },
+                { label: "Complaint", value: selected.complaint ? `${selected.complaintCode ? "[" + selected.complaintCode + "] " : ""}${selected.complaint}` : "-" },
+                { label: "Treatment", value: selected.treatment || "-" },
+                { label: "Advice", value: selected.advice || "-" },
+                { label: "Reports", value: selected.reports || "-" },
+                { label: "Fees", value: selected.fees ? `₹${selected.fees.toLocaleString("en-IN")} (${selected.paymentMode || "cash"})` : "-" },
+                { label: "Register", value: selected.registerType === "ayurvedic" ? "Ayurvedic" : "General" },
+              ].map(row => (
+                <div key={row.label} className="flex gap-3">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wide w-24 shrink-0 pt-0.5">{row.label}</span>
+                  <span className="text-sm text-slate-800 flex-1">{row.value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 pb-5">
+              <button onClick={() => setSelected(null)}
+                className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">Close</button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 const PA_STORAGE_KEY = "mc_imported_diseases";
 interface PADisease {
   id: string; group: string;
@@ -86,41 +256,6 @@ function getAllDiseases(): PADisease[] {
     const imported: PADisease[] = JSON.parse(localStorage.getItem(PA_STORAGE_KEY) || "[]");
     return imported;
   } catch { return []; }
-}
-
-// ── Get all patients from local store ────────────────────────────────────────
-function getAllLocalPatients(): any[] {
-  // The store uses "manglam_patients" as its localStorage key
-  // Try that first, then fallback to common patterns
-  const KEYS_TO_TRY = ["manglam_patients", "mc_patients", "patients", "clinic_patients"];
-  for (const key of KEYS_TO_TRY) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        if (typeof parsed === "object" && parsed !== null) {
-          // Maybe stored as object keyed by id
-          const vals = Object.values(parsed);
-          if (vals.length > 0) return vals as any[];
-        }
-      }
-    } catch {}
-  }
-  // Last resort: scan all keys for patient-like arrays
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (!k) continue;
-    try {
-      const raw = localStorage.getItem(k)!;
-      if (!raw.startsWith("[")) continue;
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr) && arr.length > 0 && arr[0]?.name && arr[0]?.mobile) {
-        return arr;
-      }
-    } catch {}
-  }
-  return [];
 }
 
 function formatMobileWA(m: string): string {
@@ -284,89 +419,435 @@ const emptyDefaults: PatientFormValues = {
   advice: "", reports: "", fees: 0, paymentMode: "cash" as const,
 };
 
-// ── Patient Card Modal ─────────────────────────────────────────────────────
-// ── Inline SVG icons for html2canvas (lucide can't render inside canvas) ──
-const SvgMapPin = () => (
-  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
-  </svg>
-);
-const SvgPhone = () => (
-  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-  </svg>
-);
+// ── Language config ────────────────────────────────────────────────────────
+type CardLang = "en" | "hi" | "gu";
 
-function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
-  const caseNo = String(patient.mobile).padStart(9, "0");
-  const mobile = String(patient.mobile).replace(/(\d{5})(\d{5})/, "$1 $2");
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
+const CARD_LABELS: Record<CardLang, {
+  clinicName: string; doctor: string; tagline: string;
+  patientCard: string; caseNo: string;
+  patientName: string; address: string; clinicPhone: string;
+  footer: string; footerSub: string;
+  tapToCall: string; tapForLocation: string;
+}> = {
+  en: {
+    clinicName:     "Manglam Clinic",
+    doctor:         "Dr. Vijay Girglani  |  B.A.M.S.",
+    tagline:        "AYURVEDIC & GENERAL PRACTICE",
+    patientCard:    "✦  PATIENT CARD  ✦",
+    caseNo:         "CASE NO.",
+    patientName:    "PATIENT NAME",
+    address:        "ADDRESS",
+    clinicPhone:    "CLINIC PHONE",
+    footer:         "MANGLAM HOSPITAL  •  MORBI, GUJARAT",
+    footerSub:      "Show this card on your next visit",
+    tapToCall:      "👆 Tap here to write your case or call us",
+    tapForLocation: "👆 Tap here for clinic location",
+  },
+  hi: {
+    clinicName:     "मंगलम क्लिनिक",
+    doctor:         "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.",
+    tagline:        "आयुर्वेदिक एवं सामान्य चिकित्सा",
+    patientCard:    "✦  रोगी कार्ड  ✦",
+    caseNo:         "केस नं.",
+    patientName:    "रोगी का नाम",
+    address:        "पता",
+    clinicPhone:    "क्लिनिक फोन",
+    footer:         "मंगलम हॉस्पिटल  •  मोरबी, गुजरात",
+    footerSub:      "अगली मुलाकात पर यह कार्ड दिखाएं",
+    tapToCall:      "👆 केस लिखने या कॉल करने के लिए यहाँ दबाएं",
+    tapForLocation: "👆 क्लिनिक का पता देखने के लिए यहाँ दबाएं",
+  },
+  gu: {
+    clinicName:     "મંગલમ ક્લિનિક",
+    doctor:         "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.",
+    tagline:        "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ",
+    patientCard:    "✦  દર્દી કાર્ડ  ✦",
+    caseNo:         "કેસ નં.",
+    patientName:    "દર્દીનું નામ",
+    address:        "સરનામું",
+    clinicPhone:    "ક્લિનિક ફોન",
+    footer:         "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત",
+    footerSub:      "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો",
+    tapToCall:      "👆 કેસ લખવા અથવા કૉલ કરવા અહીં ટૅપ કરો",
+    tapForLocation: "👆 ક્લિનિકનું સ્થળ જોવા અહીં ટૅપ કરો",
+  },
+};
 
-  const shareCardImage = async () => {
-    if (!cardRef.current) return;
-    setIsCapturing(true);
-    try {
-      const html2canvas = (await import("html2canvas")).default;
-      const canvas = await html2canvas(cardRef.current, {
-        scale: 3,
-        useCORS: true,
-        backgroundColor: null,
-        logging: false,
-      });
-      canvas.toBlob(async (blob) => {
-        if (!blob) return;
-        const file = new File([blob], `patient-card-${patient.name.replace(/\s+/g, "-")}.png`, { type: "image/png" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: "Manglam Clinic — Patient Card",
-            text: `Patient card for ${patient.name}. Show this on your next visit.`,
-          });
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = file.name;
-          a.click();
-          URL.revokeObjectURL(url);
-          const number = formatMobileWA(patient.mobile);
-          const waUrl = number
-            ? `https://wa.me/${number}?text=${encodeURIComponent(`Patient card for ${patient.name} — Case No. ${caseNo}\nManglam Clinic, Morbi | Dr. Vijay Girglani`)}`
-            : `https://wa.me/`;
-          setTimeout(() => window.open(waUrl, "_blank"), 600);
-        }
-      }, "image/png");
-    } catch (err) {
-      console.error("Card capture failed", err);
-    } finally {
-      setIsCapturing(false);
+// ── Draw patient card — exactly mirrors the HTML preview ────────────────
+function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasElement {
+  const L = CARD_LABELS[lang];
+  const scale = 3;
+
+  // ── Layout constants (logical px) — match HTML exactly ──
+  const W = 360;
+  const AMBER_H    = 5;   // top/bottom amber bar
+  const HDR_PT     = 24;  // header paddingTop
+  const LOGO_D     = 64;  // logo circle diameter
+  const LOGO_MB    = 10;  // margin below logo
+  const CNAME_H    = 22;  // clinic name line height
+  const CNAME_MB   = 3;   // margin after clinic name
+  const DR_H       = 14;  // doctor line height
+  const DR_MB      = 10;  // margin after doctor
+  const DIV_H      = 12;  // divider row height
+  const HDR_PB     = 16;  // header paddingBottom
+  const PANEL_MX   = 16;  // panel horizontal margin
+  const PANEL_MB   = 16;  // panel margin bottom
+  const STRIPE_H   = 3;   // panel top stripe
+  const PANEL_PX   = 16;  // panel inner padding x
+  const PANEL_PT   = 16;  // panel inner padding top
+  const PC_LABEL_H = 18;  // "✦ PATIENT CARD ✦" + mb
+  const CASE_PT    = 10;  // case box padding top
+  const CASE_LABEL = 12;  // case label line
+  const CASE_NUM   = 28;  // case number line
+  const CASE_PB    = 10;  // case box padding bottom
+  const CASE_MB    = 16;  // case box margin bottom
+  const ROW_H      = 40;  // each info row height
+  const PANEL_PB   = 16;  // panel inner padding bottom
+  const FTR_PB     = 16;  // footer padding bottom
+  const FTR_L1     = 14;  // footer line 1 height
+  const FTR_L2     = 14;  // footer line 2 height
+
+  const HINT_H    = 12; // extra height per row that has a hint line
+  const caseBoxH = CASE_PT + CASE_LABEL + CASE_NUM + CASE_PB;
+  // name row (no hint) + address row (+ hint) + phone row (+ hint)
+  const panelInnerH = STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB + ROW_H + (ROW_H + HINT_H) * 2 + PANEL_PB;
+  const hdrH = HDR_PT + LOGO_D + LOGO_MB + CNAME_H + CNAME_MB + DR_H + DR_MB + DIV_H + HDR_PB;
+  const ftrH = FTR_L1 + FTR_L2 + FTR_PB + 4;
+  const H = AMBER_H + hdrH + panelInnerH + PANEL_MB + ftrH + AMBER_H;
+
+  const canvas = document.createElement("canvas");
+  canvas.width  = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext("2d")!;
+  ctx.scale(scale, scale);
+
+  // ── helpers ──
+  const rr = (x: number, y: number, w: number, h: number, r: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  };
+
+  // ── Amber gradient (reused) ──
+  const amberGrad = ctx.createLinearGradient(0, 0, W, 0);
+  amberGrad.addColorStop(0, "#c45e10"); amberGrad.addColorStop(0.5, "#e07828"); amberGrad.addColorStop(1, "#c45e10");
+
+  // ── Card background (dark green rounded rect) ──
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, "#1a3a0f"); bgGrad.addColorStop(0.5, "#1f4a12"); bgGrad.addColorStop(1, "#0f2208");
+  rr(0, 0, W, H, 24); ctx.fillStyle = bgGrad; ctx.fill();
+  ctx.save(); ctx.clip(); // clip everything to rounded card
+
+  // decorative circles
+  ctx.save(); ctx.globalAlpha = 0.05; ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.arc(W - 30, 50, 100, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-20, H - 50, 110, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // ── Top amber bar ──
+  ctx.fillStyle = amberGrad; ctx.fillRect(0, 0, W, AMBER_H);
+
+  // ── Header ──
+  let cy = AMBER_H + HDR_PT;
+
+  // Logo circle — centered
+  const logoX = W / 2, logoY = cy + LOGO_D / 2;
+  // glow ring
+  ctx.save(); ctx.shadowColor = "rgba(224,120,40,0.5)"; ctx.shadowBlur = 14;
+  ctx.strokeStyle = "rgba(224,120,40,0.4)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(logoX, logoY, LOGO_D / 2 + 3, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+  // fill
+  const logoGrad = ctx.createRadialGradient(logoX - 10, logoY - 10, 4, logoX, logoY, LOGO_D / 2);
+  logoGrad.addColorStop(0, "#e07828"); logoGrad.addColorStop(1, "#b84f0a");
+  ctx.fillStyle = logoGrad;
+  ctx.beginPath(); ctx.arc(logoX, logoY, LOGO_D / 2, 0, Math.PI * 2); ctx.fill();
+  // M letter
+  ctx.fillStyle = "#ffffff"; ctx.font = `900 28px serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("M", logoX, logoY + 1);
+
+  cy += LOGO_D + LOGO_MB;
+
+  // Clinic name
+  ctx.fillStyle = "#ffffff"; ctx.font = `bold 20px serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.clinicName, W / 2, cy + CNAME_H - 4);
+  cy += CNAME_H + CNAME_MB;
+
+  // Doctor name
+  ctx.fillStyle = "#d4a574"; ctx.font = `italic 10.5px serif`;
+  ctx.fillText(L.doctor, W / 2, cy + DR_H - 3);
+  cy += DR_H + DR_MB;
+
+  // Tagline divider row
+  const lineY = cy + DIV_H / 2;
+  ctx.strokeStyle = "rgba(212,165,116,0.3)"; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(20, lineY); ctx.lineTo(W / 2 - 62, lineY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W / 2 + 62, lineY); ctx.lineTo(W - 20, lineY); ctx.stroke();
+  ctx.fillStyle = "rgba(212,165,116,0.8)"; ctx.font = `600 7px sans-serif`;
+  ctx.textBaseline = "middle";
+  ctx.fillText(L.tagline, W / 2, lineY);
+  cy += DIV_H + HDR_PB;
+
+  // ── White panel ──
+  const pX = PANEL_MX, pW = W - PANEL_MX * 2;
+  const pY = cy;
+
+  // panel shadow + fill
+  ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 4;
+  rr(pX, pY, pW, panelInnerH, 16); ctx.fillStyle = "#ffffff"; ctx.fill();
+  ctx.restore();
+
+  // clip to panel
+  ctx.save(); rr(pX, pY, pW, panelInnerH, 16); ctx.clip();
+
+  // stripe
+  ctx.fillStyle = amberGrad; ctx.fillRect(pX, pY, pW, STRIPE_H);
+
+  let py = pY + STRIPE_H + PANEL_PT;
+
+  // ✦ PATIENT CARD ✦
+  ctx.fillStyle = "#7c3a0a"; ctx.font = `700 7.5px sans-serif`;
+  ctx.letterSpacing = "2px"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.patientCard, W / 2, py + 10);
+  ctx.letterSpacing = "0px";
+  py += PC_LABEL_H;
+
+  // Case number box
+  const cBX = pX + 12, cBW = pW - 24;
+  rr(cBX, py, cBW, caseBoxH, 10); ctx.fillStyle = "#fdf0e6"; ctx.fill();
+  // label
+  ctx.fillStyle = "#b8825a"; ctx.font = `700 6.5px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.caseNo, cBX + 14, py + CASE_PT + CASE_LABEL - 2);
+  ctx.letterSpacing = "0px";
+  // number
+  const rawD = patient.mobile.replace(/\D/g, "");
+  const caseNo = rawD.padStart(10, "0");
+  ctx.fillStyle = "#c45e10"; ctx.font = `900 22px monospace`;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(caseNo, cBX + 14, py + CASE_PT + CASE_LABEL + CASE_NUM - 4);
+  // card icon (right side of box)
+  const icX = cBX + cBW - 46, icY = py + caseBoxH / 2 - 14;
+  ctx.fillStyle = "rgba(196,94,16,0.1)"; rr(icX, icY, 28, 28, 7); ctx.fill();
+  ctx.strokeStyle = "#c45e10"; ctx.lineWidth = 1.5;
+  rr(icX + 4, icY + 6, 20, 16, 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(icX + 4, icY + 11); ctx.lineTo(icX + 24, icY + 11); ctx.stroke();
+  py += caseBoxH + CASE_MB;
+
+  // ── Info rows (icon circle LEFT + label top + value bottom — matches HTML) ──
+  const rowPX = pX + 12; // left padding inside panel
+  const rowPXR = pX + pW - 12; // right edge
+
+  const infoRow = (emoji: string, label: string, value: string, isLast: boolean, isLink = false, hint = "") => {
+    const totalH = ROW_H + (hint ? HINT_H : 0);
+    const rowMid = py + ROW_H / 2;
+    // icon bubble — vertically centered to ROW_H only (not hint area)
+    const iBubR = 11;
+    ctx.fillStyle = "#fdf0e6";
+    ctx.beginPath(); ctx.arc(rowPX + iBubR, rowMid, iBubR, 0, Math.PI * 2); ctx.fill();
+    ctx.font = `11px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(emoji, rowPX + iBubR, rowMid);
+
+    const textX = rowPX + iBubR * 2 + 8;
+    // label (small, above value)
+    ctx.fillStyle = "#94a3b8"; ctx.font = `700 7px sans-serif`;
+    ctx.letterSpacing = "0.8px"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(label, textX, rowMid - 2);
+    ctx.letterSpacing = "0px";
+    // value (larger, below label) — amber + underline for links
+    ctx.fillStyle = isLink ? "#c45e10" : "#1e293b";
+    ctx.font = `700 11px sans-serif`;
+    ctx.textBaseline = "alphabetic";
+    let v = value;
+    const maxW = rowPXR - textX - 4;
+    while (ctx.measureText(v).width > maxW && v.length > 2) v = v.slice(0, -1);
+    if (v !== value) v = v.trimEnd() + "…";
+    ctx.fillText(v, textX, rowMid + 12);
+    // underline for link
+    if (isLink) {
+      const vW = ctx.measureText(v).width;
+      ctx.strokeStyle = "rgba(196,94,16,0.5)"; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(textX, rowMid + 14); ctx.lineTo(textX + vW, rowMid + 14); ctx.stroke();
+    }
+    // hint text (green, below value)
+    if (hint) {
+      ctx.fillStyle = "#15803d"; ctx.font = `600 7.5px sans-serif`;
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+      ctx.fillText(hint, textX, py + ROW_H + HINT_H - 2);
+    }
+
+    py += totalH;
+    // divider
+    if (!isLast) {
+      ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(rowPX, py); ctx.lineTo(rowPXR, py); ctx.stroke();
     }
   };
 
-  const UNUSED_sendWhatsApp = () => {
-    const number = formatMobileWA(patient.mobile);
-    const msg = [
-      `🏥 *Manglam Clinic — Patient Card*`,
-      `Dr. Vijay Girglani | B.A.M.S.`,
-      `_Ayurvedic & General Practice_`,
-      ``,
-      `👤 *Patient:* ${patient.name}`,
-      `🔢 *Case No.:* ${caseNo}`,
-      patient.address ? `📍 *Address:* ${patient.address}` : "",
-      ``,
-      `📞 *Clinic:* +91 XXXXX XXXXX`,
-      `📍 *Address:* Manglam Hospital, Morbi`,
-      ``,
-      `_Please show this card on your next visit._`,
-      `_Manglam Clinic, Morbi, Gujarat_ 🌿`,
-    ].filter(Boolean).join("\n");
+  infoRow("👤", L.patientName, patient.name.toUpperCase(), false);
+  infoRow("📍", L.address, "maps.app.goo.gl/manglam", false, true, L.tapForLocation);
+  infoRow("📞", L.clinicPhone, "+91 96381 81875", true, true, L.tapToCall);
 
-    const url = number
-      ? `https://wa.me/${number}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank");
+  ctx.restore(); // end panel clip
+
+  // ── Footer ──
+  const fY = pY + panelInnerH + PANEL_MB;
+  ctx.fillStyle = "rgba(212,165,116,0.75)"; ctx.font = `700 8px sans-serif`;
+  ctx.letterSpacing = "1.5px"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(L.footer, W / 2, fY + FTR_L1);
+  ctx.letterSpacing = "0px";
+  ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.font = `9px sans-serif`;
+  ctx.fillText(L.footerSub, W / 2, fY + FTR_L1 + FTR_L2 + 2);
+
+  // ── Bottom amber bar ──
+  ctx.fillStyle = amberGrad; ctx.fillRect(0, H - AMBER_H, W, AMBER_H);
+
+  ctx.restore(); // end card clip
+  return canvas;
+}
+
+// ── Patient Card Modal ─────────────────────────────────────────────────────
+function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+  const rawDigits = patient.mobile.replace(/\D/g, "");
+  const caseNo = rawDigits.padStart(10, "0");
+  const CLINIC_MOBILE = "9638181875";
+  const CLINIC_ADDRESS = "Pipaliya Char Rasta";
+  const MAPS_URL = "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D";
+  const clinicPhone = CLINIC_MOBILE.replace(/(\d{5})(\d{5})/, "$1 $2");
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState("");
+  const [lang, setLang] = useState<CardLang>("en");
+  // Show language picker before share
+  const [showLangPicker, setShowLangPicker] = useState(false);
+
+  const L = CARD_LABELS[lang];
+  const patientWaLabel = rawDigits.length >= 10
+    ? `Send to ${rawDigits.slice(-10)}`
+    : "Send on WhatsApp";
+
+  // ── Load jsPDF dynamically (only once) ──
+  const getJsPDF = async () => {
+    if ((window as any).__jsPDF) return (window as any).__jsPDF;
+    await new Promise<void>((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.onload = () => res(); s.onerror = () => rej(new Error("jsPDF load failed"));
+      document.head.appendChild(s);
+    });
+    (window as any).__jsPDF = (window as any).jspdf.jsPDF;
+    return (window as any).__jsPDF;
   };
+
+  const doShare = async (chosenLang: CardLang) => {
+    setShowLangPicker(false);
+    setLang(chosenLang);
+    setSharing(true);
+    setShareError("");
+    try {
+      // ── 1. Draw card to canvas ──
+      const canvas = drawPatientCard(patient, chosenLang);
+      const W_px = canvas.width;   // physical pixels (360 * scale=3 = 1080)
+      const H_px = canvas.height;
+
+      // ── 2. Convert canvas → JPEG (much smaller than PNG, quality still great) ──
+      const imgData = canvas.toDataURL("image/jpeg", 0.88);
+
+      // ── 3. Build PDF — same aspect ratio as canvas, in mm ──
+      const jsPDF = await getJsPDF();
+      // Card is portrait; keep 90mm wide to stay compact
+      const PDF_W = 90;
+      const PDF_H = Math.round((H_px / W_px) * PDF_W);
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [PDF_W, PDF_H], compress: true });
+
+      // Full-bleed card image
+      doc.addImage(imgData, "JPEG", 0, 0, PDF_W, PDF_H, undefined, "FAST");
+
+      // ── 4. Invisible clickable link annotation over the address row ──
+      // The address row is the 2nd info row. Compute its position in mm.
+      // Canvas layout (logical px, scale=3 so divide physical by 3):
+      const scale = 3;
+      const AMBER_H=5, HDR_PT=24, LOGO_D=64, LOGO_MB=10, CNAME_H=22, CNAME_MB=3,
+            DR_H=14, DR_MB=10, DIV_H=12, HDR_PB=16, PANEL_MX=16, STRIPE_H=3,
+            PANEL_PT=16, PC_LABEL_H=18, CASE_PT=10, CASE_LABEL=12, CASE_NUM=28,
+            CASE_PB=10, CASE_MB=16, ROW_H=40, HINT_H=12;
+      const hdrH = HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
+      const caseBoxH = CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
+      const panelTop = AMBER_H + hdrH;                              // top of white panel (logical px)
+      const row1Top  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB; // Patient Name row (no hint)
+      const row2Top  = row1Top + ROW_H;                             // Address row (📍) — starts here
+      const row3Top  = row2Top + ROW_H + HINT_H;                    // Phone row (📞) — address row height includes hint
+      const W_log = 360; // logical card width in px
+
+      // Convert logical px → mm
+      const toMM = (px: number) => (px / W_log) * PDF_W;
+      const panelX = toMM(PANEL_MX);
+      const panelW = toMM(W_log - PANEL_MX * 2);
+
+      // 📍 Address row — tappable maps link
+      doc.link(panelX, toMM(row2Top), panelW, toMM(ROW_H + HINT_H), { url: MAPS_URL });
+
+      // 📞 Phone row — tappable tel: link (opens dialler on mobile)
+      doc.link(panelX, toMM(row3Top), panelW, toMM(ROW_H + HINT_H), { url: "tel:+919638181875" });
+
+      // ── 5. Output as Blob ──
+      const pdfBlob = doc.output("blob");
+
+      const waNumber = rawDigits.length === 10
+        ? `91${rawDigits}`
+        : rawDigits.startsWith("91") && rawDigits.length === 12
+          ? rawDigits : rawDigits;
+
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const pdfFile = new File([pdfBlob], "manglam-patient-card.pdf", { type: "application/pdf" });
+
+      if (isMobile) {
+        if (
+          typeof navigator.share === "function" &&
+          typeof navigator.canShare === "function" &&
+          navigator.canShare({ files: [pdfFile] })
+        ) {
+          try {
+            await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
+            setSharing(false);
+            return;
+          } catch (e: any) {
+            if (e?.name === "AbortError") { setSharing(false); return; }
+          }
+        }
+        // Fallback: download PDF
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+
+      } else {
+        // Desktop: download PDF + open WhatsApp
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+        setShareError("✅ PDF downloaded! Attach it in the WhatsApp chat — the location link will be tappable.");
+      }
+    } catch (err: any) {
+      console.error("Card share error:", err);
+      setShareError("Could not generate card. Please try again.");
+    }
+    setSharing(false);
+  };
+
+  // Language options config
+  const LANGS: { id: CardLang; label: string; native: string; flag: string }[] = [
+    { id: "en", label: "English",  native: "English",  flag: "🇬🇧" },
+    { id: "hi", label: "Hindi",    native: "हिन्दी",    flag: "🇮🇳" },
+    { id: "gu", label: "Gujarati", native: "ગુજરાતી", flag: "🏵️" },
+  ];
 
   return (
     <AnimatePresence>
@@ -381,100 +862,175 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
           exit={{ scale: 0.85, opacity: 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 25 }}
           onClick={e => e.stopPropagation()}
-          className="w-full max-w-sm"
+          className="w-full max-w-xs"
         >
-          {/* ── Card ── */}
-          <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/30">
-            {/* Header */}
-            <div className="bg-gradient-to-br from-[#c45e10] via-[#d4711f] to-[#b84f0a] px-6 pt-6 pb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner">
-                  <span className="text-white font-black text-xl">M</span>
-                </div>
-                <div>
-                  <p className="text-white font-bold text-lg leading-tight">Manglam Clinic</p>
-                  <p className="text-orange-100 text-xs font-medium">Dr. Vijay Girglani | B.A.M.S.</p>
-                </div>
+          {/* ── Language tab strip ── */}
+          <div className="flex gap-1 mb-3 p-1 rounded-2xl" style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)" }}>
+            {LANGS.map(l => (
+              <button
+                key={l.id}
+                onClick={() => setLang(l.id)}
+                className="flex-1 py-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-0.5"
+                style={{
+                  background: lang === l.id ? "#ffffff" : "transparent",
+                  color: lang === l.id ? "#c45e10" : "rgba(255,255,255,0.7)",
+                  boxShadow: lang === l.id ? "0 2px 8px rgba(0,0,0,0.15)" : "none",
+                }}
+              >
+                <span style={{ fontSize: 16 }}>{l.flag}</span>
+                <span>{l.native}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* ── Card preview ── */}
+          <div ref={cardRef} className="rounded-3xl overflow-hidden shadow-2xl" style={{
+            background: "linear-gradient(180deg, #1a3a0f 0%, #1f4a12 50%, #0f2208 100%)",
+            position: "relative",
+          }}>
+            {/* Top amber bar */}
+            <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
+
+            {/* Decorative bg circles */}
+            <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", bottom: 60, left: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
+
+            {/* Clinic header */}
+            <div className="flex flex-col items-center pt-6 pb-4 px-5" style={{ position: "relative", zIndex: 1 }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: "50%",
+                background: "linear-gradient(135deg, #e07828, #b84f0a)",
+                boxShadow: "0 0 0 3px rgba(224,120,40,0.3), 0 0 18px rgba(224,120,40,0.25)",
+                display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10,
+              }}>
+                <span style={{ color: "#fff", fontFamily: "serif", fontWeight: 900, fontSize: 26 }}>M</span>
               </div>
-              <div className="mt-4 border-t border-white/20 pt-3">
-                <p className="text-orange-100/90 text-[10px] font-bold tracking-[0.2em] uppercase text-center">
-                  Ayurvedic &amp; General Practice
-                </p>
+              <p style={{ color: "#ffffff", fontFamily: "serif", fontWeight: 700, fontSize: 18, letterSpacing: 0.5, marginBottom: 3 }}>{L.clinicName}</p>
+              <p style={{ color: "#d4a574", fontStyle: "italic", fontSize: 10, marginBottom: 10 }}>{L.doctor}</p>
+              <div className="flex items-center gap-2 w-full">
+                <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
+                <p style={{ color: "rgba(212,165,116,0.8)", fontSize: 7, letterSpacing: "1.5px", whiteSpace: "nowrap" }}>{L.tagline}</p>
+                <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
               </div>
             </div>
 
-            {/* Body */}
-            <div className="bg-[#fdf8f3] px-6 py-5 space-y-4">
-              {/* PATIENT CARD label */}
-              <div className="flex justify-center">
-                <span className="border border-[#c45e10]/40 text-[#c45e10] text-[10px] font-bold tracking-widest uppercase px-4 py-1 rounded-full">
-                  Patient Card
-                </span>
-              </div>
+            {/* White panel */}
+            <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
+              <div style={{ height: 3, background: "linear-gradient(90deg, #c45e10, #e07828)" }} />
+              <div className="px-4 py-4" style={{ background: "#ffffff" }}>
+                <p style={{ textAlign: "center", fontSize: 8, fontWeight: 700, letterSpacing: "2px", color: "#7c3a0a", marginBottom: 10 }}>{L.patientCard}</p>
 
-              {/* Case Number */}
-              <div className="bg-[#f5ece0] rounded-2xl px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-0.5">Case Number</p>
-                  <p className="text-2xl font-black text-[#c45e10] tracking-wide font-mono">{caseNo}</p>
+                <div className="rounded-xl px-3 py-2.5 mb-4" style={{ background: "#fdf0e6" }}>
+                  <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1.5px", color: "#b8825a", marginBottom: 4 }}>{L.caseNo}</p>
+                  <p style={{ fontSize: 20, fontWeight: 900, fontFamily: "monospace", color: "#c45e10", letterSpacing: 1 }}>{caseNo}</p>
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-[#c45e10]">
-                  <WalletCards className="w-5 h-5" />
-                </div>
-              </div>
 
-              {/* Patient info rows */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Patient Name</span>
-                  <span className="text-sm font-bold text-slate-800">{patient.name}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Mobile</span>
-                  <span className="text-sm font-mono text-slate-700">{mobile}</span>
-                </div>
-                <div className="h-px bg-slate-200" />
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1 mt-0.5 shrink-0">
-                    <MapPin className="w-2.5 h-2.5" /> Address
-                  </span>
-                  <span className="text-sm font-semibold text-slate-700 text-right">{patient.address || "Manglam Hospital, Morbi"}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
-                    <Phone className="w-2.5 h-2.5" /> Clinic Phone
-                  </span>
-                  <span className="text-sm font-mono text-slate-600">+91 XXXXX XXXXX</span>
-                </div>
+                {[
+                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null,                        hint: null },
+                  { icon: "📍", label: L.address,     value: patient.address || CLINIC_ADDRESS, href: "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D", hint: L.tapForLocation },
+                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: `tel:+91${CLINIC_MOBILE}`,          hint: L.tapToCall },
+                ].map((row, i, arr) => (
+                  <div key={i}>
+                    <div className="flex items-center gap-2 py-2">
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
+                        {row.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{row.label}</p>
+                        {row.href ? (
+                          <>
+                            <a
+                              href={row.href}
+                              target={row.href.startsWith("tel:") ? undefined : "_blank"}
+                              rel={row.href.startsWith("tel:") ? undefined : "noopener noreferrer"}
+                              style={{ fontSize: 11, fontWeight: 700, color: "#c45e10", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", textDecoration: "underline", textDecorationColor: "rgba(196,94,16,0.4)", textUnderlineOffset: 2 }}
+                            >{row.value}</a>
+                            {row.hint && (
+                              <p style={{ fontSize: 7.5, fontWeight: 600, color: "#15803d", marginTop: 2, lineHeight: 1.3 }}>{row.hint}</p>
+                            )}
+                          </>
+                        ) : (
+                          <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
+                        )}
+                      </div>
+                    </div>
+                    {i < arr.length - 1 && <div style={{ height: 1, background: "#f1f5f9" }} />}
+                  </div>
+                ))}
               </div>
             </div>
 
             {/* Footer */}
-            <div className="bg-[#2d5a1b] px-6 py-4 flex items-center justify-between">
-              <div>
-                <p className="text-white font-bold text-sm">Manglam Hospital</p>
-                <p className="text-green-200 text-xs">Morbi, Gujarat</p>
-              </div>
-              <p className="text-green-200 text-xs text-right leading-tight">
-                Show this card<br />on your next visit
-              </p>
+            <div className="pb-4 px-4 flex flex-col items-center gap-0.5" style={{ position: "relative", zIndex: 1 }}>
+              <p style={{ fontSize: 8, fontWeight: 700, letterSpacing: "1.5px", color: "rgba(212,165,116,0.75)" }}>{L.footer}</p>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)" }}>{L.footerSub}</p>
             </div>
+
+            <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
           </div>
 
+          {/* hint */}
+          {shareError && (
+            <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
+              style={{ background: shareError.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)", color: shareError.startsWith("✅") ? "#15803d" : "#92400e", border: `1px solid ${shareError.startsWith("✅") ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.3)"}` }}>
+              {shareError}
+            </div>
+          )}
+
+          {/* ── Language picker overlay (shown before share) ── */}
+          <AnimatePresence>
+            {showLangPicker && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                className="mt-3 rounded-2xl overflow-hidden shadow-xl"
+                style={{ background: "#fff", border: "1px solid rgba(196,94,16,0.2)" }}
+              >
+                <p style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#7c3a0a", padding: "10px 16px 6px", letterSpacing: "1px" }}>
+                  CHOOSE LANGUAGE TO SHARE
+                </p>
+                {LANGS.map(l => (
+                  <button
+                    key={l.id}
+                    onClick={() => doShare(l.id)}
+                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-orange-50 transition-colors"
+                    style={{ borderTop: "1px solid #f1f5f9" }}
+                  >
+                    <span style={{ fontSize: 20 }}>{l.flag}</span>
+                    <div className="text-left">
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{l.label}</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8" }}>{l.native}</p>
+                    </div>
+                    <span style={{ marginLeft: "auto", fontSize: 13, color: "#c45e10" }}>→</span>
+                  </button>
+                ))}
+                <button
+                  onClick={() => setShowLangPicker(false)}
+                  className="w-full py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors"
+                  style={{ borderTop: "1px solid #f1f5f9" }}
+                >
+                  Cancel
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* ── Action buttons ── */}
-          <div className="mt-4 flex gap-3">
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 rounded-2xl bg-white/90 backdrop-blur text-slate-600 font-semibold text-sm hover:bg-white transition-all shadow">
-              Close
-            </button>
-            <button
-              onClick={sendWhatsApp}
-              className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30">
-              <MessageSquare className="w-4 h-4" />
-              Send on WhatsApp
-            </button>
-          </div>
+          {!showLangPicker && (
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={onClose}
+                className="flex-1 py-3 rounded-2xl bg-white/90 backdrop-blur text-slate-600 font-semibold text-sm hover:bg-white transition-all shadow">
+                Close
+              </button>
+              <button
+                onClick={() => setShowLangPicker(true)}
+                disabled={sharing}
+                className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30 disabled:opacity-70">
+                {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                {sharing ? "Capturing…" : patientWaLabel}
+              </button>
+            </div>
+          )}
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -483,6 +1039,8 @@ function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () 
 
 export default function Home() {
   const { toast } = useToast();
+  const refreshLooseSalesRef = useRef<() => void>(() => {});
+  const { pushUndo } = useUndoManager(toast, () => refreshLooseSalesRef.current());
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [patientHistory, setPatientHistory] = useState<Patient[]>([]);
   const [historyName, setHistoryName] = useState("");
@@ -505,6 +1063,9 @@ export default function Home() {
   const [showNameDropdown, setShowNameDropdown] = useState(false);
   const [pendingFees, setPendingFees] = useState<PendingEntry[]>(() => getPendingFees());
   const [feesMarkedPending, setFeesMarkedPending] = useState(false);
+  const [pendingAmount, setPendingAmount] = useState<string>("");
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [pendingAlert, setPendingAlert] = useState<PendingEntry | null>(null);
   const refreshPending = () => setPendingFees(getPendingFees());
 
   // ── Loose Medicine Sales state ──
@@ -513,6 +1074,7 @@ export default function Home() {
   const [looseProduct, setLooseProduct]     = useState("");
   const [looseAmount, setLooseAmount]       = useState("");
   const refreshLooseSales = () => setLooseSales(getLooseSales(getLiveToday()));
+  refreshLooseSalesRef.current = refreshLooseSales;
   const looseTodayTotal = looseSales.reduce((s, e) => s + e.amount, 0);
 
   // ── Auto-refresh at midnight so the panel resets without page reload ──
@@ -532,6 +1094,7 @@ export default function Home() {
       date: getLiveToday(),
       time: format(new Date(), "hh:mm a"),
     };
+    pushUndo(`Undo loose sale: ${product} ₹${amount}`);
     addLooseSale(entry);
     refreshLooseSales();
     setLooseProduct("");
@@ -539,6 +1102,8 @@ export default function Home() {
   };
 
   const handleRemoveLooseSale = (id: string) => {
+    const entry = looseSales.find(e => e.id === id);
+    pushUndo(`Undo delete loose sale: ${entry?.product ?? "item"}`);
     removeLooseSale(id);
     refreshLooseSales();
   };
@@ -574,6 +1139,7 @@ export default function Home() {
   const nameValue = form.watch("name");
   const complaintValue = form.watch("complaint");
   const paymentModeValue = form.watch("paymentMode");
+  const feesValue = form.watch("fees");
 
   // Live dropdown: watch name field, search on every keystroke
   useEffect(() => {
@@ -636,6 +1202,10 @@ export default function Home() {
     setPatientHistory(result.history);
     setFilterMode("history");
     setIsLookingUp(false);
+    if (result.latestInfo) {
+      const match = getPendingFees().find(e => e.mobile.replace(/\D/g,"") === mobile.replace(/\D/g,""));
+      if (match) setPendingAlert(match);
+    }
   }, [form, toast]);
 
   const runNameLookup = useCallback(() => {
@@ -660,6 +1230,10 @@ export default function Home() {
     setPatientHistory(result.history);
     setFilterMode("history");
     setIsLookingUp(false);
+    if (result.latestInfo) {
+      const match = getPendingFees().find(e => e.mobile.replace(/\D/g,"") === result.latestInfo!.mobile.replace(/\D/g,""));
+      if (match) setPendingAlert(match);
+    }
   }, [form, toast]);
 
   // When user clicks a suggestion: autofill all fields + load history
@@ -679,6 +1253,8 @@ export default function Home() {
     setHistoryMobile(s.mobile);
     setFilterMode("history");
     toast({ title: "Patient found", description: `${s.visitCount} visit(s) found.` });
+    const match = getPendingFees().find(e => e.mobile.replace(/\D/g,"") === s.mobile.replace(/\D/g,""));
+    if (match) setPendingAlert(match);
   }, [form, toast]);
 
   // ── Google Sheet handlers ──
@@ -774,6 +1350,8 @@ export default function Home() {
   const savePatient = (data: PatientFormValues, registerType: "general" | "ayurvedic") => {
     const visitDate = data.visitDate || todayStr;
     const autoPatientNo = getNextPatientNo(visitDate);
+    // Push undo: snapshot taken before save, restores on Ctrl+Z
+    pushUndo(`Undo save for ${data.name}`);
     const saved = addPatient({
       name: data.name, mobile: data.mobile, patientNo: autoPatientNo,
       age: data.age || 0, ageMonths: data.ageMonths || 0,
@@ -785,17 +1363,20 @@ export default function Home() {
       attachments, registerType, visitDate,
     });
     if (feesMarkedPending && saved.fees > 0) {
-      addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: saved.fees, date: visitDate, markedAt: new Date().toISOString() });
+      const pendingVal = pendingAmount.trim() !== "" ? Number(pendingAmount) : saved.fees;
+      const finalPending = (!isNaN(pendingVal) && pendingVal > 0) ? pendingVal : saved.fees;
+      addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: finalPending, date: visitDate, markedAt: new Date().toISOString() });
       refreshPending();
     }
     setLastSaved(saved);
     setFeesMarkedPending(false);
+    setPendingAmount("");
     toast({
       title: "Saved!",
       description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
     });
-    // Auto-push this single record to cloud silently
-    pushToCloud([saved]).then(() => { setLastSync(); setLastSyncTime(getLastSync()); }).catch(() => {});
+    // Silent auto-push to cloud on every save
+    pushToCloud([saved]).then(() => { setLastSyncStorage(); setLastSyncTime(getLastSync()); }).catch(() => {});
     form.reset({ ...emptyDefaults, visitDate });
     if (mobileRef.current) mobileRef.current.value = "";
     if (nameRef.current) nameRef.current.value = "";
@@ -812,12 +1393,13 @@ export default function Home() {
   const handleCloudPush = async () => {
     setCloudSyncing(true);
     setCloudStatus("pushing");
-    setCloudMsg("Uploading your records to cloud...");
+    setCloudMsg("Uploading your records to cloud…");
     try {
-      // Get all patients from local store
-      const allLocal = getAllLocalPatients();
+      const allLocal: any[] = (() => {
+        try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; }
+      })();
       const { pushed } = await pushToCloud(allLocal);
-      setLastSync();
+      setLastSyncStorage();
       setLastSyncTime(getLastSync());
       setCloudStatus("done");
       setCloudMsg(`✅ ${pushed} record(s) uploaded successfully!`);
@@ -832,27 +1414,27 @@ export default function Home() {
   const handleCloudPull = async () => {
     setCloudSyncing(true);
     setCloudStatus("pulling");
-    setCloudMsg("Downloading records from cloud...");
+    setCloudMsg("Downloading records from cloud…");
     try {
       const cloudRecords = await pullFromCloud();
+      const existing: any[] = (() => {
+        try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; }
+      })();
+      const existingKeys = new Set(existing.map((p: any) => `${p.mobile}_${p.visitDate}_${p.patientNo}`));
       let imported = 0;
       for (const rec of cloudRecords) {
         const local = fromCloud(rec);
-        // Only import if not already present (by mobile+visitDate+patientNo key)
-        const existing = getAllLocalPatients();
         const key = `${local.mobile}_${local.visitDate}_${local.patientNo}`;
-        const alreadyExists = existing.some(
-          (p: any) => `${p.mobile}_${p.visitDate}_${p.patientNo}` === key
-        );
-        if (!alreadyExists) {
+        if (!existingKeys.has(key)) {
           addPatient(local);
+          existingKeys.add(key);
           imported++;
         }
       }
-      setLastSync();
+      setLastSyncStorage();
       setLastSyncTime(getLastSync());
       setCloudStatus("done");
-      setCloudMsg(`✅ ${cloudRecords.length} record(s) in cloud. ${imported} new record(s) imported.`);
+      setCloudMsg(`✅ ${cloudRecords.length} in cloud · ${imported} new record(s) imported to this device!`);
     } catch (e: any) {
       setCloudStatus("error");
       setCloudMsg(`❌ Download failed: ${e.message}`);
@@ -864,6 +1446,65 @@ export default function Home() {
   const onSubmit = (data: PatientFormValues) => savePatient(data, "general");
   const onSaveAyurvedic = () => form.handleSubmit(data => savePatient(data, "ayurvedic"))();
 
+  // ── Global Search state ──
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+
+  // ── Keyboard Shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+      // Ctrl+F — Global Search (works even in inputs)
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault();
+        setShowGlobalSearch(true);
+        return;
+      }
+      // Ctrl+S — Save General (skip if typing in input)
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        form.handleSubmit(onSubmit)();
+        return;
+      }
+      // Ctrl+N — New patient (clear form)
+      if ((e.ctrlKey || e.metaKey) && e.key === "n") {
+        if (inInput) return;
+        e.preventDefault();
+        const visitDate = form.getValues("visitDate") || todayStr;
+        form.reset({ ...emptyDefaults, visitDate });
+        if (mobileRef.current) mobileRef.current.value = "";
+        if (nameRef.current) nameRef.current.value = "";
+        setAttachments([]);
+        setPatientHistory([]);
+        setHistoryName("");
+        setHistoryMobile("");
+        setSelectedPADisease(null);
+        setPaMatches([]);
+        setShowPAPanel(false);
+        toast({ title: "🆕 New Patient", description: "Form cleared. Ready for next patient." });
+        return;
+      }
+      // Ctrl+P — Print last saved
+      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
+        if (inInput) return;
+        e.preventDefault();
+        if (lastSaved) {
+          printPatientPrescription(lastSaved);
+        } else {
+          toast({ title: "Nothing to print", description: "Save a patient first." });
+        }
+        return;
+      }
+      // Escape — close global search
+      if (e.key === "Escape") {
+        setShowGlobalSearch(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [form, lastSaved, toast, onSubmit]);
+
   // Register mobile/name with RHF but also attach our DOM ref
   const { ref: mobileRHFRef, ...mobileRest } = form.register("mobile");
   const { ref: nameRHFRef, ...nameRest } = form.register("name");
@@ -872,8 +1513,9 @@ export default function Home() {
     <Layout>
       {lastSaved && <PrintPrescription patient={lastSaved} />}
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
+      {showGlobalSearch && <GlobalSearchModal onClose={() => setShowGlobalSearch(false)} />}
 
-      {/* ── Cloud Sync Modal ──────────────────────────────────────────────── */}
+      {/* ── Cloud Sync Modal ── */}
       <AnimatePresence>
         {showSyncModal && (
           <motion.div
@@ -899,6 +1541,9 @@ export default function Home() {
                     <p className="text-white font-bold text-lg leading-tight">Cloud Sync</p>
                     <p className="text-blue-100 text-xs">PC ↔ Mobile — Always in sync</p>
                   </div>
+                  <button onClick={() => setShowSyncModal(false)} className="ml-auto p-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
 
@@ -907,10 +1552,8 @@ export default function Home() {
                 {/* Device badge */}
                 <div className="flex items-center justify-between bg-slate-50 rounded-2xl px-4 py-3">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">This device</span>
-                  <span className="text-sm font-bold text-slate-700 capitalize flex items-center gap-1.5">
-                    {getDeviceLabel() === "mobile"
-                      ? <><span className="text-lg">📱</span> Mobile</>
-                      : <><span className="text-lg">💻</span> PC / Desktop</>}
+                  <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+                    {getDeviceLabel() === "mobile" ? <><span>📱</span> Mobile</> : <><span>💻</span> PC / Desktop</>}
                   </span>
                 </div>
 
@@ -935,13 +1578,13 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* How it works */}
+                {/* How it works info */}
                 {cloudStatus === "idle" && (
-                  <div className="bg-amber-50 rounded-2xl px-4 py-3 space-y-1.5">
-                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">How to sync</p>
-                    <p className="text-xs text-amber-800">1. On <strong>PC</strong> → tap <strong>Upload to Cloud</strong> to save all records</p>
-                    <p className="text-xs text-amber-800">2. On <strong>Mobile</strong> → tap <strong>Download from Cloud</strong> to get them</p>
-                    <p className="text-xs text-amber-800">3. Works both ways — any device can push or pull!</p>
+                  <div className="bg-amber-50 rounded-2xl px-4 py-3 space-y-1.5 border border-amber-100">
+                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">How to sync</p>
+                    <p className="text-xs text-amber-800">1. On <strong>any device</strong> → tap <strong>Upload</strong> to send records to cloud</p>
+                    <p className="text-xs text-amber-800">2. On <strong>other device</strong> → tap <strong>Download</strong> to receive them</p>
+                    <p className="text-xs text-amber-800 mt-1">💡 Every patient save also auto-uploads silently!</p>
                   </div>
                 )}
 
@@ -950,22 +1593,22 @@ export default function Home() {
                   <button
                     onClick={handleCloudPush}
                     disabled={cloudSyncing}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg shadow-blue-300/40 disabled:opacity-50"
+                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg shadow-blue-300/30 disabled:opacity-50"
                   >
                     {cloudSyncing && cloudStatus === "pushing"
                       ? <Loader2 className="w-4 h-4 animate-spin" />
                       : <CloudUpload className="w-4 h-4" />}
-                    Upload to Cloud (this device → cloud)
+                    Upload to Cloud (this device → ☁️)
                   </button>
                   <button
                     onClick={handleCloudPull}
                     disabled={cloudSyncing}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-emerald-600 hover:to-teal-700 transition-all shadow-lg shadow-emerald-300/40 disabled:opacity-50"
+                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-emerald-600 hover:to-teal-700 transition-all shadow-lg shadow-emerald-300/30 disabled:opacity-50"
                   >
                     {cloudSyncing && cloudStatus === "pulling"
                       ? <Loader2 className="w-4 h-4 animate-spin" />
                       : <CloudDownload className="w-4 h-4" />}
-                    Download from Cloud (cloud → this device)
+                    Download from Cloud (☁️ → this device)
                   </button>
                   <button
                     onClick={() => setShowSyncModal(false)}
@@ -995,6 +1638,13 @@ export default function Home() {
               </div>
               {/* Sheet action buttons */}
               <div className="ml-auto flex items-center gap-2">
+                <button type="button" onClick={() => setShowGlobalSearch(true)}
+                  title="Global Search (Ctrl+F)"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all text-sm font-semibold">
+                  <Search className="w-4 h-4" />
+                  <span className="hidden sm:inline">Search</span>
+                  <kbd className="hidden sm:inline px-1 py-0.5 rounded bg-white border border-slate-200 text-xs font-mono text-slate-400">Ctrl+F</kbd>
+                </button>
                 <button type="button" onClick={handleSync}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all shadow-md shadow-emerald-200">
                   {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -1005,14 +1655,27 @@ export default function Home() {
                   className="p-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-all">
                   <Sheet className="w-4 h-4" />
                 </button>
-                {/* Cloud Sync button */}
-                <button type="button" onClick={() => { setCloudStatus("idle"); setCloudMsg(""); setShowSyncModal(true); }}
+                <button type="button"
+                  onClick={() => { setCloudStatus("idle"); setCloudMsg(""); setShowSyncModal(true); }}
                   title="Cloud Sync — PC ↔ Mobile"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md shadow-blue-200">
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md shadow-blue-200 relative">
                   <Cloud className="w-4 h-4" />
-                  <span className="hidden sm:inline">Cloud Sync</span>
+                  <span className="hidden sm:inline">Cloud</span>
+                  {lastSyncTime && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-400 border border-white" title="Synced" />
+                  )}
                 </button>
               </div>
+            </div>
+
+            {/* Keyboard shortcuts hint bar */}
+            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-400">
+              <span className="flex items-center gap-1"><Keyboard className="w-3 h-3" /> Shortcuts:</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+S</kbd> Save General</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+N</kbd> New Patient</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+P</kbd> Print Last</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+F</kbd> Search</span>
+              <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+Z</kbd> Undo</span>
             </div>
 
             {/* Sheet connected banner */}
@@ -1233,7 +1896,7 @@ export default function Home() {
                         </button>
                       </div>
                       <button type="button"
-                        onClick={() => setFeesMarkedPending(p => !p)}
+                        onClick={() => { setFeesMarkedPending(p => !p); setPendingAmount(""); }}
                         title={feesMarkedPending ? "Click to unmark pending" : "Mark fees as pending"}
                         className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border font-semibold text-xs transition-all ${
                           feesMarkedPending
@@ -1245,9 +1908,37 @@ export default function Home() {
                       </button>
                     </div>
                     {feesMarkedPending && (
-                      <p className="text-xs text-amber-600 flex items-center gap-1">
-                        <Hourglass className="w-3 h-3" /> Fees will be saved as pending after form submission
-                      </p>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                          <Hourglass className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">Pending Amount (₹)</p>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 font-bold text-xs">₹</span>
+                              <input
+                                type="number" min={0}
+                                value={pendingAmount}
+                                onChange={e => setPendingAmount(e.target.value)}
+                                placeholder={`Full (₹${feesValue || 0})`}
+                                className="w-full pl-6 pr-3 py-1.5 rounded-lg border border-amber-300 bg-white text-sm font-bold text-amber-800 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 placeholder:text-amber-300 placeholder:font-normal"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        {pendingAmount.trim() !== "" && Number(pendingAmount) > 0 && Number(feesValue) > 0 ? (
+                          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs">
+                            <span className="flex items-center gap-1 text-emerald-600 font-bold">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Paid: ₹{Math.max(0, Number(feesValue) - Number(pendingAmount))}
+                            </span>
+                            <span className="text-slate-300">|</span>
+                            <span className="flex items-center gap-1 text-amber-600 font-bold">
+                              <Hourglass className="w-3.5 h-3.5" /> Pending: ₹{Number(pendingAmount)}
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-amber-500 px-1">Leave blank to mark full amount (₹{feesValue || 0}) as pending</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1728,54 +2419,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* ── PENDING FEES PANEL ── */}
-            <div className="medical-card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500">
-                <div className="flex items-center gap-2">
-                  <WalletCards className="w-4 h-4 text-white" />
-                  <span className="font-semibold text-sm text-white">Pending Fees</span>
-                  {pendingFees.length > 0 && (
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white text-amber-600">{pendingFees.length}</span>
-                  )}
-                </div>
-                {pendingFees.length > 0 && (
-                  <span className="text-xs font-bold text-white">
-                    Total: ₹{pendingFees.reduce((s, e) => s + e.fees, 0)}
-                  </span>
-                )}
-              </div>
-              {pendingFees.length === 0 ? (
-                <div className="px-4 py-6 text-center text-slate-400">
-                  <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-300" />
-                  <p className="text-xs font-medium">No pending fees</p>
-                  <p className="text-xs mt-1 text-slate-300">Use "Mark Pending" in the fees field</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-amber-50 max-h-64 overflow-y-auto">
-                  {pendingFees.map((e, i) => (
-                    <div key={e.patientId} className="flex items-center gap-2 px-3 py-2.5 hover:bg-amber-50/50 transition-colors">
-                      <span className="text-xs text-slate-400 w-4 shrink-0">{i + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-xs text-slate-900 truncate">{e.name}</p>
-                        <p className="text-[10px] font-mono text-slate-400">{e.mobile} · {format(new Date(e.date + "T00:00:00"), "dd MMM")}</p>
-                      </div>
-                      <span className="font-bold text-amber-600 text-sm shrink-0">₹{e.fees}</span>
-                      <button
-                        onClick={() => { removePendingFee(e.patientId); refreshPending(); toast({ title: "Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
-                        title="Mark as paid"
-                        className="shrink-0 p-1.5 rounded-lg bg-emerald-100 text-emerald-600 hover:bg-emerald-200 transition-colors">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                  <div className="px-3 py-2 bg-amber-50 flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-600">Total Pending</span>
-                    <span className="font-bold text-amber-600">₹{pendingFees.reduce((s, e) => s + e.fees, 0)}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
           </div>
         </div>
       </div>
@@ -1863,6 +2506,177 @@ export default function Home() {
                     <span className="text-xs text-emerald-600 font-semibold shrink-0">Fill →</span>
                   </button>
                 ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── PENDING FEES FLOATING BUTTON ── */}
+      <motion.button
+        onClick={() => { refreshPending(); setShowPendingModal(true); }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 px-4 py-3 rounded-2xl font-bold text-sm text-white shadow-2xl"
+        style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)", boxShadow: "0 8px 32px rgba(245,158,11,0.5)" }}
+      >
+        <WalletCards className="w-5 h-5" />
+        <span>Pending Fees</span>
+        {pendingFees.length > 0 && (
+          <motion.span
+            key={pendingFees.length}
+            initial={{ scale: 1.5 }}
+            animate={{ scale: 1 }}
+            className="w-5 h-5 rounded-full bg-white text-amber-600 text-[11px] font-black flex items-center justify-center"
+          >
+            {pendingFees.length}
+          </motion.span>
+        )}
+      </motion.button>
+
+      {/* ── PENDING FEES POPUP MODAL ── */}
+      <AnimatePresence>
+        {showPendingModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={() => setShowPendingModal(false)}
+          >
+            <motion.div
+              initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 320, damping: 28 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4" style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)" }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                    <WalletCards className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-white text-base leading-none">Pending Fees</p>
+                    <p className="text-amber-100 text-xs mt-0.5">{pendingFees.length} patient{pendingFees.length !== 1 ? "s" : ""}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {pendingFees.length > 0 && (
+                    <div className="text-right">
+                      <p className="text-[10px] text-amber-100 font-semibold uppercase tracking-wide">Total</p>
+                      <p className="text-white font-black text-xl leading-none">₹{pendingFees.reduce((s, e) => s + e.fees, 0).toLocaleString("en-IN")}</p>
+                    </div>
+                  )}
+                  <button onClick={() => setShowPendingModal(false)} className="w-8 h-8 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
+                    <X className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+              {/* Body */}
+              {pendingFees.length === 0 ? (
+                <div className="px-6 py-14 flex flex-col items-center text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                  </div>
+                  <p className="font-bold text-slate-700 text-base">All cleared!</p>
+                  <p className="text-slate-400 text-sm mt-1">No pending fees at the moment.</p>
+                </div>
+              ) : (
+                <div className="max-h-[55vh] overflow-y-auto divide-y divide-slate-100">
+                  {pendingFees.map((e, i) => (
+                    <div key={e.patientId} className="flex items-center gap-3 px-5 py-3.5 hover:bg-amber-50/40 transition-colors">
+                      <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-black text-amber-600">{i + 1}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-900 text-sm truncate">{e.name}</p>
+                        <p className="text-[11px] font-mono text-slate-400 mt-0.5">{e.mobile} · {format(new Date(e.date + "T00:00:00"), "dd MMM yyyy")}</p>
+                      </div>
+                      <p className="font-black text-amber-600 text-base shrink-0">₹{e.fees.toLocaleString("en-IN")}</p>
+                      <button
+                        onClick={() => { removePendingFee(e.patientId); refreshPending(); setPendingAlert(null); toast({ title: "✅ Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
+                        className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-bold text-xs transition-colors"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Paid
+                      </button>
+                    </div>
+                  ))}
+                  <div className="px-5 py-3 bg-amber-50 flex justify-between items-center sticky bottom-0">
+                    <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                      <Hourglass className="w-3.5 h-3.5 text-amber-500" /> Total Pending
+                    </span>
+                    <span className="font-black text-amber-600 text-base">₹{pendingFees.reduce((s, e) => s + e.fees, 0).toLocaleString("en-IN")}</span>
+                  </div>
+                </div>
+              )}
+              <div className="px-5 py-4 border-t border-slate-100">
+                <button onClick={() => setShowPendingModal(false)}
+                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── PENDING FEES ALERT (auto-pops on 2nd visit) ── */}
+      <AnimatePresence>
+        {pendingAlert && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={() => setPendingAlert(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: -20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 350, damping: 25 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"
+              style={{ border: "3px solid #f59e0b" }}
+            >
+              <div className="px-5 pt-7 pb-4 flex flex-col items-center text-center" style={{ background: "linear-gradient(160deg, #fffbeb, #fff7ed)" }}>
+                <motion.div
+                  animate={{ rotate: [0, -10, 10, -10, 10, 0] }}
+                  transition={{ duration: 0.55, delay: 0.15 }}
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-lg"
+                  style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)" }}
+                >
+                  <Hourglass className="w-8 h-8 text-white" />
+                </motion.div>
+                <p className="text-[11px] font-black uppercase tracking-widest text-amber-500 mb-1">⚠️ Pending Fees Alert</p>
+                <h3 className="text-xl font-black text-slate-900">{pendingAlert.name}</h3>
+                <p className="text-sm text-slate-400 mt-0.5 font-mono">{pendingAlert.mobile}</p>
+              </div>
+              <div className="mx-5 my-4 rounded-2xl p-4 flex items-center gap-4" style={{ background: "linear-gradient(135deg, #fef3c7, #fde68a)" }}>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-amber-600 uppercase tracking-wide">Outstanding Amount</p>
+                  <p className="text-3xl font-black text-amber-700 mt-1">₹{pendingAlert.fees.toLocaleString("en-IN")}</p>
+                  <p className="text-[11px] text-amber-500 mt-1">Since {format(new Date(pendingAlert.date + "T00:00:00"), "dd MMM yyyy")}</p>
+                </div>
+                <IndianRupee className="w-10 h-10 text-amber-400 opacity-60 shrink-0" />
+              </div>
+              <p className="text-center text-xs text-slate-400 px-5 pb-3">This patient has unpaid fees from a previous visit</p>
+              <div className="px-5 pb-5 flex gap-3">
+                <button
+                  onClick={() => setPendingAlert(null)}
+                  className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors"
+                >
+                  Remind Later
+                </button>
+                <button
+                  onClick={() => {
+                    removePendingFee(pendingAlert.patientId);
+                    refreshPending();
+                    setPendingAlert(null);
+                    toast({ title: "✅ Fees Cleared", description: `${pendingAlert.name}'s pending fees marked as paid.` });
+                  }}
+                  className="flex-[2] py-3 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 shadow-lg transition-all hover:opacity-90"
+                  style={{ background: "linear-gradient(135deg, #10b981, #059669)" }}
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Mark as Paid
+                </button>
               </div>
             </motion.div>
           </motion.div>
