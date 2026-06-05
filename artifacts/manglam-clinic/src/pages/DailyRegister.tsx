@@ -821,7 +821,12 @@ Manglam Hospital, Morbi`;
                             className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
                             <Printer className="w-4 h-4" />
                           </button>
-                          <button onClick={() => setEditingPatient(p)}
+                          <button
+                            onClick={() => {
+                              localStorage.setItem("manglam_edit_patient", JSON.stringify(p));
+                              window.location.href = "/";
+                            }}
+                            title="Edit on Home screen"
                             className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
                             <Edit2 className="w-4 h-4" />
                           </button>
