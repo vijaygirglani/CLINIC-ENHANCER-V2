@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Layout } from "@/components/Layout";
 import {
-  addPatient, lookupByMobile, lookupByName, findComplaintCode,
+  addPatient, updatePatient, lookupByMobile, lookupByName, findComplaintCode,
   getNextPatientNo, getNextCaseNo, lookupByComplaint, lookupByAddress,
   searchPatientSuggestions,
   type Patient, type PatientSuggestion,
@@ -1349,32 +1349,59 @@ export default function Home() {
 
   const savePatient = (data: PatientFormValues, registerType: "general" | "ayurvedic") => {
     const visitDate = data.visitDate || todayStr;
-    const autoPatientNo = getNextPatientNo(visitDate);
-    // Push undo: snapshot taken before save, restores on Ctrl+Z
     pushUndo(`Undo save for ${data.name}`);
-    const saved = addPatient({
-      name: data.name, mobile: data.mobile, patientNo: autoPatientNo,
-      age: data.age || 0, ageMonths: data.ageMonths || 0,
-      weight: data.weight || "", address: data.address || "",
-      complaintCode: data.complaintCode || "", complaint: data.complaint || "",
-      treatment: data.treatment || "", advice: data.advice || "",
-      reports: data.reports || "", fees: Number(data.fees || 0),
-      paymentMode: data.paymentMode || "cash",
-      attachments, registerType, visitDate,
-    });
-    if (feesMarkedPending && saved.fees > 0) {
-      const pendingVal = pendingAmount.trim() !== "" ? Number(pendingAmount) : saved.fees;
-      const finalPending = (!isNaN(pendingVal) && pendingVal > 0) ? pendingVal : saved.fees;
-      addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: finalPending, date: visitDate, markedAt: new Date().toISOString() });
-      refreshPending();
+
+    let saved: Patient;
+    if (editingPatientId !== null) {
+      // ── UPDATE existing record ──
+      updatePatient(editingPatientId, {
+        name: data.name, mobile: data.mobile,
+        age: data.age || 0, ageMonths: data.ageMonths || 0,
+        weight: data.weight || "", address: data.address || "",
+        complaintCode: data.complaintCode || "", complaint: data.complaint || "",
+        treatment: data.treatment || "", advice: data.advice || "",
+        reports: data.reports || "", fees: Number(data.fees || 0),
+        paymentMode: data.paymentMode || "cash",
+        registerType, visitDate,
+      });
+      // Re-read the updated record to use as `saved`
+      const allPatients: Patient[] = (() => {
+        try { return JSON.parse(localStorage.getItem("manglam_patients") || "[]"); } catch { return []; }
+      })();
+      const updated = allPatients.find((p: Patient) => p.id === editingPatientId);
+      saved = updated ?? ({ ...data, id: editingPatientId, visitDate, registerType, patientNo: "" } as any);
+      setEditingPatientId(null);
+      toast({
+        title: "✅ Updated!",
+        description: `${data.name}'s record updated in ${registerType === "ayurvedic" ? "Ayurvedic" : "Daily"} Register.`,
+      });
+    } else {
+      // ── NEW record ──
+      const autoPatientNo = getNextPatientNo(visitDate);
+      saved = addPatient({
+        name: data.name, mobile: data.mobile, patientNo: autoPatientNo,
+        age: data.age || 0, ageMonths: data.ageMonths || 0,
+        weight: data.weight || "", address: data.address || "",
+        complaintCode: data.complaintCode || "", complaint: data.complaint || "",
+        treatment: data.treatment || "", advice: data.advice || "",
+        reports: data.reports || "", fees: Number(data.fees || 0),
+        paymentMode: data.paymentMode || "cash",
+        attachments, registerType, visitDate,
+      });
+      if (feesMarkedPending && saved.fees > 0) {
+        const pendingVal = pendingAmount.trim() !== "" ? Number(pendingAmount) : saved.fees;
+        const finalPending = (!isNaN(pendingVal) && pendingVal > 0) ? pendingVal : saved.fees;
+        addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: finalPending, date: visitDate, markedAt: new Date().toISOString() });
+        refreshPending();
+      }
+      toast({
+        title: "Saved!",
+        description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
+      });
     }
     setLastSaved(saved);
     setFeesMarkedPending(false);
     setPendingAmount("");
-    toast({
-      title: "Saved!",
-      description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
-    });
     pushToCloud([saved]).then(() => { setLastSyncStorage(); setLastSyncTime(getLastSync()); }).catch(() => {});
     form.reset({ ...emptyDefaults, visitDate });
     if (mobileRef.current) mobileRef.current.value = "";
@@ -1421,6 +1448,9 @@ export default function Home() {
 
   // ── Global Search state ──
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+
+  // ── Edit-from-DailyRegister state ──
+  const [editingPatientId, setEditingPatientId] = useState<number | null>(null);
 
   // ── Keyboard Shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1478,6 +1508,47 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handler);
   }, [form, lastSaved, toast, onSubmit]);
 
+  // ── Pre-fill form when navigating from DailyRegister Edit ────────────────
+  useEffect(() => {
+    const raw = localStorage.getItem("manglam_edit_patient");
+    if (!raw) return;
+    try {
+      const p: Patient = JSON.parse(raw);
+      localStorage.removeItem("manglam_edit_patient");
+      setEditingPatientId(p.id);
+      // Fill all form fields
+      form.reset({
+        name: p.name || "",
+        mobile: p.mobile || "",
+        age: p.age || 0,
+        ageMonths: p.ageMonths || 0,
+        weight: p.weight || "",
+        address: p.address || "",
+        complaintCode: p.complaintCode || "",
+        complaint: p.complaint || "",
+        treatment: p.treatment || "",
+        advice: p.advice || "",
+        reports: p.reports || "",
+        fees: p.fees || 0,
+        paymentMode: (p.paymentMode as any) || "cash",
+        visitDate: p.visitDate || todayStr,
+      });
+      if (mobileRef.current) mobileRef.current.value = p.mobile || "";
+      if (nameRef.current) nameRef.current.value = p.name || "";
+      // Load visit history
+      const result = lookupByMobile(p.mobile);
+      setPatientHistory(result.history);
+      setHistoryName(p.name);
+      setHistoryMobile(p.mobile);
+      setFilterMode("history");
+      toast({
+        title: "✏️ Editing Patient",
+        description: `${p.name} — make changes and save to update record.`,
+      });
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Register mobile/name with RHF but also attach our DOM ref
   const { ref: mobileRHFRef, ...mobileRest } = form.register("mobile");
   const { ref: nameRHFRef, ...nameRest } = form.register("name");
@@ -1487,6 +1558,31 @@ export default function Home() {
       {lastSaved && <PrintPrescription patient={lastSaved} />}
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
       {showGlobalSearch && <GlobalSearchModal onClose={() => setShowGlobalSearch(false)} />}
+
+      {/* ── EDIT MODE BANNER ── */}
+      {editingPatientId !== null && (
+        <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-2xl border-2 border-amber-400 bg-amber-50">
+          <div className="w-8 h-8 rounded-xl bg-amber-400 flex items-center justify-center shrink-0">
+            <Save className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-amber-800 text-sm">Editing Existing Patient</p>
+            <p className="text-amber-600 text-xs">Make your changes below, then click Save General or Save Ayurvedic to update the record.</p>
+          </div>
+          <button
+            onClick={() => {
+              setEditingPatientId(null);
+              form.reset({ ...emptyDefaults, visitDate: todayStr });
+              if (mobileRef.current) mobileRef.current.value = "";
+              if (nameRef.current) nameRef.current.value = "";
+              setPatientHistory([]); setHistoryName(""); setHistoryMobile("");
+            }}
+            className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-200 text-amber-800 font-bold text-xs hover:bg-amber-300 transition-colors flex items-center gap-1"
+          >
+            <X className="w-3 h-3" /> Cancel Edit
+          </button>
+        </div>
+      )}
 
       <AnimatePresence>
         {showSyncModal && (
