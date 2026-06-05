@@ -1,16 +1,63 @@
 import { type Patient } from "@/lib/store";
 import { format } from "date-fns";
 
+// ── Clinic Settings (read from localStorage, set via Home.tsx settings modal) ─
+interface ClinicSettings {
+  clinicName: string;
+  doctorName: string;
+  qualification: string;
+  tagline: string;
+  address: string;
+  phone: string;
+  mapsUrl: string;
+  footerCity: string;
+  logoLetter: string;
+  specialization: string;
+  timing: string;
+  footerAddress: string;
+}
+
+const DEFAULT_SETTINGS: ClinicSettings = {
+  clinicName:     "મંગલમ્",
+  doctorName:     "ડૉ. વિજય ગિરગ્લાણી",
+  qualification:  "B.A.M.S, C.C.H, C.S.D.",
+  tagline:        "ફૅમીલી ડે-કૅર હૉસ્પિટલ",
+  address:        "ક્રિષ્ના હૉટલ સામે, પીપળીયા ચાર રસ્તા",
+  phone:          "9638181875",
+  mapsUrl:        "",
+  footerCity:     "Morbi, Gujarat",
+  logoLetter:     "✚",
+  specialization: "ફૅમીલી ફિઝિશ્યન & સર્જ્…",
+  timing:         "સવારે ૭:૦૦ થી રાત્રે ૧૨:૦૦ સુધી",
+  footerAddress:  "ક્રિષ્ના હૉટલ સામે, પીપળીયા ચાર રસ્તા",
+};
+
+function getClinicSettings(): ClinicSettings {
+  try {
+    const stored = JSON.parse(
+      localStorage.getItem("manglam_clinic_settings") || "{}"
+    );
+    return { ...DEFAULT_SETTINGS, ...stored };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
 interface Props {
   patient: Patient;
 }
 
 export function PrintPrescription({ patient }: Props) {
+  const s = getClinicSettings();
+
   const age = patient.age
     ? `${patient.age} yr${patient.ageMonths ? ` ${patient.ageMonths} mo` : ""}`
     : patient.ageMonths
     ? `${patient.ageMonths} mo`
     : "";
+
+  // Format phone for display: 96381 81875
+  const phoneFmt = s.phone.replace(/(\d{5})(\d{5})/, "$1 $2");
 
   return (
     <div
@@ -26,65 +73,233 @@ export function PrintPrescription({ patient }: Props) {
       }}
     >
       {/* LETTERHEAD HEADER */}
-      <table style={{ width: "100%", borderBottom: "3px double #b00", paddingBottom: "8px", marginBottom: "6px" }}>
+      <table
+        style={{
+          width: "100%",
+          borderBottom: "3px double #b00",
+          paddingBottom: "8px",
+          marginBottom: "6px",
+        }}
+      >
         <tbody>
           <tr>
+            {/* LEFT: Logo + Clinic Name */}
             <td style={{ verticalAlign: "middle", width: "60%" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "50px", height: "50px", backgroundColor: "#cc0000", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <span style={{ color: "white", fontSize: "28px", fontWeight: "bold", lineHeight: 1 }}>✚</span>
+                <div
+                  style={{
+                    width: "50px",
+                    height: "50px",
+                    backgroundColor: "#cc0000",
+                    borderRadius: "6px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "white",
+                      fontSize: "28px",
+                      fontWeight: "bold",
+                      lineHeight: 1,
+                    }}
+                  >
+                    {s.logoLetter || "✚"}
+                  </span>
                 </div>
                 <div>
-                  <div style={{ fontSize: "26px", fontWeight: "900", color: "#cc0000", lineHeight: 1.1 }}>મંગલમ્</div>
-                  <div style={{ fontSize: "12px", color: "#333", fontWeight: "600" }}>ફૅમીલી ડે-કૅર હૉસ્પિટલ</div>
+                  <div
+                    style={{
+                      fontSize: "26px",
+                      fontWeight: "900",
+                      color: "#cc0000",
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {s.clinicName}
+                  </div>
+                  <div
+                    style={{ fontSize: "12px", color: "#333", fontWeight: "600" }}
+                  >
+                    {s.tagline}
+                  </div>
                 </div>
               </div>
             </td>
-            <td style={{ verticalAlign: "top", textAlign: "right", width: "40%" }}>
-              <div style={{ fontSize: "15px", fontWeight: "bold", color: "#000" }}>ડૉ. વિજય ગિરગ્લાણી</div>
-              <div style={{ fontSize: "11px", color: "#333" }}>B.A.M.S, C.C.H, C.S.D.</div>
-              <div style={{ backgroundColor: "#cc0000", color: "#fff", fontSize: "11px", fontWeight: "bold", padding: "2px 6px", borderRadius: "3px", marginTop: "3px", display: "inline-block" }}>
-                ફૅમીલી ફિઝિશ્યન &amp; સર્જ્…
+
+            {/* RIGHT: Doctor info */}
+            <td
+              style={{ verticalAlign: "top", textAlign: "right", width: "40%" }}
+            >
+              <div
+                style={{ fontSize: "15px", fontWeight: "bold", color: "#000" }}
+              >
+                {s.doctorName}
               </div>
-              <div style={{ backgroundColor: "#cc0000", color: "#fff", fontSize: "10px", padding: "2px 6px", borderRadius: "3px", marginTop: "3px", display: "inline-block" }}>
-                સમય: સવારે ૭:૦૦ થી રાત્રે ૧૨:૦૦ સુધી
+              <div style={{ fontSize: "11px", color: "#333" }}>
+                {s.qualification}
               </div>
+              {s.specialization && (
+                <div
+                  style={{
+                    backgroundColor: "#cc0000",
+                    color: "#fff",
+                    fontSize: "11px",
+                    fontWeight: "bold",
+                    padding: "2px 6px",
+                    borderRadius: "3px",
+                    marginTop: "3px",
+                    display: "inline-block",
+                  }}
+                >
+                  {s.specialization}
+                </div>
+              )}
+              {s.timing && (
+                <div
+                  style={{
+                    backgroundColor: "#cc0000",
+                    color: "#fff",
+                    fontSize: "10px",
+                    padding: "2px 6px",
+                    borderRadius: "3px",
+                    marginTop: "3px",
+                    display: "inline-block",
+                  }}
+                >
+                  સમય: {s.timing}
+                </div>
+              )}
             </td>
           </tr>
         </tbody>
       </table>
 
       {/* DATE */}
-      <div style={{ textAlign: "right", marginBottom: "14px", fontSize: "14px" }}>
+      <div
+        style={{ textAlign: "right", marginBottom: "14px", fontSize: "14px" }}
+      >
         <span style={{ fontWeight: "600" }}>Date</span>{" "}
-        <span style={{ letterSpacing: "2px", borderBottom: "1px solid #000", paddingBottom: "1px" }}>
-          {format(new Date(patient.visitDate), "dd / MM / yyyy")}
+        <span
+          style={{
+            letterSpacing: "2px",
+            borderBottom: "1px solid #000",
+            paddingBottom: "1px",
+          }}
+        >
+          {format(new Date(patient.visitDate + "T00:00:00"), "dd / MM / yyyy")}
         </span>
       </div>
 
       {/* PATIENT INFO */}
       <div style={{ lineHeight: "2.2", fontSize: "14px" }}>
         <div>
-          <span style={{ fontWeight: "700", minWidth: "150px", display: "inline-block" }}>Patient Name .</span>
-          <span style={{ borderBottom: "1px dashed #555", display: "inline-block", minWidth: "380px", paddingLeft: "6px" }}>{patient.name}</span>
+          <span
+            style={{
+              fontWeight: "700",
+              minWidth: "150px",
+              display: "inline-block",
+            }}
+          >
+            Patient Name .
+          </span>
+          <span
+            style={{
+              borderBottom: "1px dashed #555",
+              display: "inline-block",
+              minWidth: "380px",
+              paddingLeft: "6px",
+            }}
+          >
+            {patient.name}
+          </span>
         </div>
         {patient.patientNo && (
           <div>
-            <span style={{ fontWeight: "700", minWidth: "150px", display: "inline-block" }}>Patient No.</span>
-            <span style={{ borderBottom: "1px dashed #555", display: "inline-block", minWidth: "380px", paddingLeft: "6px" }}>{patient.patientNo}</span>
+            <span
+              style={{
+                fontWeight: "700",
+                minWidth: "150px",
+                display: "inline-block",
+              }}
+            >
+              Patient No.
+            </span>
+            <span
+              style={{
+                borderBottom: "1px dashed #555",
+                display: "inline-block",
+                minWidth: "380px",
+                paddingLeft: "6px",
+              }}
+            >
+              {patient.patientNo}
+            </span>
           </div>
         )}
         <div>
-          <span style={{ fontWeight: "700", minWidth: "150px", display: "inline-block" }}>Mobile Number</span>
-          <span style={{ borderBottom: "1px dashed #555", display: "inline-block", minWidth: "380px", paddingLeft: "6px" }}>{patient.mobile}</span>
+          <span
+            style={{
+              fontWeight: "700",
+              minWidth: "150px",
+              display: "inline-block",
+            }}
+          >
+            Mobile Number
+          </span>
+          <span
+            style={{
+              borderBottom: "1px dashed #555",
+              display: "inline-block",
+              minWidth: "380px",
+              paddingLeft: "6px",
+            }}
+          >
+            {patient.mobile}
+          </span>
         </div>
-        <div style={{ display: "flex", gap: "10px", alignItems: "baseline" }}>
+        <div
+          style={{ display: "flex", gap: "10px", alignItems: "baseline" }}
+        >
           <span style={{ fontWeight: "700", whiteSpace: "nowrap" }}>Age</span>
-          <span style={{ borderBottom: "1px dashed #555", display: "inline-block", minWidth: "60px", paddingLeft: "4px" }}>{age}</span>
-          <span style={{ fontWeight: "700", whiteSpace: "nowrap" }}>Weight</span>
-          <span style={{ borderBottom: "1px dashed #555", display: "inline-block", minWidth: "70px", paddingLeft: "4px" }}>{patient.weight || ""}</span>
-          <span style={{ fontWeight: "700", whiteSpace: "nowrap" }}>Address</span>
-          <span style={{ borderBottom: "1px dashed #555", display: "inline-block", flex: 1, paddingLeft: "4px" }}>{patient.address || ""}</span>
+          <span
+            style={{
+              borderBottom: "1px dashed #555",
+              display: "inline-block",
+              minWidth: "60px",
+              paddingLeft: "4px",
+            }}
+          >
+            {age}
+          </span>
+          <span style={{ fontWeight: "700", whiteSpace: "nowrap" }}>
+            Weight
+          </span>
+          <span
+            style={{
+              borderBottom: "1px dashed #555",
+              display: "inline-block",
+              minWidth: "70px",
+              paddingLeft: "4px",
+            }}
+          >
+            {patient.weight || ""}
+          </span>
+          <span style={{ fontWeight: "700", whiteSpace: "nowrap" }}>
+            Address
+          </span>
+          <span
+            style={{
+              borderBottom: "1px dashed #555",
+              display: "inline-block",
+              flex: 1,
+              paddingLeft: "4px",
+            }}
+          >
+            {patient.address || ""}
+          </span>
         </div>
       </div>
 
@@ -93,19 +308,68 @@ export function PrintPrescription({ patient }: Props) {
       {/* C/o */}
       <div style={{ marginBottom: "18px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-          <span style={{ fontWeight: "700", fontSize: "15px", whiteSpace: "nowrap", minWidth: "36px" }}>C/o</span>
-          <span style={{ flex: 1, borderBottom: "1px dashed #555", paddingLeft: "4px", minHeight: "22px", display: "block" }}>{patient.complaint || ""}</span>
+          <span
+            style={{
+              fontWeight: "700",
+              fontSize: "15px",
+              whiteSpace: "nowrap",
+              minWidth: "36px",
+            }}
+          >
+            C/o
+          </span>
+          <span
+            style={{
+              flex: 1,
+              borderBottom: "1px dashed #555",
+              paddingLeft: "4px",
+              minHeight: "22px",
+              display: "block",
+            }}
+          >
+            {patient.complaint || ""}
+          </span>
         </div>
       </div>
 
       {/* Rx */}
       <div style={{ marginBottom: "6px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-          <span style={{ fontWeight: "700", fontSize: "15px", whiteSpace: "nowrap", minWidth: "36px" }}>Rx</span>
+          <span
+            style={{
+              fontWeight: "700",
+              fontSize: "15px",
+              whiteSpace: "nowrap",
+              minWidth: "36px",
+            }}
+          >
+            Rx
+          </span>
           <div style={{ flex: 1 }}>
-            <div style={{ borderBottom: "1px dashed #555", paddingLeft: "4px", minHeight: "22px", whiteSpace: "pre-line" }}>{patient.treatment || ""}</div>
-            <div style={{ borderBottom: "1px dashed #555", height: "28px", marginTop: "10px" }} />
-            <div style={{ borderBottom: "1px dashed #555", height: "28px", marginTop: "10px" }} />
+            <div
+              style={{
+                borderBottom: "1px dashed #555",
+                paddingLeft: "4px",
+                minHeight: "22px",
+                whiteSpace: "pre-line",
+              }}
+            >
+              {patient.treatment || ""}
+            </div>
+            <div
+              style={{
+                borderBottom: "1px dashed #555",
+                height: "28px",
+                marginTop: "10px",
+              }}
+            />
+            <div
+              style={{
+                borderBottom: "1px dashed #555",
+                height: "28px",
+                marginTop: "10px",
+              }}
+            />
           </div>
         </div>
       </div>
@@ -115,23 +379,78 @@ export function PrintPrescription({ patient }: Props) {
       {/* Advice */}
       <div style={{ marginBottom: "14px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-          <span style={{ fontWeight: "700", fontSize: "15px", whiteSpace: "nowrap", minWidth: "70px" }}>Advice</span>
-          <span style={{ flex: 1, borderBottom: "1px dashed #555", paddingLeft: "4px", minHeight: "22px", display: "block" }}>{patient.advice || ""}</span>
+          <span
+            style={{
+              fontWeight: "700",
+              fontSize: "15px",
+              whiteSpace: "nowrap",
+              minWidth: "70px",
+            }}
+          >
+            Advice
+          </span>
+          <span
+            style={{
+              flex: 1,
+              borderBottom: "1px dashed #555",
+              paddingLeft: "4px",
+              minHeight: "22px",
+              display: "block",
+            }}
+          >
+            {patient.advice || ""}
+          </span>
         </div>
       </div>
 
       {/* Reports */}
       <div style={{ marginBottom: "30px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-          <span style={{ fontWeight: "700", fontSize: "15px", whiteSpace: "nowrap", minWidth: "70px" }}>Reports</span>
-          <span style={{ flex: 1, borderBottom: "1px dashed #555", paddingLeft: "4px", minHeight: "22px", display: "block" }}>{patient.reports || ""}</span>
+          <span
+            style={{
+              fontWeight: "700",
+              fontSize: "15px",
+              whiteSpace: "nowrap",
+              minWidth: "70px",
+            }}
+          >
+            Reports
+          </span>
+          <span
+            style={{
+              flex: 1,
+              borderBottom: "1px dashed #555",
+              paddingLeft: "4px",
+              minHeight: "22px",
+              display: "block",
+            }}
+          >
+            {patient.reports || ""}
+          </span>
         </div>
       </div>
 
       {/* Footer */}
-      <div style={{ borderTop: "2px solid #cc0000", paddingTop: "8px", marginTop: "20px", backgroundColor: "#cc0000", color: "#fff", padding: "6px 12px", borderRadius: "4px", textAlign: "center", fontSize: "11px" }}>
-        <div style={{ fontWeight: "700", fontSize: "12px" }}>ક્રિષ્ના હૉટલ સામે, પીપળીયા ચાર રસ્તા .... Mo. ૯૬૩૮૧ ૮૧૮૭૫</div>
-        <div style={{ marginTop: "3px", fontSize: "10px" }}>Not Valid For Medico - Legal Purpose</div>
+      <div
+        style={{
+          borderTop: "2px solid #cc0000",
+          paddingTop: "8px",
+          marginTop: "20px",
+          backgroundColor: "#cc0000",
+          color: "#fff",
+          padding: "6px 12px",
+          borderRadius: "4px",
+          textAlign: "center",
+          fontSize: "11px",
+        }}
+      >
+        <div style={{ fontWeight: "700", fontSize: "12px" }}>
+          {s.footerAddress || s.address}
+          {s.phone ? ` .... Mo. ${phoneFmt}` : ""}
+        </div>
+        <div style={{ marginTop: "3px", fontSize: "10px" }}>
+          Not Valid For Medico - Legal Purpose
+        </div>
       </div>
     </div>
   );
