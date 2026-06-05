@@ -1049,7 +1049,7 @@ export default function Home() {
   const [lastSaved, setLastSaved] = useState<Patient | null>(null);
   const [showCard, setShowCard] = useState(false);
 
-  // ── Cloud Sync state ──────────────────────────────────────────────────────
+  // ── Cloud Sync state ──
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [cloudSyncing, setCloudSyncing] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<"idle"|"pushing"|"pulling"|"done"|"error">("idle");
@@ -1375,7 +1375,6 @@ export default function Home() {
       title: "Saved!",
       description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
     });
-    // Silent auto-push to cloud on every save
     pushToCloud([saved]).then(() => { setLastSyncStorage(); setLastSyncTime(getLastSync()); }).catch(() => {});
     form.reset({ ...emptyDefaults, visitDate });
     if (mobileRef.current) mobileRef.current.value = "";
@@ -1389,58 +1388,32 @@ export default function Home() {
     setShowPAPanel(false);
   };
 
-  // ── Cloud Sync handlers ──────────────────────────────────────────────────
+  // ── Cloud Sync handlers ──
   const handleCloudPush = async () => {
-    setCloudSyncing(true);
-    setCloudStatus("pushing");
-    setCloudMsg("Uploading your records to cloud…");
+    setCloudSyncing(true); setCloudStatus("pushing"); setCloudMsg("Uploading…");
     try {
-      const allLocal: any[] = (() => {
-        try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; }
-      })();
+      const allLocal: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
       const { pushed } = await pushToCloud(allLocal);
-      setLastSyncStorage();
-      setLastSyncTime(getLastSync());
-      setCloudStatus("done");
-      setCloudMsg(`✅ ${pushed} record(s) uploaded successfully!`);
-    } catch (e: any) {
-      setCloudStatus("error");
-      setCloudMsg(`❌ Upload failed: ${e.message}`);
-    } finally {
-      setCloudSyncing(false);
-    }
+      setLastSyncStorage(); setLastSyncTime(getLastSync()); setCloudStatus("done");
+      setCloudMsg(`✅ ${pushed} record(s) uploaded!`);
+    } catch (e: any) { setCloudStatus("error"); setCloudMsg(`❌ ${e.message}`); }
+    finally { setCloudSyncing(false); }
   };
-
   const handleCloudPull = async () => {
-    setCloudSyncing(true);
-    setCloudStatus("pulling");
-    setCloudMsg("Downloading records from cloud…");
+    setCloudSyncing(true); setCloudStatus("pulling"); setCloudMsg("Downloading…");
     try {
       const cloudRecords = await pullFromCloud();
-      const existing: any[] = (() => {
-        try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; }
-      })();
-      const existingKeys = new Set(existing.map((p: any) => `${p.mobile}_${p.visitDate}_${p.patientNo}`));
+      const existing: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
+      const keys = new Set(existing.map((p: any) => `${p.mobile}_${p.visitDate}_${p.patientNo}`));
       let imported = 0;
       for (const rec of cloudRecords) {
-        const local = fromCloud(rec);
-        const key = `${local.mobile}_${local.visitDate}_${local.patientNo}`;
-        if (!existingKeys.has(key)) {
-          addPatient(local);
-          existingKeys.add(key);
-          imported++;
-        }
+        const local = fromCloud(rec); const key = `${local.mobile}_${local.visitDate}_${local.patientNo}`;
+        if (!keys.has(key)) { addPatient(local); keys.add(key); imported++; }
       }
-      setLastSyncStorage();
-      setLastSyncTime(getLastSync());
-      setCloudStatus("done");
-      setCloudMsg(`✅ ${cloudRecords.length} in cloud · ${imported} new record(s) imported to this device!`);
-    } catch (e: any) {
-      setCloudStatus("error");
-      setCloudMsg(`❌ Download failed: ${e.message}`);
-    } finally {
-      setCloudSyncing(false);
-    }
+      setLastSyncStorage(); setLastSyncTime(getLastSync()); setCloudStatus("done");
+      setCloudMsg(`✅ ${cloudRecords.length} in cloud · ${imported} new imported!`);
+    } catch (e: any) { setCloudStatus("error"); setCloudMsg(`❌ ${e.message}`); }
+    finally { setCloudSyncing(false); }
   };
 
   const onSubmit = (data: PatientFormValues) => savePatient(data, "general");
@@ -1515,129 +1488,74 @@ export default function Home() {
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
       {showGlobalSearch && <GlobalSearchModal onClose={() => setShowGlobalSearch(false)} />}
 
-      {/* ── Cloud Sync Modal ── */}
       <AnimatePresence>
         {showSyncModal && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-            onClick={() => !cloudSyncing && setShowSyncModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 16 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4"
+            onClick={() => !cloudSyncing && setShowSyncModal(false)}>
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
               onClick={e => e.stopPropagation()}
-              className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
-            >
-              {/* Header */}
-              <div style={{ background: "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)" }} className="px-6 py-5">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center">
-                    <Cloud className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-white font-bold text-lg leading-tight">Cloud Sync</p>
-                    <p className="text-blue-100 text-xs">PC ↔ Mobile — Always in sync</p>
-                  </div>
-                  <button onClick={() => setShowSyncModal(false)} className="ml-auto p-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
+              className="w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden">
+              <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-3 mb-1 sm:hidden" />
+              <div style={{ background: "linear-gradient(135deg,#3b82f6,#6366f1)" }} className="px-5 py-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center"><Cloud className="w-5 h-5 text-white" /></div>
+                <div><p className="text-white font-bold">Cloud Sync</p><p className="text-blue-100 text-xs">PC ↔ Mobile</p></div>
+                <button onClick={() => setShowSyncModal(false)} className="ml-auto p-1.5 rounded-xl bg-white/20 text-white"><X className="w-4 h-4" /></button>
               </div>
-
-              {/* Body */}
-              <div className="px-6 py-5 space-y-4">
-                {/* Device badge */}
+              <div className="px-5 py-4 space-y-3">
                 <div className="flex items-center justify-between bg-slate-50 rounded-2xl px-4 py-3">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">This device</span>
-                  <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
-                    {getDeviceLabel() === "mobile" ? <><span>📱</span> Mobile</> : <><span>💻</span> PC / Desktop</>}
-                  </span>
+                  <span className="text-sm font-bold text-slate-700">{getDeviceLabel() === "mobile" ? "📱 Mobile" : "💻 PC"}</span>
                 </div>
-
-                {/* Last sync time */}
-                {lastSyncTime && (
-                  <div className="text-center text-xs text-slate-400">
-                    Last synced: <span className="font-semibold text-slate-600">
-                      {format(new Date(lastSyncTime), "dd MMM yyyy, hh:mm a")}
-                    </span>
-                  </div>
-                )}
-
-                {/* Status message */}
+                {lastSyncTime && <p className="text-center text-xs text-slate-400">Last synced: <span className="font-semibold text-slate-600">{format(new Date(lastSyncTime), "dd MMM, hh:mm a")}</span></p>}
                 {cloudMsg && (
-                  <div className={`rounded-2xl px-4 py-3 text-sm font-medium text-center ${
-                    cloudStatus === "error" ? "bg-red-50 text-red-600" :
-                    cloudStatus === "done" ? "bg-green-50 text-green-700" :
-                    "bg-blue-50 text-blue-700"
-                  }`}>
-                    {cloudSyncing && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
-                    {cloudMsg}
+                  <div className={`rounded-2xl px-4 py-3 text-sm font-medium text-center ${cloudStatus==="error"?"bg-red-50 text-red-600":cloudStatus==="done"?"bg-green-50 text-green-700":"bg-blue-50 text-blue-700"}`}>
+                    {cloudSyncing && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}{cloudMsg}
                   </div>
                 )}
-
-                {/* How it works info */}
                 {cloudStatus === "idle" && (
-                  <div className="bg-amber-50 rounded-2xl px-4 py-3 space-y-1.5 border border-amber-100">
-                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">How to sync</p>
-                    <p className="text-xs text-amber-800">1. On <strong>any device</strong> → tap <strong>Upload</strong> to send records to cloud</p>
-                    <p className="text-xs text-amber-800">2. On <strong>other device</strong> → tap <strong>Download</strong> to receive them</p>
-                    <p className="text-xs text-amber-800 mt-1">💡 Every patient save also auto-uploads silently!</p>
+                  <div className="bg-amber-50 rounded-xl px-4 py-3 text-xs text-amber-800 space-y-1 border border-amber-100">
+                    <p className="font-bold text-amber-700 uppercase tracking-wider mb-1">How it works</p>
+                    <p>1. On <strong>PC</strong> → Upload to send all records up</p>
+                    <p>2. On <strong>Mobile</strong> → Download to receive them</p>
+                    <p>💡 Every save also auto-uploads silently!</p>
                   </div>
                 )}
-
-                {/* Action buttons */}
-                <div className="flex flex-col gap-3 pt-1">
-                  <button
-                    onClick={handleCloudPush}
-                    disabled={cloudSyncing}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg shadow-blue-300/30 disabled:opacity-50"
-                  >
-                    {cloudSyncing && cloudStatus === "pushing"
-                      ? <Loader2 className="w-4 h-4 animate-spin" />
-                      : <CloudUpload className="w-4 h-4" />}
-                    Upload to Cloud (this device → ☁️)
-                  </button>
-                  <button
-                    onClick={handleCloudPull}
-                    disabled={cloudSyncing}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-emerald-600 hover:to-teal-700 transition-all shadow-lg shadow-emerald-300/30 disabled:opacity-50"
-                  >
-                    {cloudSyncing && cloudStatus === "pulling"
-                      ? <Loader2 className="w-4 h-4 animate-spin" />
-                      : <CloudDownload className="w-4 h-4" />}
-                    Download from Cloud (☁️ → this device)
-                  </button>
-                  <button
-                    onClick={() => setShowSyncModal(false)}
-                    disabled={cloudSyncing}
-                    className="w-full py-3 rounded-2xl bg-slate-100 text-slate-600 font-semibold text-sm hover:bg-slate-200 transition-all disabled:opacity-50"
-                  >
-                    Close
-                  </button>
-                </div>
+                <button onClick={handleCloudPush} disabled={cloudSyncing}
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                  {cloudSyncing && cloudStatus==="pushing" ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
+                  Upload to Cloud
+                </button>
+                <button onClick={handleCloudPull} disabled={cloudSyncing}
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                  {cloudSyncing && cloudStatus==="pulling" ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudDownload className="w-4 h-4" />}
+                  Download from Cloud
+                </button>
+                <button onClick={() => setShowSyncModal(false)} disabled={cloudSyncing}
+                  className="w-full py-3 rounded-2xl bg-slate-100 text-slate-600 font-semibold text-sm disabled:opacity-50">
+                  Close
+                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 gap-4 md:gap-8">
         {/* ── MAIN FORM ── */}
-        <div className="lg:col-span-8 space-y-6">
-          <div className="medical-card p-6 md:p-8 border-l-4 border-l-primary shadow-md">
-            <div className="flex items-center gap-3 mb-8">
+        <div className="space-y-4">
+          <div className="medical-card p-4 md:p-8 border-l-4 border-l-primary shadow-md">
+            <div className="flex flex-wrap items-center gap-2 mb-4 md:mb-8">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-blue-400 flex items-center justify-center text-white shadow-md shadow-primary/30">
                 <User className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-2xl font-display bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">Patient Registration</h2>
+                <h2 className="text-lg md:text-2xl font-display bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">Patient Registration</h2>
                 <p className="text-slate-500 text-sm">Register a new visit and view medical history.</p>
               </div>
               {/* Sheet action buttons */}
-              <div className="ml-auto flex items-center gap-2">
+              <div className="w-full md:w-auto md:ml-auto flex flex-wrap items-center gap-1.5 mt-2 md:mt-0">
                 <button type="button" onClick={() => setShowGlobalSearch(true)}
                   title="Global Search (Ctrl+F)"
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all text-sm font-semibold">
@@ -1657,19 +1575,17 @@ export default function Home() {
                 </button>
                 <button type="button"
                   onClick={() => { setCloudStatus("idle"); setCloudMsg(""); setShowSyncModal(true); }}
-                  title="Cloud Sync — PC ↔ Mobile"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md shadow-blue-200 relative">
-                  <Cloud className="w-4 h-4" />
-                  <span className="hidden sm:inline">Cloud</span>
-                  {lastSyncTime && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-400 border border-white" title="Synced" />
-                  )}
+                  title="Cloud Sync"
+                  className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-xs font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md relative">
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>Cloud</span>
+                  {lastSyncTime && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-400 border border-white" />}
                 </button>
               </div>
             </div>
 
             {/* Keyboard shortcuts hint bar */}
-            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-400">
+            <div className="hidden md:flex mb-4 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-400">
               <span className="flex items-center gap-1"><Keyboard className="w-3 h-3" /> Shortcuts:</span>
               <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+S</kbd> Save General</span>
               <span><kbd className="px-1 py-0.5 rounded bg-white border border-slate-200 font-mono">Ctrl+N</kbd> New Patient</span>
@@ -1688,7 +1604,7 @@ export default function Home() {
 
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {/* Visit Date */}
-              <div className="bg-gradient-to-br from-blue-50/60 to-slate-50/40 p-6 rounded-2xl border border-blue-100 border-l-4 border-l-blue-400 space-y-4">
+              <div className="bg-gradient-to-br from-blue-50/60 to-slate-50/40 p-3 md:p-6 rounded-2xl border border-blue-100 border-l-4 border-l-blue-400 space-y-3 md:space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
@@ -2176,7 +2092,7 @@ export default function Home() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap justify-end gap-3 pt-2">
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
                 {lastSaved && (
                   <button type="button" onClick={() => printPatientPrescription(lastSaved)}
                     className="px-5 py-3 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-2">
@@ -2203,7 +2119,7 @@ export default function Home() {
         </div>
 
         {/* ── SIDEBAR ── */}
-        <div className="lg:col-span-4">
+        <div className="">
           <div className="sticky top-24 space-y-4">
             {/* Filter Mode Selector */}
             <div className="medical-card p-3">
@@ -2241,7 +2157,7 @@ export default function Home() {
               {/* ── HISTORY MODE ── */}
               {filterMode === "history" && (
                 <motion.div key="history" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="medical-card overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
+                  className="medical-card overflow-hidden flex flex-col max-h-[60vh] md:max-h-[calc(100vh-220px)]">
                   {patientHistory.length > 0 ? (
                     <>
                       {/* Patient identity header */}
@@ -2301,7 +2217,7 @@ export default function Home() {
               {/* ── COMPLAINT / VILLAGE MODE ── compact list ── */}
               {(filterMode === "complaint" || filterMode === "address") && (
                 <motion.div key="filter" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="medical-card overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
+                  className="medical-card overflow-hidden flex flex-col max-h-[60vh] md:max-h-[calc(100vh-220px)]">
                   {filterResults.length > 0 ? (
                     <>
                       <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 shrink-0 flex items-center gap-2">
