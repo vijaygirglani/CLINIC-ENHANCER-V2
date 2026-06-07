@@ -1,4 +1,3 @@
-import { storage } from "./storage";
 // ClinicPro — localStorage data store
 // ALL keys use "cp_" prefix — completely separate from old app's "mc_" keys.
 // Zero data collision with the old Manglam Clinic app.
@@ -68,7 +67,7 @@ export const PRESET_TAGS: PatientTag[] = [
 export const CUSTOM_TAGS_KEY = "cp_custom_tags";
 
 export function getCustomTags(): PatientTag[] {
-  try { return JSON.parse(storage.getItem(CUSTOM_TAGS_KEY) || "[]"); }
+  try { return JSON.parse(localStorage.getItem(CUSTOM_TAGS_KEY) || "[]"); }
   catch { return []; }
 }
 
@@ -77,12 +76,12 @@ export function saveCustomTag(tag: PatientTag) {
   const idx = tags.findIndex(t => t.id === tag.id);
   if (idx !== -1) tags[idx] = tag;
   else tags.push(tag);
-  storage.setItem(CUSTOM_TAGS_KEY, JSON.stringify(tags));
+  localStorage.setItem(CUSTOM_TAGS_KEY, JSON.stringify(tags));
 }
 
 export function deleteCustomTag(id: string) {
   const tags = getCustomTags().filter(t => t.id !== id);
-  storage.setItem(CUSTOM_TAGS_KEY, JSON.stringify(tags));
+  localStorage.setItem(CUSTOM_TAGS_KEY, JSON.stringify(tags));
 }
 
 export function getAllTags(): PatientTag[] {
@@ -95,16 +94,16 @@ export const PATIENT_TAGS_KEY = "cp_patient_tags";
 
 export function getPatientTags(mobile: string): PatientTag[] {
   try {
-    const all = JSON.parse(storage.getItem(PATIENT_TAGS_KEY) || "{}");
+    const all = JSON.parse(localStorage.getItem(PATIENT_TAGS_KEY) || "{}");
     return all[mobile] || [];
   } catch { return []; }
 }
 
 export function savePatientTags(mobile: string, tags: PatientTag[]) {
   try {
-    const all = JSON.parse(storage.getItem(PATIENT_TAGS_KEY) || "{}");
+    const all = JSON.parse(localStorage.getItem(PATIENT_TAGS_KEY) || "{}");
     all[mobile] = tags;
-    storage.setItem(PATIENT_TAGS_KEY, JSON.stringify(all));
+    localStorage.setItem(PATIENT_TAGS_KEY, JSON.stringify(all));
   } catch {}
 }
 
@@ -256,8 +255,8 @@ const STOCK_LEDGER_KEY    = "cp_stock_ledger";
 // ═══════════════════════════════════════════════════════════════
 
 function nextId(): number {
-  const val = parseInt(storage.getItem(COUNTER_KEY) || "0") + 1;
-  storage.setItem(COUNTER_KEY, String(val));
+  const val = parseInt(localStorage.getItem(COUNTER_KEY) || "0") + 1;
+  localStorage.setItem(COUNTER_KEY, String(val));
   return val;
 }
 
@@ -268,8 +267,8 @@ function nextId(): number {
 export function getNextPatientNo(visitDate: string): string {
   const dateKey = visitDate.replace(/-/g, "");
   const counterKey = `${PATIENT_NO_KEY}_${dateKey}`;
-  const val = parseInt(storage.getItem(counterKey) || "0") + 1;
-  storage.setItem(counterKey, String(val));
+  const val = parseInt(localStorage.getItem(counterKey) || "0") + 1;
+  localStorage.setItem(counterKey, String(val));
   return String(val).padStart(2, "0");
 }
 
@@ -280,8 +279,8 @@ export function getNextCaseNo(visitDate: string): string {
   const yy = String(d.getFullYear()).slice(-2);
   const dateKey = `${dd}${mm}${yy}`;
   const counterKey = `cp_case_no_${dateKey}`;
-  const val = parseInt(storage.getItem(counterKey) || "0") + 1;
-  storage.setItem(counterKey, String(val));
+  const val = parseInt(localStorage.getItem(counterKey) || "0") + 1;
+  localStorage.setItem(counterKey, String(val));
   return `00${dateKey}${String(val).padStart(2, "0")}`;
 }
 
@@ -290,12 +289,12 @@ export function getNextCaseNo(visitDate: string): string {
 // ═══════════════════════════════════════════════════════════════
 
 export function getPatients(): Patient[] {
-  try { return JSON.parse(storage.getItem(PATIENTS_KEY) || "[]"); }
+  try { return JSON.parse(localStorage.getItem(PATIENTS_KEY) || "[]"); }
   catch { return []; }
 }
 
 function savePatients(patients: Patient[]) {
-  storage.setItem(PATIENTS_KEY, JSON.stringify(patients));
+  localStorage.setItem(PATIENTS_KEY, JSON.stringify(patients));
 }
 
 export function addPatient(data: Omit<Patient, "id" | "createdAt">): Patient {
@@ -495,12 +494,12 @@ export function getMonthlyStats(year: number, month: number) {
 // ═══════════════════════════════════════════════════════════════
 
 export function getComplaintCodes(): ComplaintCode[] {
-  try { return JSON.parse(storage.getItem(CODES_KEY) || "[]"); }
+  try { return JSON.parse(localStorage.getItem(CODES_KEY) || "[]"); }
   catch { return []; }
 }
 
 function saveCodes(codes: ComplaintCode[]) {
-  storage.setItem(CODES_KEY, JSON.stringify(codes));
+  localStorage.setItem(CODES_KEY, JSON.stringify(codes));
 }
 
 export function addComplaintCode(data: Omit<ComplaintCode, "id" | "createdAt">): ComplaintCode {
@@ -537,7 +536,7 @@ export function importComplaintCodes(jsonStr: string): { success: boolean; messa
     if (!Array.isArray(data)) return { success: false, message: "Invalid format. Expected an array of codes." };
     const existing = getComplaintCodes();
     let added = 0;
-    let counter = parseInt(storage.getItem(COUNTER_KEY) || "0");
+    let counter = parseInt(localStorage.getItem(COUNTER_KEY) || "0");
     for (const item of data) {
       if (!item.code || !item.complaint || !item.treatment) continue;
       const exists = existing.find((c) => c.code === item.code.toUpperCase());
@@ -548,7 +547,7 @@ export function importComplaintCodes(jsonStr: string): { success: boolean; messa
       }
     }
     saveCodes(existing);
-    storage.setItem(COUNTER_KEY, String(counter));
+    localStorage.setItem(COUNTER_KEY, String(counter));
     return { success: true, message: `Imported ${added} new codes (duplicates skipped).` };
   } catch { return { success: false, message: "Failed to parse codes file." }; }
 }
@@ -568,7 +567,7 @@ export function exportBackup(): string {
     purchaseBills: getPurchaseBills(),
     medicineBills: getMedicineBills(),
     doctors: getDoctors(),
-    idCounter: parseInt(storage.getItem(COUNTER_KEY) || "0"),
+    idCounter: parseInt(localStorage.getItem(COUNTER_KEY) || "0"),
   };
   return JSON.stringify(data, null, 2);
 }
@@ -579,11 +578,11 @@ export function importBackup(jsonStr: string): { success: boolean; message: stri
     if (!data.patients || !Array.isArray(data.patients)) return { success: false, message: "Invalid backup file format." };
     savePatients(data.patients);
     if (data.complaintCodes && Array.isArray(data.complaintCodes)) saveCodes(data.complaintCodes);
-    if (data.medicines && Array.isArray(data.medicines)) storage.setItem(MEDICINES_KEY, JSON.stringify(data.medicines));
-    if (data.purchaseBills && Array.isArray(data.purchaseBills)) storage.setItem(PURCHASE_BILLS_KEY, JSON.stringify(data.purchaseBills));
-    if (data.medicineBills && Array.isArray(data.medicineBills)) storage.setItem(MEDICINE_BILLS_KEY, JSON.stringify(data.medicineBills));
-    if (data.doctors && Array.isArray(data.doctors)) storage.setItem(DOCTORS_KEY, JSON.stringify(data.doctors));
-    if (data.idCounter) storage.setItem(COUNTER_KEY, String(data.idCounter));
+    if (data.medicines && Array.isArray(data.medicines)) localStorage.setItem(MEDICINES_KEY, JSON.stringify(data.medicines));
+    if (data.purchaseBills && Array.isArray(data.purchaseBills)) localStorage.setItem(PURCHASE_BILLS_KEY, JSON.stringify(data.purchaseBills));
+    if (data.medicineBills && Array.isArray(data.medicineBills)) localStorage.setItem(MEDICINE_BILLS_KEY, JSON.stringify(data.medicineBills));
+    if (data.doctors && Array.isArray(data.doctors)) localStorage.setItem(DOCTORS_KEY, JSON.stringify(data.doctors));
+    if (data.idCounter) localStorage.setItem(COUNTER_KEY, String(data.idCounter));
     return { success: true, message: `Restored ${data.patients.length} patients, ${data.medicines?.length || 0} medicines.` };
   } catch { return { success: false, message: "Failed to parse backup file." }; }
 }
@@ -599,13 +598,13 @@ const DEFAULT_DOCTORS: Doctor[] = [
 
 export function getDoctors(): Doctor[] {
   try {
-    const stored = storage.getItem(DOCTORS_KEY);
+    const stored = localStorage.getItem(DOCTORS_KEY);
     return stored ? JSON.parse(stored) : DEFAULT_DOCTORS;
   } catch { return DEFAULT_DOCTORS; }
 }
 
 export function saveDoctors(doctors: Doctor[]) {
-  storage.setItem(DOCTORS_KEY, JSON.stringify(doctors));
+  localStorage.setItem(DOCTORS_KEY, JSON.stringify(doctors));
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -672,12 +671,12 @@ export function getLandingCostPerTablet(med: MedicineItem): number {
 }
 
 export function getMedicines(): MedicineItem[] {
-  try { return JSON.parse(storage.getItem(MEDICINES_KEY) || "[]"); }
+  try { return JSON.parse(localStorage.getItem(MEDICINES_KEY) || "[]"); }
   catch { return []; }
 }
 
 function saveMedicines(medicines: MedicineItem[]) {
-  storage.setItem(MEDICINES_KEY, JSON.stringify(medicines));
+  localStorage.setItem(MEDICINES_KEY, JSON.stringify(medicines));
 }
 
 export function addMedicine(data: Omit<MedicineItem, "id" | "createdAt">): MedicineItem {
@@ -730,12 +729,12 @@ export function getStockAlertCounts(): { out: number; low: number } {
 // ═══════════════════════════════════════════════════════════════
 
 export function getPurchaseBills(): PurchaseBill[] {
-  try { return JSON.parse(storage.getItem(PURCHASE_BILLS_KEY) || "[]"); }
+  try { return JSON.parse(localStorage.getItem(PURCHASE_BILLS_KEY) || "[]"); }
   catch { return []; }
 }
 
 function savePurchaseBills(bills: PurchaseBill[]) {
-  storage.setItem(PURCHASE_BILLS_KEY, JSON.stringify(bills));
+  localStorage.setItem(PURCHASE_BILLS_KEY, JSON.stringify(bills));
 }
 
 export function addPurchaseBill(data: Omit<PurchaseBill, "id" | "createdAt">): PurchaseBill {
@@ -800,12 +799,12 @@ export function deletePurchaseBill(id: number): boolean {
 // ═══════════════════════════════════════════════════════════════
 
 export function getMedicineBills(): MedicineBill[] {
-  try { return JSON.parse(storage.getItem(MEDICINE_BILLS_KEY) || "[]"); }
+  try { return JSON.parse(localStorage.getItem(MEDICINE_BILLS_KEY) || "[]"); }
   catch { return []; }
 }
 
 function saveMedicineBills(bills: MedicineBill[]) {
-  storage.setItem(MEDICINE_BILLS_KEY, JSON.stringify(bills));
+  localStorage.setItem(MEDICINE_BILLS_KEY, JSON.stringify(bills));
 }
 
 export function addMedicineBill(data: Omit<MedicineBill, "id" | "createdAt">): MedicineBill {
@@ -919,7 +918,7 @@ export function getDailyProfitReport(date: string, settings?: { doctor1Name: str
 // ═══════════════════════════════════════════════════════════════
 
 export function getStockLedger(): StockLedgerEntry[] {
-  try { return JSON.parse(storage.getItem(STOCK_LEDGER_KEY) || "[]"); }
+  try { return JSON.parse(localStorage.getItem(STOCK_LEDGER_KEY) || "[]"); }
   catch { return []; }
 }
 
@@ -931,7 +930,7 @@ export function getStockLedgerForMedicine(medicineId: number): StockLedgerEntry[
 function addStockLedgerEntry(data: Omit<StockLedgerEntry, "id" | "createdAt">) {
   const ledger = getStockLedger();
   ledger.push({ ...data, id: nextId(), createdAt: new Date().toISOString() });
-  storage.setItem(STOCK_LEDGER_KEY, JSON.stringify(ledger));
+  localStorage.setItem(STOCK_LEDGER_KEY, JSON.stringify(ledger));
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1064,7 +1063,7 @@ export function deductMedicineStock(items: { medicineName: string; qty: number; 
       date,
       createdAt: new Date().toISOString(),
     });
-    storage.setItem(STOCK_LEDGER_KEY, JSON.stringify(ledger));
+    localStorage.setItem(STOCK_LEDGER_KEY, JSON.stringify(ledger));
   }
   
   saveMedicines(medicines);
@@ -1209,5 +1208,5 @@ export function restoreStockForPatient(patientId: number) {
   }
   saveMedicines(medicines);
   const remaining = getMedicineBills().filter(b => b.patientId !== patientId);
-  storage.setItem(MEDICINE_BILLS_KEY, JSON.stringify(remaining));
+  localStorage.setItem(MEDICINE_BILLS_KEY, JSON.stringify(remaining));
 }
