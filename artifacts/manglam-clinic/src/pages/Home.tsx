@@ -29,7 +29,6 @@ function getPendingFees(): PendingEntry[] { try { return JSON.parse(localStorage
 function addPendingFee(e: PendingEntry) { const l = getPendingFees().filter(x => x.patientId !== e.patientId); l.push(e); localStorage.setItem(PENDING_KEY, JSON.stringify(l)); }
 function removePendingFee(id: number) { localStorage.setItem(PENDING_KEY, JSON.stringify(getPendingFees().filter(e => e.patientId !== id))); }
 import { useToast } from "@/hooks/use-toast";
-import { WhatsAppModal } from "@/components/WhatsAppModal";
 import {
   searchMedicineNames, getAvailableBatchesForMedicine,
   savePatientBill, deletePatientBill, getPatientBills, newId, formatExpiry,
@@ -37,6 +36,38 @@ import {
 } from "@/lib/inventory";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
+
+// ── Inline WhatsApp Modal (no external dependency) ────────────────────────────
+function WhatsAppModal({ patientName, mobile, onClose }: { patientName: string; mobile: string; onClose: () => void }) {
+  const fmt = (m: string) => { const d = m.replace(/\D/g, ""); return d.length === 10 ? `91${d}` : d; };
+  const msg = encodeURIComponent(`Hello ${patientName}, this is a message from the clinic.`);
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+        onClick={onClose}>
+        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+          onClick={e => e.stopPropagation()}
+          className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+              <MessageCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <p className="font-bold text-slate-800">Send WhatsApp</p>
+              <p className="text-xs text-slate-500">{patientName} · {mobile}</p>
+            </div>
+            <button onClick={onClose} className="ml-auto text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          </div>
+          <a href={`https://wa.me/${fmt(mobile)}?text=${msg}`} target="_blank" rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-[#25D366] hover:bg-[#1ebe5b] text-white font-bold text-sm transition-colors">
+            <MessageCircle className="w-4 h-4" /> Open WhatsApp
+          </a>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
 
 // ── Pathya-Apathya Disease helpers ───────────────────────────────────────────
 const PA_STORAGE_KEY = "mc_imported_diseases";
