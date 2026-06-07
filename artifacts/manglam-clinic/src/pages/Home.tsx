@@ -29,7 +29,6 @@ function getPendingFees(): PendingEntry[] { try { return JSON.parse(localStorage
 function addPendingFee(e: PendingEntry) { const l = getPendingFees().filter(x => x.patientId !== e.patientId); l.push(e); localStorage.setItem(PENDING_KEY, JSON.stringify(l)); }
 function removePendingFee(id: number) { localStorage.setItem(PENDING_KEY, JSON.stringify(getPendingFees().filter(e => e.patientId !== id))); }
 import { useToast } from "@/hooks/use-toast";
-import { getActiveDoctor } from "@/lib/settings";
 import { WhatsAppModal } from "@/components/WhatsAppModal";
 import {
   searchMedicineNames, getAvailableBatchesForMedicine,
@@ -573,7 +572,7 @@ export default function Home() {
   const medGross = medRows.reduce((s, r) => s + r.mrp * r.qty, 0);
   const billAmount = medGross + otherCharges;
   // medNames no longer needed - using searchMedicineNames from inventory
-  const activeDoctor = getActiveDoctor();
+  const activeDoctor = { id: 1 as 1 | 2 };
   const [waPatient, setWaPatient] = useState<{name: string; mobile: string} | null>(null);
 
   const [medSuggestions, setMedSuggestions] = useState<{name: string; mrpPerTablet: number; currentStock: number; bestBatch: any}[]>([]);
