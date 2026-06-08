@@ -10,7 +10,7 @@ import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
   TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
-  WalletCards, Loader2, MessageSquare, Search, ArrowRight,
+  WalletCards, Loader2, MessageSquare, Search, ArrowRight, ShieldAlert, AlertTriangle,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -400,6 +400,8 @@ export default function DailyRegister() {
   const importRef = useRef<HTMLInputElement>(null);
   const excelImportRef = useRef<HTMLInputElement>(null);
   const [showWaReport, setShowWaReport] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState("");
   const [waCustomNote, setWaCustomNote] = useState("");
   const { toast } = useToast();
 
@@ -524,6 +526,28 @@ export default function DailyRegister() {
     };
     reader.readAsText(file);
     if (importRef.current) importRef.current.value = "";
+  };
+
+  const handleClearAllData = () => {
+    // Clear all clinic data keys — patients, codes, counters, tags, medicine, sales
+    const DATA_KEYS = [
+      "cp_patients", "cp_complaint_codes", "cp_id_counter", "cp_patient_no_counter",
+      "cp_medicines", "cp_purchase_bills", "cp_medicine_bills", "cp_doctors",
+      "cp_stock_ledger", "cp_custom_tags", "cp_patient_tags",
+      "manglam_loose_sales", "manglam_pending_fees", "manglam_clinic_settings",
+      "manglam_clinic_settings_for_print",
+    ];
+    // Also clear any daily case-no keys (cp_case_no_YYYY-MM-DD)
+    const extraKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("cp_case_no_")) extraKeys.push(k);
+    }
+    [...DATA_KEYS, ...extraKeys].forEach(k => localStorage.removeItem(k));
+    setShowClearModal(false);
+    setClearConfirmText("");
+    refresh();
+    toast({ title: "All Data Cleared", description: "Clinic data has been wiped. You can now restore a backup." });
   };
 
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -684,6 +708,10 @@ Manglam Hospital, Morbi`;
               </button>
               <button onClick={() => importRef.current?.click()} className="px-3 py-2 rounded-xl font-semibold bg-orange-500 text-white shadow-sm hover:bg-orange-600 text-sm flex items-center gap-1.5">
                 <RotateCcw className="w-4 h-4" /> Restore
+              </button>
+              <button onClick={() => { setShowClearModal(true); setClearConfirmText(""); }}
+                className="px-3 py-2 rounded-xl font-semibold bg-red-600 text-white shadow-sm hover:bg-red-700 text-sm flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4" /> Clear Data
               </button>
             </div>
           </div>
@@ -1213,6 +1241,85 @@ Manglam Hospital, Morbi`;
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ── Clear All Data Modal ── */}
+      <AnimatePresence>
+        {showClearModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowClearModal(false)}>
+            <motion.div initial={{ scale: 0.92, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.92, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
+
+              {/* Header */}
+              <div className="bg-red-600 px-6 py-5 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                  <ShieldAlert className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-bold text-white text-base leading-none">Clear All Data</p>
+                  <p className="text-red-100 text-xs mt-0.5">This action cannot be undone</p>
+                </div>
+                <button onClick={() => setShowClearModal(false)} className="ml-auto w-8 h-8 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center">
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-5 space-y-4">
+                {/* Warning box */}
+                <div className="flex gap-3 p-4 bg-red-50 rounded-2xl border border-red-200">
+                  <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                  <div className="text-sm text-red-700 space-y-1">
+                    <p className="font-bold">The following will be permanently deleted:</p>
+                    <ul className="text-xs space-y-0.5 mt-1 list-disc list-inside text-red-600">
+                      <li>All patient records &amp; visit history</li>
+                      <li>Complaint codes</li>
+                      <li>Loose medicine sales</li>
+                      <li>Patient tags</li>
+                      <li>Pending fees</li>
+                      <li>Medicine &amp; purchase bills</li>
+                    </ul>
+                    <p className="text-xs font-semibold mt-2 text-red-700">⚠️ Take a Backup first if you haven't already.</p>
+                  </div>
+                </div>
+
+                {/* Confirm input */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Type <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-red-600">CLEAR</span> to confirm
+                  </label>
+                  <input
+                    value={clearConfirmText}
+                    onChange={e => setClearConfirmText(e.target.value)}
+                    placeholder="Type CLEAR here..."
+                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none text-sm font-mono tracking-widest text-center uppercase"
+                    autoComplete="off"
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-1">
+                  <button onClick={() => { setShowClearModal(false); setClearConfirmText(""); }}
+                    className="flex-1 py-3 rounded-2xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleClearAllData}
+                    disabled={clearConfirmText.trim().toUpperCase() !== "CLEAR"}
+                    className="flex-1 py-3 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all
+                      bg-red-600 hover:bg-red-700 disabled:opacity-30 disabled:cursor-not-allowed">
+                    <Trash2 className="w-4 h-4" /> Yes, Clear All Data
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </Layout>
   );
 }
