@@ -1460,6 +1460,7 @@ export default function Home() {
   const [historyName, setHistoryName] = useState("");
   const [historyMobile, setHistoryMobile] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [keyFindings, setKeyFindings] = useState<string>("");
   const [lastSaved, setLastSaved] = useState<Patient | null>(null);
   const [showCard, setShowCard] = useState(false);
   const [patientTags, setPatientTags] = useState<PatientTag[]>([]);
@@ -1608,6 +1609,11 @@ export default function Home() {
       setHistoryName(result.latestInfo.name);
       setHistoryMobile(mobile);
       setPatientTags(getPatientTags(mobile));
+      // Load saved key findings for this patient
+      try {
+        const kf = JSON.parse(localStorage.getItem("cp_key_findings") || "{}");
+        setKeyFindings(kf[mobile] || "");
+      } catch { setKeyFindings(""); }
       toast({ title: "Patient found", description: `${result.history.length} visit(s) found.` });
     } else {
       setHistoryName("");
@@ -1757,7 +1763,11 @@ export default function Home() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     Array.from(e.target.files || []).forEach(file => {
-      if (!file.type.startsWith("image/")) return;
+      if (!file.type.startsWith("image/") && file.type !== "application/pdf") return;
+      if (file.size > 10 * 1024 * 1024) {
+        toast({ variant: "destructive", title: "File too large", description: `${file.name} exceeds 10MB limit.` });
+        return;
+      }
       const reader = new FileReader();
       reader.onload = ev => setAttachments(prev => [...prev, ev.target?.result as string]);
       reader.readAsDataURL(file);
@@ -1806,6 +1816,12 @@ export default function Home() {
         paymentMode: data.paymentMode || "cash",
         attachments, registerType, visitDate,
       });
+      // Save keyFindings separately keyed by mobile
+      if (keyFindings.trim()) {
+        const kf = JSON.parse(localStorage.getItem("cp_key_findings") || "{}");
+        kf[data.mobile] = keyFindings.trim();
+        localStorage.setItem("cp_key_findings", JSON.stringify(kf));
+      }
       if (feesMarkedPending && saved.fees > 0) {
         const pendingVal = pendingAmount.trim() !== "" ? Number(pendingAmount) : saved.fees;
         const finalPending = (!isNaN(pendingVal) && pendingVal > 0) ? pendingVal : saved.fees;
@@ -1825,6 +1841,7 @@ export default function Home() {
     if (mobileRef.current) mobileRef.current.value = "";
     if (nameRef.current) nameRef.current.value = "";
     setAttachments([]);
+    setKeyFindings("");
     setPatientHistory([]);
     setHistoryName("");
     setHistoryMobile("");
@@ -2581,30 +2598,83 @@ export default function Home() {
                       className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Blood test, X-ray..." />
                   </div>
                 </div>
-                {/* Attachments */}
-                <div className="space-y-2">
+                {/* Attachments — PDF & Image Reports */}
+                <div className="space-y-3">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-                    <Paperclip className="w-4 h-4 text-slate-400" /> Attach Report Images
+                    <Paperclip className="w-4 h-4 text-slate-400" /> Attach Reports
+                    <span className="text-[10px] font-normal text-slate-400 normal-case">PDF or Image — stored offline</span>
                   </label>
+
+                  {/* Drop zone */}
                   <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 flex flex-col items-center gap-2 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all"
                     onClick={() => fileInputRef.current?.click()}>
-                    <Paperclip className="w-6 h-6 text-slate-300" />
-                    <p className="text-sm text-slate-400">Click to upload image reports</p>
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-6 h-6 text-rose-400" />
+                      <Paperclip className="w-5 h-5 text-slate-300" />
+                    </div>
+                    <p className="text-sm text-slate-400 text-center">Click to upload <span className="font-semibold text-slate-500">PDF reports</span> or images</p>
+                    <p className="text-[10px] text-slate-300">Max 10MB per file · Stored on your device</p>
                   </div>
-                  <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileUpload} />
+                  <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileUpload} />
+
+                  {/* Attachment previews */}
                   {attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-3 mt-2">
-                      {attachments.map((src, i) => (
-                        <div key={i} className="relative group">
-                          <img src={src} className="w-20 h-20 object-cover rounded-xl border border-slate-200" alt={`Report ${i + 1}`} />
-                          <button type="button" onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
-                            className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
+                    <div className="space-y-2">
+                      {attachments.map((src, i) => {
+                        const isPdf = src.startsWith("data:application/pdf");
+                        return (
+                          <div key={i} className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
+                            {/* Header bar */}
+                            <div className="flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-100">
+                              {isPdf
+                                ? <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+                                : <Paperclip className="w-4 h-4 text-blue-500 shrink-0" />}
+                              <span className="text-xs font-semibold text-slate-600 flex-1">
+                                {isPdf ? `Report PDF ${i + 1}` : `Report Image ${i + 1}`}
+                              </span>
+                              <button type="button"
+                                onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
+                                className="w-6 h-6 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors">
+                                <X className="w-3 h-3 text-red-500" />
+                              </button>
+                            </div>
+                            {/* Viewer */}
+                            {isPdf ? (
+                              <iframe
+                                src={src}
+                                className="w-full"
+                                style={{ height: "420px", border: "none" }}
+                                title={`Report PDF ${i + 1}`}
+                              />
+                            ) : (
+                              <img src={src} className="w-full max-h-64 object-contain p-2" alt={`Report ${i + 1}`} />
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
+
+                  {/* Key Findings */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                      <span className="text-base leading-none">🔴</span> Key Findings
+                      <span className="text-[10px] font-normal text-slate-400 normal-case">— abnormal values, flagged in history</span>
+                    </label>
+                    <textarea
+                      value={keyFindings}
+                      onChange={e => setKeyFindings(e.target.value)}
+                      placeholder="e.g. Sugar: 280 (High) · HB: 9.2 (Low) · BP: 150/100"
+                      rows={2}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 resize-none placeholder:text-slate-300"
+                    />
+                    {keyFindings.trim() && (
+                      <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-rose-50 border border-rose-200">
+                        <span className="text-sm leading-none mt-0.5">🔴</span>
+                        <p className="text-xs font-semibold text-rose-700">{keyFindings}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2744,10 +2814,25 @@ export default function Home() {
                                   <span><span className="text-[10px] uppercase text-indigo-400 font-bold">Reports: </span>{visit.reports}</span>
                                 </p>
                               )}
-                              {visit.reports && (
-                                <p className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-2 py-1 mt-1 flex items-start gap-1.5">
-                                  <FileText className="w-3 h-3 mt-0.5 shrink-0 text-indigo-400" />
-                                  <span><span className="text-[10px] uppercase text-indigo-400 font-bold">Reports: </span>{visit.reports}</span>
+                              {/* Key Findings — from localStorage keyed by mobile */}
+                              {(() => {
+                                try {
+                                  const kf = JSON.parse(localStorage.getItem("cp_key_findings") || "{}");
+                                  const findings = kf[visit.mobile];
+                                  if (!findings) return null;
+                                  return (
+                                    <p className="text-xs text-rose-700 bg-rose-50 rounded-lg px-2 py-1 flex items-start gap-1.5 border border-rose-200">
+                                      <span className="text-sm leading-none shrink-0">🔴</span>
+                                      <span><span className="text-[10px] uppercase text-rose-400 font-bold">Key Findings: </span>{findings}</span>
+                                    </p>
+                                  );
+                                } catch { return null; }
+                              })()}
+                              {/* Attachments count badge */}
+                              {visit.attachments && visit.attachments.length > 0 && (
+                                <p className="text-xs text-slate-500 flex items-center gap-1">
+                                  <Paperclip className="w-3 h-3 text-slate-400" />
+                                  {visit.attachments.length} report file{visit.attachments.length > 1 ? "s" : ""} attached
                                 </p>
                               )}
                             </div>
