@@ -1783,7 +1783,7 @@ export default function Home() {
     let saved: Patient;
     if (editingPatientId !== null) {
       // ── UPDATE existing record ──
-      updatePatient(editingPatientId, {
+      const updatedPatient = updatePatient(editingPatientId, {
         name: data.name, mobile: data.mobile,
         age: data.age || 0, ageMonths: data.ageMonths || 0,
         weight: data.weight || "", address: data.address || "",
@@ -1793,12 +1793,7 @@ export default function Home() {
         paymentMode: data.paymentMode || "cash",
         registerType, visitDate,
       });
-      // Re-read the updated record to use as `saved`
-      const allPatients: Patient[] = (() => {
-        try { return JSON.parse(localStorage.getItem("manglam_patients") || "[]"); } catch { return []; }
-      })();
-      const updated = allPatients.find((p: Patient) => p.id === editingPatientId);
-      saved = updated ?? ({ ...data, id: editingPatientId, visitDate, registerType, patientNo: "" } as any);
+      saved = updatedPatient ?? ({ ...data, id: editingPatientId, visitDate, registerType, patientNo: "" } as any);
       setEditingPatientId(null);
       toast({
         title: "✅ Updated!",
@@ -1823,16 +1818,25 @@ export default function Home() {
         kf[data.mobile] = keyFindings.trim();
         localStorage.setItem("cp_key_findings", JSON.stringify(kf));
       }
-      if (feesMarkedPending && saved.fees > 0) {
-        const pendingVal = pendingAmount.trim() !== "" ? Number(pendingAmount) : saved.fees;
-        const finalPending = (!isNaN(pendingVal) && pendingVal > 0) ? pendingVal : saved.fees;
-        addPendingFee({ patientId: saved.id, name: saved.name, mobile: saved.mobile, fees: finalPending, date: visitDate, markedAt: new Date().toISOString() });
-        refreshPending();
-      }
       toast({
         title: "Saved!",
         description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
       });
+    }
+
+    // ── Pending fees — runs for BOTH new and updated patients ──
+    if (feesMarkedPending && saved.fees > 0) {
+      const pendingVal = pendingAmount.trim() !== "" ? Number(pendingAmount) : saved.fees;
+      const finalPending = (!isNaN(pendingVal) && pendingVal > 0) ? pendingVal : saved.fees;
+      addPendingFee({
+        patientId: saved.id,
+        name: saved.name,
+        mobile: saved.mobile,
+        fees: finalPending,
+        date: visitDate,
+        markedAt: new Date().toISOString(),
+      });
+      refreshPending();
     }
     setLastSaved(saved);
     setFeesMarkedPending(false);
