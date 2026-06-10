@@ -10,7 +10,7 @@ import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
   TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
-  WalletCards, Loader2, MessageSquare, Search, ArrowRight, ShieldAlert, AlertTriangle,
+  WalletCards, Loader2, MessageSquare, Search, ArrowRight, ShieldAlert, AlertTriangle, Paperclip,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -402,6 +402,7 @@ export default function DailyRegister() {
   const [showWaReport, setShowWaReport] = useState(false);
   const [showClearModal, setShowClearModal] = useState(false);
   const [clearConfirmText, setClearConfirmText] = useState("");
+  const [viewingAttachments, setViewingAttachments] = useState<{ files: string[]; patientName: string; date: string } | null>(null);
   const [waCustomNote, setWaCustomNote] = useState("");
   const { toast } = useToast();
 
@@ -821,7 +822,21 @@ Manglam Hospital, Morbi`;
                         {p.complaintCode && <span className="font-bold text-primary mr-1">[{p.complaintCode}]</span>}
                         {p.complaint || "-"}
                       </td>
-                      <td className="px-4 py-3 max-w-[150px] truncate text-slate-600">{p.treatment || "-"}</td>
+                      <td className="px-4 py-3 max-w-[150px] text-slate-600">
+                        <p className="truncate">{p.treatment || "-"}</p>
+                        {(() => {
+                          try {
+                            const kf = JSON.parse(localStorage.getItem("cp_key_findings") || "{}");
+                            const findings = kf[p.mobile];
+                            if (!findings) return null;
+                            return (
+                              <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-md">
+                                🔴 {findings.length > 30 ? findings.slice(0, 30) + "…" : findings}
+                              </span>
+                            );
+                          } catch { return null; }
+                        })()}
+                      </td>
                       <td className="px-4 py-3">
                         {p.registerType === "ayurvedic"
                           ? <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700">Ayurvedic</span>
@@ -840,6 +855,18 @@ Manglam Hospital, Morbi`;
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
+                          {/* Attachments button — only shows if patient has files */}
+                          {p.attachments && p.attachments.length > 0 && (
+                            <button
+                              onClick={() => setViewingAttachments({ files: p.attachments!, patientName: p.name, date: p.visitDate })}
+                              title={`View ${p.attachments.length} report${p.attachments.length > 1 ? "s" : ""}`}
+                              className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors relative">
+                              <Paperclip className="w-4 h-4" />
+                              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                                {p.attachments.length}
+                              </span>
+                            </button>
+                          )}
                           <button onClick={() => setCardPatient(p)}
                             title="Send Patient Card"
                             className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
@@ -1314,6 +1341,80 @@ Manglam Hospital, Morbi`;
                     <Trash2 className="w-4 h-4" /> Yes, Clear All Data
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Report Attachment Viewer Modal ── */}
+      <AnimatePresence>
+        {viewingAttachments && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex flex-col bg-black/90 backdrop-blur-sm"
+            onClick={() => setViewingAttachments(null)}>
+            <motion.div
+              initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              onClick={e => e.stopPropagation()}
+              className="flex flex-col h-full max-w-3xl w-full mx-auto">
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-700 shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+                  <Paperclip className="w-4 h-4 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-white text-sm truncate">{viewingAttachments.patientName}</p>
+                  <p className="text-xs text-slate-400">
+                    {viewingAttachments.date} · {viewingAttachments.files.length} report{viewingAttachments.files.length > 1 ? "s" : ""}
+                  </p>
+                </div>
+                <button onClick={() => setViewingAttachments(null)}
+                  className="w-8 h-8 rounded-xl bg-slate-700 hover:bg-slate-600 flex items-center justify-center transition-colors">
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+              {/* Files */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {viewingAttachments.files.map((src, i) => {
+                  const isPdf = src.startsWith("data:application/pdf");
+                  return (
+                    <div key={i} className="rounded-2xl overflow-hidden border border-slate-700 bg-slate-800">
+                      <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-700/60 border-b border-slate-600">
+                        {isPdf
+                          ? <FileText className="w-4 h-4 text-rose-400 shrink-0" />
+                          : <Paperclip className="w-4 h-4 text-blue-400 shrink-0" />}
+                        <span className="text-xs font-semibold text-slate-200 flex-1">
+                          {isPdf ? `Report PDF ${i + 1}` : `Report Image ${i + 1}`}
+                        </span>
+                        <a href={src}
+                          download={isPdf
+                            ? `report_${viewingAttachments.patientName}_${i + 1}.pdf`
+                            : `report_${viewingAttachments.patientName}_${i + 1}.jpg`}
+                          onClick={e => e.stopPropagation()}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-200 text-xs font-semibold transition-colors">
+                          ↓ Save
+                        </a>
+                      </div>
+                      {isPdf ? (
+                        <iframe
+                          src={src}
+                          className="w-full bg-white"
+                          style={{ height: "70vh", border: "none" }}
+                          title={`Report PDF ${i + 1}`}
+                        />
+                      ) : (
+                        <img
+                          src={src}
+                          className="w-full object-contain bg-slate-900"
+                          style={{ maxHeight: "70vh" }}
+                          alt={`Report ${i + 1}`}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </motion.div>
           </motion.div>
