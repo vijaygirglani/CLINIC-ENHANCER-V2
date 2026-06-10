@@ -1792,6 +1792,10 @@ export default function Home() {
         reports: data.reports || "", fees: Number(data.fees || 0),
         paymentMode: data.paymentMode || "cash",
         registerType, visitDate,
+        // Preserve existing attachments + merge any newly added ones
+        attachments: [
+          ...(attachments.length > 0 ? attachments : []),
+        ],
       });
       saved = updatedPatient ?? ({ ...data, id: editingPatientId, visitDate, registerType, patientNo: "" } as any);
       setEditingPatientId(null);
@@ -1976,6 +1980,15 @@ export default function Home() {
       });
       if (mobileRef.current) mobileRef.current.value = p.mobile || "";
       if (nameRef.current) nameRef.current.value = p.name || "";
+      // Load existing attachments so they're preserved and visible
+      if (p.attachments && p.attachments.length > 0) {
+        setAttachments(p.attachments);
+      }
+      // Load key findings
+      try {
+        const kf = JSON.parse(localStorage.getItem("cp_key_findings") || "{}");
+        setKeyFindings(kf[p.mobile] || "");
+      } catch { setKeyFindings(""); }
       // Load visit history
       const result = lookupByMobile(p.mobile);
       setPatientHistory(result.history);
