@@ -584,7 +584,12 @@ export default function DailyRegister() {
   const onEditSubmit = (data: any) => {
     if (!editingPatient) return;
     pushUndo(`Undo edit for ${editingPatient.name}`);
-    updatePatient(editingPatient.id, { ...data, fees: Number(data.fees || 0) });
+    // Preserve existing attachments — edit form has no file upload so never wipe them
+    updatePatient(editingPatient.id, {
+      ...data,
+      fees: Number(data.fees || 0),
+      attachments: editingPatient.attachments || [],
+    });
     toast({ title: "Updated", description: "Patient record updated." });
     setEditingPatient(null); refresh();
   };
