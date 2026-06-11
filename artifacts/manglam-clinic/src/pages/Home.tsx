@@ -1559,6 +1559,11 @@ export default function Home() {
   const paymentModeValue = form.watch("paymentMode");
   const feesValue = form.watch("fees");
 
+  // ── IV Fluid → WhatsApp staff instruction ──
+  const STAFF_NUMBERS = ["9016504419", "9313448871"];
+  const [ivMessage, setIvMessage] = useState("");
+  const [ivStaffNumber, setIvStaffNumber] = useState(STAFF_NUMBERS[0]);
+
   // Live dropdown: watch name field, search on every keystroke
   useEffect(() => {
     if (nameValue && nameValue.length >= 2) {
@@ -1577,6 +1582,8 @@ export default function Home() {
       if (codeRecord) {
         form.setValue("complaint", codeRecord.complaint);
         form.setValue("treatment", codeRecord.treatment);
+        // Auto-fill the IV fluid instruction message for staff WhatsApp
+        setIvMessage(codeRecord.treatment || "");
       }
     }
   }, [complaintCodeValue, form]);
@@ -2766,6 +2773,54 @@ export default function Home() {
                   activeTags={patientTags}
                   onChange={setPatientTags}
                 />
+              </div>
+
+              {/* IV Fluid Instruction → Staff WhatsApp */}
+              <div className="bg-emerald-50/60 px-5 py-4 rounded-2xl border border-emerald-100 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-emerald-500" />
+                  <label className="text-sm font-semibold text-slate-700">IV Fluid Instruction → Staff WhatsApp</label>
+                  <span className="text-xs text-slate-400 font-normal ml-1">— auto-filled from Complaint Code</span>
+                </div>
+
+                <textarea
+                  value={ivMessage}
+                  onChange={e => setIvMessage(e.target.value)}
+                  rows={3}
+                  placeholder="Type the Complaint Code above to auto-fill, or write the instruction here..."
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 transition-all resize-none text-slate-800 text-sm"
+                />
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mr-1">Send to:</span>
+                  {STAFF_NUMBERS.map(num => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setIvStaffNumber(num)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                        ivStaffNumber === num
+                          ? "bg-emerald-500 border-emerald-500 text-white shadow-inner"
+                          : "bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600"
+                      }`}
+                    >
+                      {num}
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    disabled={!ivMessage.trim()}
+                    onClick={() => {
+                      const url = `https://wa.me/91${ivStaffNumber}?text=${encodeURIComponent(ivMessage.trim())}`;
+                      window.open(url, "_blank");
+                    }}
+                    className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white shadow-lg transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ background: "linear-gradient(135deg, #25D366, #128C7E)" }}
+                  >
+                    <MessageSquare className="w-4 h-4" /> Send on WhatsApp
+                  </button>
+                </div>
               </div>
 
               {/* Action Buttons */}
