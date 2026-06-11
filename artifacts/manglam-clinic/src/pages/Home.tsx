@@ -1560,11 +1560,15 @@ export default function Home() {
   const feesValue = form.watch("fees");
 
   // ── IV Fluid → WhatsApp staff instruction ──
-  const STAFF_NUMBERS = ["9016504419", "9313448871"];
+  const STAFF_NUMBERS = [
+    { number: "9016504419", name: "Gautam" },
+    { number: "9313448871", name: "Ravi" },
+    { number: "8849269997", name: "Kunal" },
+  ];
   const [ivCode, setIvCode] = useState("");
   const [ivTreatment, setIvTreatment] = useState("");
   const [ivNotes, setIvNotes] = useState("");
-  const [ivStaffNumber, setIvStaffNumber] = useState(STAFF_NUMBERS[0]);
+  const [ivStaffNumber, setIvStaffNumber] = useState(STAFF_NUMBERS[0].number);
 
   useEffect(() => {
     if (ivCode && ivCode.length >= 2) {
@@ -1575,7 +1579,11 @@ export default function Home() {
     }
   }, [ivCode]);
 
-  const ivMessage = [nameValue?.trim(), ivTreatment.trim(), ivNotes.trim()]
+  const ivMessage = [
+    nameValue?.trim() ? `Patient Name: ${nameValue.trim()}` : "",
+    ivTreatment.trim() ? `IV Fluid Instructions: ${ivTreatment.trim()}` : "",
+    ivNotes.trim() ? `Special Notes: ${ivNotes.trim()}` : "",
+  ]
     .filter(Boolean)
     .join("\n");
 
@@ -2848,18 +2856,19 @@ export default function Home() {
 
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mr-1">Send to:</span>
-                  {STAFF_NUMBERS.map(num => (
+                  {STAFF_NUMBERS.map(staff => (
                     <button
-                      key={num}
+                      key={staff.number}
                       type="button"
-                      onClick={() => setIvStaffNumber(num)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                        ivStaffNumber === num
+                      onClick={() => setIvStaffNumber(staff.number)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex flex-col items-center leading-tight ${
+                        ivStaffNumber === staff.number
                           ? "bg-emerald-500 border-emerald-500 text-white shadow-inner"
                           : "bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600"
                       }`}
                     >
-                      {num}
+                      <span>{staff.number}</span>
+                      <span className={`text-[10px] font-semibold ${ivStaffNumber === staff.number ? "text-emerald-50" : "text-slate-400"}`}>{staff.name}</span>
                     </button>
                   ))}
 
