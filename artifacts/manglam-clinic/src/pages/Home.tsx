@@ -1561,8 +1561,23 @@ export default function Home() {
 
   // ── IV Fluid → WhatsApp staff instruction ──
   const STAFF_NUMBERS = ["9016504419", "9313448871"];
-  const [ivMessage, setIvMessage] = useState("");
+  const [ivCode, setIvCode] = useState("");
+  const [ivTreatment, setIvTreatment] = useState("");
+  const [ivNotes, setIvNotes] = useState("");
   const [ivStaffNumber, setIvStaffNumber] = useState(STAFF_NUMBERS[0]);
+
+  useEffect(() => {
+    if (ivCode && ivCode.length >= 2) {
+      const codeRecord = findComplaintCode(ivCode);
+      if (codeRecord) setIvTreatment(codeRecord.treatment || "");
+    } else {
+      setIvTreatment("");
+    }
+  }, [ivCode]);
+
+  const ivMessage = [nameValue?.trim(), ivTreatment.trim(), ivNotes.trim()]
+    .filter(Boolean)
+    .join("\n");
 
   // Live dropdown: watch name field, search on every keystroke
   useEffect(() => {
@@ -1582,8 +1597,6 @@ export default function Home() {
       if (codeRecord) {
         form.setValue("complaint", codeRecord.complaint);
         form.setValue("treatment", codeRecord.treatment);
-        // Auto-fill the IV fluid instruction message for staff WhatsApp
-        setIvMessage(codeRecord.treatment || "");
       }
     }
   }, [complaintCodeValue, form]);
@@ -2780,16 +2793,58 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <Zap className="w-4 h-4 text-emerald-500" />
                   <label className="text-sm font-semibold text-slate-700">IV Fluid Instruction → Staff WhatsApp</label>
-                  <span className="text-xs text-slate-400 font-normal ml-1">— auto-filled from Complaint Code</span>
+                  <span className="text-xs text-slate-400 font-normal ml-1">— enter complaint code to auto-fill treatment</span>
                 </div>
 
-                <textarea
-                  value={ivMessage}
-                  onChange={e => setIvMessage(e.target.value)}
-                  rows={3}
-                  placeholder="Type the Complaint Code above to auto-fill, or write the instruction here..."
-                  className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 transition-all resize-none text-slate-800 text-sm"
-                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Patient Name</label>
+                    <input
+                      value={nameValue || ""}
+                      readOnly
+                      placeholder="Patient name (from above)"
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-sm text-slate-600 cursor-not-allowed"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Complaint Code</label>
+                    <input
+                      value={ivCode}
+                      onChange={e => setIvCode(e.target.value)}
+                      placeholder="E.G. CCF"
+                      className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 transition-all uppercase text-sm text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">IV Fluid Instructions (auto-filled)</label>
+                  <textarea
+                    value={ivTreatment}
+                    onChange={e => setIvTreatment(e.target.value)}
+                    rows={2}
+                    placeholder="Auto-filled from complaint code — editable"
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 transition-all resize-none text-slate-800 text-sm"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Special Notes (optional)</label>
+                  <textarea
+                    value={ivNotes}
+                    onChange={e => setIvNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Any special notes for staff..."
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 transition-all resize-none text-slate-800 text-sm"
+                  />
+                </div>
+
+                {/* Message preview */}
+                {ivMessage && (
+                  <div className="px-3 py-2 rounded-xl bg-white border border-emerald-100 text-xs text-slate-600 whitespace-pre-line">
+                    {ivMessage}
+                  </div>
+                )}
 
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mr-1">Send to:</span>
