@@ -7,6 +7,7 @@ import Home from "@/pages/Home";
 import DailyRegister from "@/pages/DailyRegister";
 import AyurvedicRegister from "@/pages/AyurvedicRegister";
 import ComplaintCodes from "@/pages/ComplaintCodes";
+import AdviceCodes from "@/pages/AdviceCodes";
 import PathyaApathya from "@/pages/PathyaApathya";
 import NotFound from "@/pages/not-found";
 
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/daily-register" component={DailyRegister} />
       <Route path="/ayurvedic-register" component={AyurvedicRegister} />
       <Route path="/complaint-codes" component={ComplaintCodes} />
+      <Route path="/advice-codes" component={AdviceCodes} />
       <Route path="/pathya-apathya" component={PathyaApathya} />
       <Route component={NotFound} />
     </Switch>
