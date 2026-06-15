@@ -362,6 +362,12 @@ export function getUniqueContacts(): PatientContact[] {
     const digits = (p.mobile || "").replace(/\D/g, "");
     if (digits.length < 10) continue;          // skip blank / invalid / non-mobile entries
     const normalized = digits.slice(-10);       // last 10 digits (drop +91/0 prefixes)
+
+    // Skip case/patient numbers that were accidentally entered into the mobile field.
+    // Real Indian mobile numbers are 10 digits starting with 6-9 and never start with "00".
+    if (normalized.startsWith("00")) continue;
+    if (!/^[6-9]/.test(normalized)) continue;
+
     const regType: "general" | "ayurvedic" = p.registerType === "ayurvedic" ? "ayurvedic" : "general";
 
     const existing = map.get(normalized);
