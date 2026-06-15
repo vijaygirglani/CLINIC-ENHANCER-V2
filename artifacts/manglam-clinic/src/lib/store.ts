@@ -341,6 +341,51 @@ export function getAyurvedicPatientsByDate(date: string): Patient[] {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+// ═══════════════════════════════════════════════════════════════
+// PATIENT CONTACTS — unique mobile numbers for WhatsApp broadcast
+// (pulled from BOTH the Daily Register and Ayurvedic Register;
+// the patient/case number is intentionally ignored)
+// ═══════════════════════════════════════════════════════════════
+export interface PatientContact {
+  mobile: string;                 // normalized 10-digit number
+  name: string;                   // most recent name on record for this number
+  visitCount: number;
+  lastVisitDate: string;
+  registerTypes: ("general" | "ayurvedic")[];
+}
+
+export function getUniqueContacts(): PatientContact[] {
+  const patients = getPatients();
+  const map = new Map<string, PatientContact>();
+
+  for (const p of patients) {
+    const digits = (p.mobile || "").replace(/\D/g, "");
+    if (digits.length < 10) continue;          // skip blank / invalid / non-mobile entries
+    const normalized = digits.slice(-10);       // last 10 digits (drop +91/0 prefixes)
+    const regType: "general" | "ayurvedic" = p.registerType === "ayurvedic" ? "ayurvedic" : "general";
+
+    const existing = map.get(normalized);
+    if (!existing) {
+      map.set(normalized, {
+        mobile: normalized,
+        name: p.name || "",
+        visitCount: 1,
+        lastVisitDate: p.visitDate,
+        registerTypes: [regType],
+      });
+    } else {
+      existing.visitCount++;
+      if (!existing.registerTypes.includes(regType)) existing.registerTypes.push(regType);
+      if ((p.visitDate || "") >= (existing.lastVisitDate || "")) {
+        existing.name = p.name || existing.name;
+        existing.lastVisitDate = p.visitDate;
+      }
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+}
+
 export function lookupByMobile(mobile: string): { latestInfo?: Patient; history: Patient[] } {
   const q = (mobile || "").trim();
   if (q.length < 3) return { history: [] };
