@@ -120,6 +120,7 @@ export interface Patient {
   complaintCode?: string;
   complaint?: string;
   treatment?: string;
+  adviceCode?: string;
   advice?: string;
   reports?: string;
   fees: number;
@@ -142,6 +143,14 @@ export interface ComplaintCode {
   complaint: string;
   treatment: string;
   medicines?: ComplaintCodeMedicine[];
+  createdAt: string;
+}
+
+// ── Advice Master (auto-fill for the "Advice" field) ──────────────────────────
+export interface AdviceCode {
+  id: number;
+  code: string;
+  advice: string;
   createdAt: string;
 }
 
@@ -242,6 +251,7 @@ export interface StockLedgerEntry {
 
 const PATIENTS_KEY        = "cp_patients";
 const CODES_KEY           = "cp_complaint_codes";
+const ADVICE_CODES_KEY    = "cp_advice_codes";
 const COUNTER_KEY         = "cp_id_counter";
 const PATIENT_NO_KEY      = "cp_patient_no_counter";
 const MEDICINES_KEY       = "cp_medicines";
@@ -553,6 +563,127 @@ export function importComplaintCodes(jsonStr: string): { success: boolean; messa
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ADVICE MASTER — codes that auto-fill the "Advice" field
+// ═══════════════════════════════════════════════════════════════
+
+// Default seed list (from clinic's Advice Master sheet).
+// Loaded automatically the first time getAdviceCodes() runs and
+// storage is empty. After that, the doctor's edits are authoritative.
+const DEFAULT_ADVICE_CODES: { code: string; advice: string }[] = [
+  { code: "F1",    advice: "FOLLOW UP TOMORROW" },
+  { code: "F2",    advice: "FOLLOW UP AFTER 2 DAYS" },
+  { code: "F3",    advice: "FOLLOW UP AFTER 3 DAYS" },
+  { code: "F4",    advice: "FOLLOW UP AFTER 4 DAYS" },
+  { code: "F5",    advice: "FOLLOW UP AFTER 5 DAYS" },
+  { code: "F7",    advice: "FOLLOW UP AFTER 7 DAYS" },
+  { code: "F10",   advice: "FOLLOW UP AFTER 10 DAYS" },
+  { code: "F15",   advice: "FOLLOW UP AFTER 15 DAYS" },
+  { code: "F20",   advice: "FOLLOW UP AFTER 20 DAYS" },
+  { code: "F30",   advice: "FOLLOW UP AFTER 30 DAYS" },
+  { code: "F1IV",  advice: "FOLLOW UP TOMORROW, IV FLUID" },
+  { code: "F2IV",  advice: "FOLLOW UP AFTER 2 DAYS, IV FLUID" },
+  { code: "I",     advice: "INJECTION" },
+  { code: "IV",    advice: "IV FLUID" },
+  { code: "RIV",   advice: "REPORTS AND IV FLUID" },
+  { code: "D",     advice: "DRESSING" },
+  { code: "DICLO", advice: "INJ. DICLO" },
+  { code: "NEB",   advice: "DUOLIN NEBULIZER" },
+  { code: "NEB1",  advice: "DUOLIN BUDECORT NEBULIZER" },
+  { code: "REN",   advice: "REFUSED FOR NEBULIZER" },
+  { code: "REI",   advice: "REFUSED FOR INJECTION" },
+  { code: "REIV",  advice: "REFUSED FOR IV FLUIDS" },
+  { code: "RER",   advice: "REFUSED FOR REPORTS" },
+  { code: "RES",   advice: "REFUSED FOR SYP" },
+  { code: "R1",    advice: "REPORT TOMORROW" },
+  { code: "R2",    advice: "REPORT AFTER 2 DAYS" },
+  { code: "R3",    advice: "REPORT AFTER 3 DAYS" },
+  { code: "R5",    advice: "REPORT AFTER 5 DAYS" },
+  { code: "U",     advice: "USG ABDOMEN MORBI" },
+  { code: "XRAY",  advice: "MORBI XRAY" },
+  { code: "CT",    advice: "CT SCAN" },
+  { code: "SU",    advice: "REFER FOR SURGICAL OPINION / REFER TO SURGEON" },
+  { code: "GY",    advice: "REFER TO GYNECOLOGIST" },
+  { code: "PH",    advice: "REFER TO PHYSICIAN" },
+  { code: "PE",    advice: "REFER TO PEDIATRICIAN" },
+  { code: "OR",    advice: "REFER TO ORTHOPEDIC" },
+  { code: "DE",    advice: "REFER TO DENTAL" },
+  { code: "ENT",   advice: "REFER TO ENT" },
+];
+
+function seedAdviceCodes(): AdviceCode[] {
+  let counter = parseInt(localStorage.getItem(COUNTER_KEY) || "0");
+  const seeded: AdviceCode[] = DEFAULT_ADVICE_CODES.map((item) => {
+    counter++;
+    return { id: counter, code: item.code, advice: item.advice, createdAt: new Date().toISOString() };
+  });
+  localStorage.setItem(COUNTER_KEY, String(counter));
+  saveAdviceCodes(seeded);
+  return seeded;
+}
+
+export function getAdviceCodes(): AdviceCode[] {
+  try {
+    const raw = localStorage.getItem(ADVICE_CODES_KEY);
+    if (raw === null) return seedAdviceCodes(); // first run — seed defaults
+    return JSON.parse(raw);
+  } catch { return []; }
+}
+
+function saveAdviceCodes(codes: AdviceCode[]) {
+  localStorage.setItem(ADVICE_CODES_KEY, JSON.stringify(codes));
+}
+
+export function addAdviceCode(data: Omit<AdviceCode, "id" | "createdAt">): AdviceCode {
+  const codes = getAdviceCodes();
+  const code: AdviceCode = { ...data, code: data.code.toUpperCase(), id: nextId(), createdAt: new Date().toISOString() };
+  codes.push(code);
+  saveAdviceCodes(codes);
+  return code;
+}
+
+export function updateAdviceCode(id: number, data: Partial<AdviceCode>): AdviceCode | null {
+  const codes = getAdviceCodes();
+  const idx = codes.findIndex((c) => c.id === id);
+  if (idx === -1) return null;
+  codes[idx] = { ...codes[idx], ...data, code: (data.code || codes[idx].code).toUpperCase() };
+  saveAdviceCodes(codes);
+  return codes[idx];
+}
+
+export function deleteAdviceCode(id: number): boolean {
+  const codes = getAdviceCodes();
+  const filtered = codes.filter((c) => c.id !== id);
+  saveAdviceCodes(filtered);
+  return filtered.length !== codes.length;
+}
+
+export function findAdviceCode(code: string): AdviceCode | undefined {
+  return getAdviceCodes().find((c) => c.code === code.toUpperCase());
+}
+
+export function importAdviceCodes(jsonStr: string): { success: boolean; message: string } {
+  try {
+    const data = JSON.parse(jsonStr);
+    if (!Array.isArray(data)) return { success: false, message: "Invalid format. Expected an array of codes." };
+    const existing = getAdviceCodes();
+    let added = 0;
+    let counter = parseInt(localStorage.getItem(COUNTER_KEY) || "0");
+    for (const item of data) {
+      if (!item.code || !item.advice) continue;
+      const exists = existing.find((c) => c.code === item.code.toUpperCase());
+      if (!exists) {
+        counter++;
+        existing.push({ id: counter, code: item.code.toUpperCase(), advice: item.advice, createdAt: item.createdAt || new Date().toISOString() });
+        added++;
+      }
+    }
+    saveAdviceCodes(existing);
+    localStorage.setItem(COUNTER_KEY, String(counter));
+    return { success: true, message: `Imported ${added} new advice codes (duplicates skipped).` };
+  } catch { return { success: false, message: "Failed to parse advice codes file." }; }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // BACKUP / RESTORE
 // ═══════════════════════════════════════════════════════════════
 
@@ -563,6 +694,7 @@ export function exportBackup(): string {
     exportedAt: new Date().toISOString(),
     patients: getPatients(),
     complaintCodes: getComplaintCodes(),
+    adviceCodes: getAdviceCodes(),
     medicines: getMedicines(),
     purchaseBills: getPurchaseBills(),
     medicineBills: getMedicineBills(),
@@ -578,6 +710,7 @@ export function importBackup(jsonStr: string): { success: boolean; message: stri
     if (!data.patients || !Array.isArray(data.patients)) return { success: false, message: "Invalid backup file format." };
     savePatients(data.patients);
     if (data.complaintCodes && Array.isArray(data.complaintCodes)) saveCodes(data.complaintCodes);
+    if (data.adviceCodes && Array.isArray(data.adviceCodes)) saveAdviceCodes(data.adviceCodes);
     if (data.medicines && Array.isArray(data.medicines)) localStorage.setItem(MEDICINES_KEY, JSON.stringify(data.medicines));
     if (data.purchaseBills && Array.isArray(data.purchaseBills)) localStorage.setItem(PURCHASE_BILLS_KEY, JSON.stringify(data.purchaseBills));
     if (data.medicineBills && Array.isArray(data.medicineBills)) localStorage.setItem(MEDICINE_BILLS_KEY, JSON.stringify(data.medicineBills));
