@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Layout } from "@/components/Layout";
 import {
-  addPatient, updatePatient, lookupByMobile, lookupByName, findComplaintCode,
+  addPatient, updatePatient, lookupByMobile, lookupByName, findComplaintCode, findAdviceCode,
   getNextPatientNo, getNextCaseNo, lookupByComplaint, lookupByAddress,
   searchPatientSuggestions,
   type Patient, type PatientSuggestion,
@@ -444,6 +444,7 @@ const patientSchema = z.object({
   complaintCode: z.string().optional(),
   complaint: z.string().optional(),
   treatment: z.string().optional(),
+  adviceCode: z.string().optional(),
   advice: z.string().optional(),
   reports: z.string().optional(),
   fees: z.coerce.number().min(0).optional(),
@@ -459,7 +460,7 @@ const emptyDefaults: PatientFormValues = {
   name: "", mobile: "", visitDate: todayStr,
   age: 0, ageMonths: 0, weight: "", address: "",
   complaintCode: "", complaint: "", treatment: "",
-  advice: "", reports: "", fees: 0, paymentMode: "cash" as const,
+  adviceCode: "", advice: "", reports: "", fees: 0, paymentMode: "cash" as const,
 };
 
 // ── Language config ────────────────────────────────────────────────────────
@@ -1553,6 +1554,7 @@ export default function Home() {
   });
 
   const complaintCodeValue = form.watch("complaintCode");
+  const adviceCodeValue = form.watch("adviceCode");
   const visitDateValue = form.watch("visitDate");
   const nameValue = form.watch("name");
   const complaintValue = form.watch("complaint");
@@ -1608,6 +1610,16 @@ export default function Home() {
       }
     }
   }, [complaintCodeValue, form]);
+
+  // Advice Master: auto-fill the "Advice" textarea from a short code (e.g. F5 → FOLLOW UP AFTER 5 DAYS)
+  useEffect(() => {
+    if (adviceCodeValue && adviceCodeValue.length >= 1) {
+      const codeRecord = findAdviceCode(adviceCodeValue);
+      if (codeRecord) {
+        form.setValue("advice", codeRecord.advice);
+      }
+    }
+  }, [adviceCodeValue, form]);
 
   // Auto-match diseases from complaint text
   useEffect(() => {
@@ -1816,7 +1828,7 @@ export default function Home() {
         age: data.age || 0, ageMonths: data.ageMonths || 0,
         weight: data.weight || "", address: data.address || "",
         complaintCode: data.complaintCode || "", complaint: data.complaint || "",
-        treatment: data.treatment || "", advice: data.advice || "",
+        treatment: data.treatment || "", adviceCode: data.adviceCode || "", advice: data.advice || "",
         reports: data.reports || "", fees: Number(data.fees || 0),
         paymentMode: data.paymentMode || "cash",
         registerType, visitDate,
@@ -1839,7 +1851,7 @@ export default function Home() {
         age: data.age || 0, ageMonths: data.ageMonths || 0,
         weight: data.weight || "", address: data.address || "",
         complaintCode: data.complaintCode || "", complaint: data.complaint || "",
-        treatment: data.treatment || "", advice: data.advice || "",
+        treatment: data.treatment || "", adviceCode: data.adviceCode || "", advice: data.advice || "",
         reports: data.reports || "", fees: Number(data.fees || 0),
         paymentMode: data.paymentMode || "cash",
         attachments, registerType, visitDate,
@@ -2000,6 +2012,7 @@ export default function Home() {
         complaintCode: p.complaintCode || "",
         complaint: p.complaint || "",
         treatment: p.treatment || "",
+        adviceCode: p.adviceCode || "",
         advice: p.advice || "",
         reports: p.reports || "",
         fees: p.fees || 0,
@@ -2693,6 +2706,12 @@ export default function Home() {
                       Advice / Notes
                       <span className="text-slate-400 font-normal text-xs ml-2">— F5 = follow-up after 5 days</span>
                     </label>
+                    <div className="flex items-center gap-2">
+                      <input {...form.register("adviceCode")}
+                        className="w-24 px-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 focus:bg-emerald-50/30 uppercase transition-all text-slate-800 font-bold text-center shrink-0"
+                        placeholder="CODE" />
+                      <span className="text-[10px] text-slate-400 font-normal normal-case">Advice code — auto-fills text below from Advice Master</span>
+                    </div>
                     <textarea {...form.register("advice")} rows={2}
                       className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="F5 · Rest, diet..." />
                   </div>
