@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
   getDailyStats, updatePatient, deletePatient, getAllDates,
-  exportBackup, importBackup, addPatient, getMonthlyStats,
+  exportBackup, importBackup, addPatient, getMonthlyStats, findAdviceCode,
   type Patient, type DailyStats,
 } from "@/lib/store";
 import {
@@ -89,6 +89,7 @@ const editSchema = z.object({
   complaintCode: z.string().optional(),
   complaint: z.string().optional(),
   treatment: z.string().optional(),
+  adviceCode: z.string().optional(),
   advice: z.string().optional(),
   reports: z.string().optional(),
   fees: z.coerce.number().optional(),
@@ -1253,6 +1254,14 @@ Manglam Hospital, Morbi`;
             <div>
               <label className="text-xs font-semibold text-slate-500 mb-1 block">Treatment</label>
               <textarea {...editForm.register("treatment")} rows={2} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none resize-none" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Advice Code <span className="text-slate-400 font-normal">(auto-fills Advice below, e.g. F5)</span></label>
+              <input {...editForm.register("adviceCode")} onChange={(e) => {
+                editForm.setValue("adviceCode", e.target.value);
+                const rec = findAdviceCode(e.target.value);
+                if (rec) editForm.setValue("advice", rec.advice);
+              }} className="w-24 px-3 py-2 rounded-xl border focus:border-primary outline-none uppercase font-bold text-center" placeholder="CODE" />
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 mb-1 block">Advice (use F5 for follow-up after 5 days)</label>
