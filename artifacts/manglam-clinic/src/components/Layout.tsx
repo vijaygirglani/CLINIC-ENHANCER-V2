@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import {
-  UserPlus, BookOpen, Leaf, Code2, BookMarked, Menu, X,
+  UserPlus, BookOpen, Leaf, Code2, BookMarked, ClipboardList, Menu, X,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -9,6 +9,7 @@ const NAV = [
   { to: "/daily-register",    label: "Daily Register",       icon: BookOpen },
   { to: "/ayurvedic-register",label: "Ayurvedic Register",   icon: Leaf },
   { to: "/complaint-codes",   label: "Complaint Codes",      icon: Code2 },
+  { to: "/advice-codes",      label: "Advice Master",        icon: ClipboardList },
   { to: "/pathya-apathya",    label: "Pathya-Apathya",       icon: BookMarked },
 ];
 
