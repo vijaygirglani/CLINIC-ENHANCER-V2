@@ -9,7 +9,7 @@ const HEADERS = {
   "Content-Type": "application/json",
   apikey: SUPABASE_ANON_KEY,
   Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-  Prefer: "resolution=merge-duplicates",
+  Prefer: "resolution=merge-duplicates,return=representation",
 };
 
 export interface CloudPatient {
@@ -37,7 +37,7 @@ export interface CloudPatient {
 // Convert local Patient → CloudPatient
 export function toCloud(p: any, device: string): CloudPatient {
   return {
-    id: `${p.mobile}_${p.visitDate}_${p.patientNo}`,
+    id: `${(p.mobile || "").replace(/\D/g, "").slice(-10)}_${p.visitDate}_${(p.name || "").trim().toLowerCase().replace(/\s+/g, "_")}`,
     name: p.name,
     mobile: p.mobile,
     address: p.address || "",
@@ -102,7 +102,16 @@ export async function pushToCloud(localPatients: any[]): Promise<{ pushed: numbe
       const err = await res.text();
       throw new Error(`Supabase push failed: ${err}`);
     }
-    pushed += batch.length;
+    // Count from response — Supabase returns the upserted rows when return=representation
+    let responseData: any[] = [];
+    const text = await res.text();
+    if (text) {
+      try { responseData = JSON.parse(text); } catch { responseData = []; }
+    }
+    // If Supabase returns rows, count them; otherwise fall back to batch length
+    pushed += Array.isArray(responseData) && responseData.length > 0
+      ? responseData.length
+      : batch.length;
   }
   return { pushed };
 }
