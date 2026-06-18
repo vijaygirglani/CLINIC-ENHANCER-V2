@@ -1886,6 +1886,26 @@ export default function Home() {
     setFeesMarkedPending(false);
     setPendingAmount("");
     pushToCloud([saved]).then(() => { setLastSyncStorage(); setLastSyncTime(getLastSync()); }).catch(() => {});
+
+    // ── Push basic info to Google Sheet (Apps Script web app) ──
+    // Silently updates/adds the patient row in Sheet1 (Name|Mobile|Age|Weight|Address).
+    // Uses the Apps Script endpoint deployed by the clinic owner.
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwke42G7HR2ORNbEldd4a37mIwXnjJ0FUGCPAZClmZPia0LYZura54M1dtAlFR7wy_5A/exec";
+    const mobile = (saved.mobile || "").replace(/\D/g, "");
+    if (mobile.length >= 10 && /^[6-9]/.test(mobile.slice(-10))) {
+      fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name:    saved.name    || "",
+          mobile:  mobile.slice(-10),
+          age:     saved.age     || "",
+          weight:  saved.weight  || "",
+          address: saved.address || "",
+        }),
+      }).catch(() => {}); // silent — don't block UI if sheet sync fails
+    }
     form.reset({ ...emptyDefaults, visitDate });
     if (mobileRef.current) mobileRef.current.value = "";
     if (nameRef.current) nameRef.current.value = "";
