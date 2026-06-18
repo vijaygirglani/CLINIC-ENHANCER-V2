@@ -1885,7 +1885,7 @@ export default function Home() {
     setLastSaved(saved);
     setFeesMarkedPending(false);
     setPendingAmount("");
-    pushToCloud([saved]).then(() => { setLastSyncStorage(); setLastSyncTime(getLastSync()); }).catch(() => {});
+    pushToCloud((() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })()).then(() => { setLastSyncStorage(); setLastSyncTime(getLastSync()); }).catch(() => {});
 
     // ── Push basic info to Google Sheet (Apps Script web app) ──
     // Silently updates/adds the patient row in Sheet1 (Name|Mobile|Age|Weight|Address).
@@ -1925,7 +1925,28 @@ export default function Home() {
     setCloudSyncing(true); setCloudStatus("pushing"); setCloudMsg("Uploading records to cloud…");
     try {
       const allLocal: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
-      const { pushed } = await pushToCloud(allLocal);
+
+      // ── Deduplicate local store before pushing ──
+      // Same logic as pull: prefer numeric id, fallback to mobile+visitDate+name
+      const seenIds  = new Set<string>();
+      const seenKeys = new Set<string>();
+      const deduped  = allLocal.filter((p: any) => {
+        const id  = p.id ? String(p.id) : "";
+        const key = `${(p.mobile||"").trim()}_${p.visitDate}_${(p.name||"").trim().toLowerCase()}`;
+        if (id && seenIds.has(id))   return false;
+        if (seenKeys.has(key))       return false;
+        if (id) seenIds.add(id);
+        seenKeys.add(key);
+        return true;
+      });
+
+      // If duplicates were found locally, clean them up silently
+      if (deduped.length < allLocal.length) {
+        localStorage.setItem(PATIENTS_STORE_KEY, JSON.stringify(deduped));
+        toast({ title: `🧹 Removed ${allLocal.length - deduped.length} duplicate(s) from local data before upload.` });
+      }
+
+      const { pushed } = await pushToCloud(deduped);
       setLastSyncStorage(); setLastSyncTime(getLastSync()); setCloudStatus("done");
       setCloudMsg(`✅ ${pushed} record(s) uploaded successfully!`);
     } catch (e: any) { setCloudStatus("error"); setCloudMsg(`❌ Upload failed: ${e.message}`); }
@@ -1936,12 +1957,36 @@ export default function Home() {
     try {
       const cloudRecords = await pullFromCloud();
       const existing: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
-      const keys = new Set(existing.map((p: any) => `${p.mobile}_${p.visitDate}_${p.patientNo}`));
+
+      // ── Stable dedup: prefer numeric `id` (Date.now() at creation), fallback to mobile+visitDate+name ──
+      // NOTE: We do NOT use `patientNo` because it is auto-generated per-device and differs between PC and Mobile.
+      const seenIds  = new Set(existing.map((p: any) => String(p.id)).filter(Boolean));
+      const seenKeys = new Set(existing.map((p: any) => `${(p.mobile||"").trim()}_${p.visitDate}_${(p.name||"").trim().toLowerCase()}`));
+
       let imported = 0;
+      const merged = [...existing];
+
       for (const rec of cloudRecords) {
-        const local = fromCloud(rec); const key = `${local.mobile}_${local.visitDate}_${local.patientNo}`;
-        if (!keys.has(key)) { addPatient(local); keys.add(key); imported++; }
+        const local = fromCloud(rec);
+        const recId  = local.id ? String(local.id) : "";
+        const recKey = `${(local.mobile||"").trim()}_${local.visitDate}_${(local.name||"").trim().toLowerCase()}`;
+
+        const dupById  = recId  && seenIds.has(recId);
+        const dupByKey = seenKeys.has(recKey);
+
+        if (!dupById && !dupByKey) {
+          // Insert directly — do NOT call addPatient() which would regenerate patientNo
+          merged.push(local);
+          if (recId)  seenIds.add(recId);
+          seenKeys.add(recKey);
+          imported++;
+        }
       }
+
+      // Sort merged array by id descending so newest records appear first
+      merged.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+      localStorage.setItem(PATIENTS_STORE_KEY, JSON.stringify(merged));
+
       setLastSyncStorage(); setLastSyncTime(getLastSync()); setCloudStatus("done");
       setCloudMsg(`✅ ${cloudRecords.length} in cloud · ${imported} new record(s) imported!`);
     } catch (e: any) { setCloudStatus("error"); setCloudMsg(`❌ Download failed: ${e.message}`); }
