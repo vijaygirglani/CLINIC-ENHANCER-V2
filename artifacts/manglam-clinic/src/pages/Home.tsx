@@ -2300,6 +2300,14 @@ export default function Home() {
                             mobileRHFRef(el);
                             (mobileRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
                           }}
+                          onChange={(e) => {
+                            mobileRest.onChange(e);
+                            const val = e.target.value.replace(/\D/g, "");
+                            // Auto-lookup as soon as staff finishes typing 10 digits
+                            if (val.length === 10) {
+                              setTimeout(() => runMobileLookup(), 100);
+                            }
+                          }}
                           onKeyDown={e => {
                             if (e.key === "Enter") { e.preventDefault(); runMobileLookup(); }
                           }}
