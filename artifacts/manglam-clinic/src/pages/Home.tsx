@@ -1462,6 +1462,7 @@ export default function Home() {
   const [historyMobile, setHistoryMobile] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [keyFindings, setKeyFindings] = useState<string>("");
+  const [seenByJenit, setSeenByJenit] = useState(false);
   const [viewingAttachments, setViewingAttachments] = useState<{ files: string[]; patientName: string; date: string } | null>(null);
   const [lastSaved, setLastSaved] = useState<Patient | null>(null);
   const [showCard, setShowCard] = useState(false);
@@ -1885,6 +1886,12 @@ export default function Home() {
     setLastSaved(saved);
     setFeesMarkedPending(false);
     setPendingAmount("");
+    // Save seenByJenit flag keyed by patient ID
+    if (seenByJenit) {
+      const sjf = JSON.parse(localStorage.getItem("cp_seen_by_jenit") || "{}");
+      sjf[String(saved.id)] = true;
+      localStorage.setItem("cp_seen_by_jenit", JSON.stringify(sjf));
+    }
     pushToCloud((() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })()).then(() => { setLastSyncStorage(); setLastSyncTime(getLastSync()); }).catch(() => {});
 
     // ── Push basic info to Google Sheet (Apps Script web app) ──
@@ -1911,6 +1918,7 @@ export default function Home() {
     if (nameRef.current) nameRef.current.value = "";
     setAttachments([]);
     setKeyFindings("");
+    setSeenByJenit(false);
     setPatientHistory([]);
     setHistoryName("");
     setHistoryMobile("");
@@ -2979,6 +2987,23 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* ── SEEN BY DR. JENIT ── */}
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSeenByJenit(v => !v)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border font-bold text-sm transition-all ${
+                    seenByJenit
+                      ? "bg-violet-600 border-violet-600 text-white shadow-md shadow-violet-300/40"
+                      : "bg-white border-slate-200 text-slate-400 hover:border-violet-300 hover:text-violet-600"
+                  }`}
+                >
+                  <Stethoscope className="w-4 h-4" />
+                  SEEN BY DR. JENIT
+                  {seenByJenit && <span className="text-violet-200 text-xs font-semibold">✓</span>}
+                </button>
+              </div>
+
               {/* Action Buttons */}
               <div className="flex flex-wrap justify-end gap-3 pt-2">
                 {/* Clinic Settings button — always visible */}
@@ -3126,6 +3151,18 @@ export default function Home() {
                                   <span className="ml-auto text-indigo-400">→</span>
                                 </button>
                               )}
+                              {/* Seen By Dr. Jenit tag */}
+                              {(() => {
+                                try {
+                                  const sjf = JSON.parse(localStorage.getItem("cp_seen_by_jenit") || "{}");
+                                  if (!sjf[String(visit.id)]) return null;
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-300 text-[10px] font-bold uppercase tracking-wide">
+                                      <Stethoscope className="w-2.5 h-2.5" /> SEEN BY DR. JENIT
+                                    </span>
+                                  );
+                                } catch { return null; }
+                              })()}
                             </div>
                             <div className="mt-2 flex justify-end">
                               <button type="button" onClick={() => printPatientPrescription(visit)}
