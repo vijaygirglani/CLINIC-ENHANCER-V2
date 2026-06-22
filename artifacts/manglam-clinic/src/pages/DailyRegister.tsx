@@ -822,6 +822,17 @@ Manglam Hospital, Morbi`;
                           {p.age ? `${p.age}y` : ""}{p.ageMonths ? ` ${p.ageMonths}m` : ""}
                           {p.age && p.mobile ? " · " : ""}{p.mobile}
                         </p>
+                        {(() => {
+                          try {
+                            const sjf = JSON.parse(localStorage.getItem("cp_seen_by_jenit") || "{}");
+                            if (!sjf[String(p.id)]) return null;
+                            return (
+                              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-300 text-[9px] font-bold uppercase tracking-wide">
+                                🩺 SEEN BY DR. JENIT
+                              </span>
+                            );
+                          } catch { return null; }
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-slate-600">{p.weight || "-"}</td>
                       <td className="px-4 py-3 max-w-[150px] truncate text-slate-600">
