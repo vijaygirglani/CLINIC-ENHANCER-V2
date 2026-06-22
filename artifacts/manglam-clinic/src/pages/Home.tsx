@@ -1571,7 +1571,6 @@ export default function Home() {
   const [ivCode, setIvCode] = useState("");
   const [ivTreatment, setIvTreatment] = useState("");
   const [ivNotes, setIvNotes] = useState("");
-  const [ivStaffNumber, setIvStaffNumber] = useState(STAFF_NUMBERS[0].number);
 
   useEffect(() => {
     if (ivCode && ivCode.length >= 2) {
@@ -1919,6 +1918,9 @@ export default function Home() {
     setAttachments([]);
     setKeyFindings("");
     setSeenByJenit(false);
+    setIvCode("");
+    setIvTreatment("");
+    setIvNotes("");
     setPatientHistory([]);
     setHistoryName("");
     setHistoryMobile("");
@@ -2956,33 +2958,41 @@ export default function Home() {
 
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mr-1">Send to:</span>
+                  {/* Individual send buttons */}
                   {STAFF_NUMBERS.map(staff => (
                     <button
                       key={staff.number}
                       type="button"
-                      onClick={() => setIvStaffNumber(staff.number)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex flex-col items-center leading-tight ${
-                        ivStaffNumber === staff.number
-                          ? "bg-emerald-500 border-emerald-500 text-white shadow-inner"
-                          : "bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600"
-                      }`}
+                      disabled={!ivMessage.trim()}
+                      onClick={() => {
+                        const url = `https://wa.me/91${staff.number}?text=${encodeURIComponent(ivMessage.trim())}`;
+                        window.open(url, "_blank");
+                      }}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex flex-col items-center leading-tight bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <span>{staff.number}</span>
-                      <span className={`text-[10px] font-semibold ${ivStaffNumber === staff.number ? "text-emerald-50" : "text-slate-400"}`}>{staff.name}</span>
+                      <span className="text-[10px] font-semibold text-slate-400">{staff.name}</span>
                     </button>
                   ))}
 
+                  {/* Send to Both (Ravi + Gautam) */}
                   <button
                     type="button"
                     disabled={!ivMessage.trim()}
                     onClick={() => {
-                      const url = `https://wa.me/91${ivStaffNumber}?text=${encodeURIComponent(ivMessage.trim())}`;
-                      window.open(url, "_blank");
+                      const ravi   = STAFF_NUMBERS.find(s => s.name === "Ravi")!;
+                      const gautam = STAFF_NUMBERS.find(s => s.name === "Gautam")!;
+                      window.open(`https://wa.me/91${ravi.number}?text=${encodeURIComponent(ivMessage.trim())}`, "_blank");
+                      setTimeout(() => {
+                        window.open(`https://wa.me/91${gautam.number}?text=${encodeURIComponent(ivMessage.trim())}`, "_blank");
+                      }, 600);
                     }}
-                    className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white shadow-lg transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white shadow-lg transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ background: "linear-gradient(135deg, #25D366, #128C7E)" }}
                   >
-                    <MessageSquare className="w-4 h-4" /> Send on WhatsApp
+                    <MessageSquare className="w-4 h-4" />
+                    Ravi + Gautam
+                    <span className="text-[10px] text-green-200 font-semibold bg-green-900/30 px-1.5 py-0.5 rounded-md">Both</span>
                   </button>
                 </div>
               </div>
