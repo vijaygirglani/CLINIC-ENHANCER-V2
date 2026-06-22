@@ -2470,11 +2470,13 @@ export default function Home() {
                     <div className="flex gap-2">
                       <div className="flex-1 relative">
                         <input type="number" {...form.register("age")} min={0}
+                          onWheel={e => e.currentTarget.blur()}
                           className="w-full px-3 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="0" />
                         <span className="absolute right-2 top-3.5 text-xs text-slate-400">yrs</span>
                       </div>
                       <div className="w-20 relative">
                         <input type="number" {...form.register("ageMonths")} min={0} max={11}
+                          onWheel={e => e.currentTarget.blur()}
                           className="w-full px-2 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" placeholder="0" />
                         <span className="absolute right-2 top-3.5 text-xs text-slate-400">mo</span>
                       </div>
@@ -2522,6 +2524,7 @@ export default function Home() {
                     </div>
                     {/* Row 1: Amount input */}
                     <input type="number" {...form.register("fees")} min={0}
+                      onWheel={e => e.currentTarget.blur()}
                       className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all font-semibold text-slate-900" placeholder="Amount" />
                     {/* Row 2: Cash/Online toggle + Mark Pending */}
                     <div className="flex gap-2 items-center">
@@ -2567,6 +2570,7 @@ export default function Home() {
                               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-amber-500 font-bold text-xs">₹</span>
                               <input
                                 type="number" min={0}
+                                onWheel={e => e.currentTarget.blur()}
                                 value={pendingAmount}
                                 onChange={e => setPendingAmount(e.target.value)}
                                 placeholder={`Full (₹${feesValue || 0})`}
@@ -3264,6 +3268,7 @@ export default function Home() {
                       type="number"
                       value={looseAmount}
                       onChange={e => setLooseAmount(e.target.value)}
+                      onWheel={e => e.currentTarget.blur()}
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddLooseSale(); } }}
                       placeholder="Amount"
                       min={0}
