@@ -1602,6 +1602,7 @@ export default function Home() {
   }, [nameValue]);
 
   useEffect(() => {
+    if (editingPatientId !== null) return; // don't overwrite treatment when editing
     if (complaintCodeValue && complaintCodeValue.length >= 2) {
       const codeRecord = findComplaintCode(complaintCodeValue);
       if (codeRecord) {
@@ -1609,7 +1610,7 @@ export default function Home() {
         form.setValue("treatment", codeRecord.treatment);
       }
     }
-  }, [complaintCodeValue, form]);
+  }, [complaintCodeValue, form, editingPatientId]);
 
   // Advice Master: auto-fill the "Advice" textarea from a short code (e.g. F5 → FOLLOW UP AFTER 5 DAYS)
   useEffect(() => {
@@ -2415,7 +2416,7 @@ export default function Home() {
 
                       {/* Live patient suggestions dropdown */}
                       {showNameDropdown && nameSuggestions.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-y-auto" style={{ zIndex: 9999, maxHeight: "280px" }}>
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-y-auto" style={{ zIndex: 9999, maxHeight: "70vh" }}>
                           <div className="px-3 py-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
                             <Search className="w-3 h-3 text-slate-400" />
                             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
