@@ -407,6 +407,142 @@ export default function DailyRegister() {
   const [waCustomNote, setWaCustomNote] = useState("");
   const { toast } = useToast();
 
+  // ── Auto Daily Backup ─────────────────────────────────────────────────────
+  // Persists a FileSystemDirectoryHandle in IndexedDB so it survives page refresh
+  const [backupFolderName, setBackupFolderName] = useState<string>(() => {
+    try { return localStorage.getItem("manglam_backup_folder_name") || ""; } catch { return ""; }
+  });
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => {
+    try { return localStorage.getItem("manglam_auto_backup_enabled") === "true"; } catch { return false; }
+  });
+  const [lastAutoBackup, setLastAutoBackup] = useState<string>(() => {
+    try { return localStorage.getItem("manglam_last_auto_backup") || ""; } catch { return ""; }
+  });
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+
+  // ── IndexedDB helpers for persisting directory handle ────────────────────
+  const idbGetHandle = (): Promise<FileSystemDirectoryHandle | null> =>
+    new Promise(resolve => {
+      try {
+        const req = indexedDB.open("manglam_backup_db", 1);
+        req.onupgradeneeded = () => req.result.createObjectStore("handles");
+        req.onsuccess = () => {
+          const tx = req.result.transaction("handles", "readonly");
+          const get = tx.objectStore("handles").get("backupDir");
+          get.onsuccess = () => resolve(get.result ?? null);
+          get.onerror = () => resolve(null);
+        };
+        req.onerror = () => resolve(null);
+      } catch { resolve(null); }
+    });
+
+  const idbSetHandle = (handle: FileSystemDirectoryHandle): Promise<void> =>
+    new Promise(resolve => {
+      try {
+        const req = indexedDB.open("manglam_backup_db", 1);
+        req.onupgradeneeded = () => req.result.createObjectStore("handles");
+        req.onsuccess = () => {
+          const tx = req.result.transaction("handles", "readwrite");
+          tx.objectStore("handles").put(handle, "backupDir");
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+        };
+        req.onerror = () => resolve();
+      } catch { resolve(); }
+    });
+
+  // ── Core backup-to-folder function ───────────────────────────────────────
+  const writeBackupToFolder = async (handle: FileSystemDirectoryHandle, date: Date, silent = false) => {
+    const year = format(date, "yyyy");
+    const monthName = format(date, "MMMM"); // e.g. "June"
+    const dayLabel = format(date, "dd-MMM-yyyy"); // e.g. "23-Jun-2026"
+    const fileName = `Manglam_Backup_${dayLabel}.json`;
+    const json = exportBackup();
+
+    // Navigate / create: MANGLAM CLINIC DAILY BACKUP / 2026 / June /
+    const yearDir = await handle.getDirectoryHandle(year, { create: true });
+    const monthDir = await yearDir.getDirectoryHandle(monthName, { create: true });
+    const fileHandle = await monthDir.getFileHandle(fileName, { create: true });
+    const writable = await (fileHandle as any).createWritable();
+    await writable.write(json);
+    await writable.close();
+
+    const key = format(date, "yyyy-MM-dd");
+    localStorage.setItem("manglam_last_auto_backup", key);
+    setLastAutoBackup(key);
+    if (!silent) toast({ title: "✅ Backup Saved", description: `Saved to ${year}/${monthName}/${fileName}` });
+  };
+
+  // ── Select backup folder ──────────────────────────────────────────────────
+  const handleSelectBackupFolder = async () => {
+    if (!(window as any).showDirectoryPicker) {
+      toast({ variant: "destructive", title: "Not Supported", description: "Please use Chrome or Edge browser for folder backup." });
+      return;
+    }
+    try {
+      const handle: FileSystemDirectoryHandle = await (window as any).showDirectoryPicker({ mode: "readwrite", startIn: "downloads" });
+      dirHandleRef.current = handle;
+      await idbSetHandle(handle);
+      localStorage.setItem("manglam_backup_folder_name", handle.name);
+      localStorage.setItem("manglam_auto_backup_enabled", "true");
+      setBackupFolderName(handle.name);
+      setAutoBackupEnabled(true);
+      toast({ title: "📁 Folder Selected", description: `Auto backup will save inside "${handle.name}"` });
+    } catch (err: any) {
+      if (err?.name !== "AbortError") toast({ variant: "destructive", title: "Folder Error", description: String(err?.message || err) });
+    }
+  };
+
+  // ── Manual daily backup to folder ────────────────────────────────────────
+  const handleFolderBackup = async () => {
+    setIsBackingUp(true);
+    try {
+      let handle = dirHandleRef.current;
+      if (!handle) handle = await idbGetHandle();
+      if (!handle) {
+        // No folder selected yet — prompt
+        await handleSelectBackupFolder();
+        handle = dirHandleRef.current;
+        if (!handle) { setIsBackingUp(false); return; }
+      }
+      // Verify permission
+      const perm = await (handle as any).requestPermission({ mode: "readwrite" });
+      if (perm !== "granted") {
+        toast({ variant: "destructive", title: "Permission Denied", description: "Please allow access to the backup folder." });
+        setIsBackingUp(false); return;
+      }
+      dirHandleRef.current = handle;
+      await writeBackupToFolder(handle, new Date());
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Backup Failed", description: String(err?.message || err) });
+    }
+    setIsBackingUp(false);
+  };
+
+  // ── Auto-backup on load: if today not yet backed up ──────────────────────
+  useEffect(() => {
+    const runAutoBackup = async () => {
+      const today = format(new Date(), "yyyy-MM-dd");
+      if (!autoBackupEnabled || lastAutoBackup === today) return;
+      try {
+        let handle = dirHandleRef.current;
+        if (!handle) handle = await idbGetHandle();
+        if (!handle) return;
+        const perm = await (handle as any).queryPermission({ mode: "readwrite" });
+        if (perm !== "granted") return;
+        dirHandleRef.current = handle;
+        await writeBackupToFolder(handle, new Date(), true);
+        toast({ title: "🔄 Auto Backup Done", description: `Today's backup saved automatically.` });
+      } catch { /* silent fail */ }
+    };
+    runAutoBackup();
+    // Also run every hour in case the app stays open overnight
+    const interval = setInterval(runAutoBackup, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBackupEnabled]);
+
   // ── Global Search ──────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -678,6 +814,28 @@ Manglam Hospital, Morbi`;
           ))}
         </div>
 
+        {/* ── BACKUP STATUS BAR ── */}
+        {backupFolderName && (
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border ${
+            lastAutoBackup === format(new Date(), "yyyy-MM-dd")
+              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+              : "bg-amber-50 border-amber-200 text-amber-700"
+          }`}>
+            <span>{lastAutoBackup === format(new Date(), "yyyy-MM-dd") ? "✅" : "⚠️"}</span>
+            <span>
+              Auto Backup: <strong>{backupFolderName}</strong>
+              {lastAutoBackup === format(new Date(), "yyyy-MM-dd")
+                ? " · Today's backup saved"
+                : lastAutoBackup
+                  ? ` · Last backup: ${format(new Date(lastAutoBackup + "T00:00:00"), "dd-MMM-yyyy")}`
+                  : " · Not backed up yet today"}
+            </span>
+            <span className="ml-auto text-slate-400 font-normal">
+              Saves to: {format(new Date(), "yyyy")} → {format(new Date(), "MMMM")} → {format(new Date(), "dd-MMM-yyyy")}.json
+            </span>
+          </div>
+        )}
+
         <div className="sticky top-16 z-30 -mx-4 md:-mx-8 px-4 md:px-8 bg-white/95 backdrop-blur-md border-b border-slate-200/80 py-3 shadow-sm">
           <div className="flex flex-row flex-wrap items-center justify-between gap-2">
             <div>
@@ -710,9 +868,25 @@ Manglam Hospital, Morbi`;
               <button onClick={() => excelImportRef.current?.click()} className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-sm flex items-center gap-1.5">
                 <Upload className="w-4 h-4" /> Import
               </button>
-              <button onClick={handleBackup} className="px-3 py-2 rounded-xl font-semibold bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 text-sm flex items-center gap-1.5">
-                <Save className="w-4 h-4" /> Backup
-              </button>
+              {/* ── Folder Backup button ── */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleFolderBackup}
+                  disabled={isBackingUp}
+                  title={backupFolderName ? `Save to folder: ${backupFolderName}` : "Select backup folder first"}
+                  className="px-3 py-2 rounded-xl font-semibold bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 text-sm flex items-center gap-1.5 disabled:opacity-60">
+                  {isBackingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {backupFolderName ? "Daily Backup" : "Setup Backup"}
+                </button>
+                {backupFolderName && (
+                  <button
+                    onClick={handleSelectBackupFolder}
+                    title={`Backup folder: ${backupFolderName}\nAuto-saves each day\nClick to change folder`}
+                    className="px-2 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs flex items-center gap-1 border border-emerald-300 font-semibold">
+                    📁
+                  </button>
+                )}
+              </div>
               <button onClick={() => importRef.current?.click()} className="px-3 py-2 rounded-xl font-semibold bg-orange-500 text-white shadow-sm hover:bg-orange-600 text-sm flex items-center gap-1.5">
                 <RotateCcw className="w-4 h-4" /> Restore
               </button>
