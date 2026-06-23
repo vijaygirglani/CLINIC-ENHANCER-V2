@@ -1487,6 +1487,8 @@ export default function Home() {
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [pendingAlert, setPendingAlert] = useState<PendingEntry | null>(null);
   const refreshPending = () => setPendingFees(getPendingFees());
+  // ── Edit-from-DailyRegister state (declared early — used in useEffect below) ──
+  const [editingPatientId, setEditingPatientId] = useState<number | null>(null);
 
   // ── Loose Medicine Sales state ──
   const getLiveToday = () => format(new Date(), "yyyy-MM-dd");
@@ -2009,9 +2011,6 @@ export default function Home() {
 
   // ── Global Search state ──
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
-
-  // ── Edit-from-DailyRegister state ──
-  const [editingPatientId, setEditingPatientId] = useState<number | null>(null);
 
   // ── Keyboard Shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
