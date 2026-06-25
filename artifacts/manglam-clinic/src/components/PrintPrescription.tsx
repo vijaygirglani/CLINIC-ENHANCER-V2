@@ -1,7 +1,7 @@
-import { type Patient } from "@/lib/store";
-import { format } from "date-fns";
+import { useEffect, useRef } from "react";
 
-// ── Clinic Settings (read from localStorage, set via Home.tsx settings modal) ─
+// ── Clinic settings (mirrors Home.tsx) ───────────────────────────────────────
+const CLINIC_SETTINGS_KEY = "manglam_clinic_settings";
 interface ClinicSettings {
   clinicName: string;
   doctorName: string;
@@ -12,454 +12,510 @@ interface ClinicSettings {
   mapsUrl: string;
   footerCity: string;
   logoLetter: string;
-  specialization: string;
-  timing: string;
-  footerAddress: string;
 }
-
-const DEFAULT_SETTINGS: ClinicSettings = {
-  clinicName:     "મંગલમ્",
-  doctorName:     "ડૉ. વિજય ગિરગ્લાણી",
-  qualification:  "B.A.M.S, C.C.H, C.S.D.",
-  tagline:        "ફૅમીલી ડે-કૅર હૉસ્પિટલ",
-  address:        "ક્રિષ્ના હૉટલ સામે, પીપળીયા ચાર રસ્તા",
-  phone:          "9638181875",
-  mapsUrl:        "",
-  footerCity:     "Morbi, Gujarat",
-  logoLetter:     "✚",
-  specialization: "ફૅમીલી ફિઝિશ્યન & સર્જ્…",
-  timing:         "સવારે ૭:૦૦ થી રાત્રે ૧૨:૦૦ સુધી",
-  footerAddress:  "ક્રિષ્ના હૉટલ સામે, પીપળીયા ચાર રસ્તા",
+const DEFAULT_CLINIC_SETTINGS: ClinicSettings = {
+  clinicName:    "Manglam Clinic",
+  doctorName:    "Dr. Vijay Girglani",
+  qualification: "B.A.M.S., C.C.H., C.S.D.",
+  tagline:       "AYURVEDIC & SKIN SPECIALIST",
+  address:       "Opp. Krishna Hotel, Pipaliya Char Rasta",
+  phone:         "9638181875",
+  mapsUrl:       "",
+  footerCity:    "Morbi, Gujarat",
+  logoLetter:    "M",
 };
-
 function getClinicSettings(): ClinicSettings {
   try {
     const stored = JSON.parse(
-      localStorage.getItem("manglam_clinic_settings") || "{}"
+      localStorage.getItem("manglam_clinic_settings_for_print") ||
+      localStorage.getItem(CLINIC_SETTINGS_KEY) ||
+      "{}"
     );
-    return { ...DEFAULT_SETTINGS, ...stored };
+    return { ...DEFAULT_CLINIC_SETTINGS, ...stored };
   } catch {
-    return DEFAULT_SETTINGS;
+    return DEFAULT_CLINIC_SETTINGS;
   }
 }
 
-interface Props {
-  patient: Patient;
+// ── Patient type (subset used for printing) ───────────────────────────────────
+interface Patient {
+  id?: number;
+  name: string;
+  mobile: string;
+  age?: number;
+  ageMonths?: number;
+  weight?: string;
+  address?: string;
+  complaint?: string;
+  treatment?: string;
+  advice?: string;
+  reports?: string;
+  visitDate?: string;
+  patientNo?: number;
 }
 
-export function PrintPrescription({ patient }: Props) {
-  const s = getClinicSettings();
+// ── A5 prescription HTML generator ───────────────────────────────────────────
+function buildPrescriptionHTML(patient: Patient): string {
+  const cs = getClinicSettings();
 
-  const age = patient.age
-    ? `${patient.age} yr${patient.ageMonths ? ` ${patient.ageMonths} mo` : ""}`
-    : patient.ageMonths
-    ? `${patient.ageMonths} mo`
-    : "";
+  const visitDate = patient.visitDate
+    ? patient.visitDate.split("-").reverse().join(" / ")
+    : new Date().toLocaleDateString("en-IN").replace(/\//g, " / ");
 
-  // Format phone for display: 96381 81875
-  const phoneFmt = s.phone.replace(/(\d{5})(\d{5})/, "$1 $2");
+  const ageStr = [
+    patient.age ? `${patient.age}y` : "",
+    patient.ageMonths ? `${patient.ageMonths}m` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  return (
-    <div
-      id="print-prescription"
-      style={{
-        display: "none",
-        fontFamily: "Arial, sans-serif",
-        color: "#000",
-        padding: "0",
-        maxWidth: "720px",
-        margin: "0 auto",
-        fontSize: "14px",
-      }}
-    >
-      {/* LETTERHEAD HEADER */}
-      <table
-        style={{
-          width: "100%",
-          borderBottom: "3px double #b00",
-          paddingBottom: "8px",
-          marginBottom: "6px",
-        }}
-      >
-        <tbody>
-          <tr>
-            {/* LEFT: Logo + Clinic Name */}
-            <td style={{ verticalAlign: "middle", width: "60%" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div
-                  style={{
-                    width: "50px",
-                    height: "50px",
-                    backgroundColor: "#cc0000",
-                    borderRadius: "6px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <span
-                    style={{
-                      color: "white",
-                      fontSize: "28px",
-                      fontWeight: "bold",
-                      lineHeight: 1,
-                    }}
-                  >
-                    {s.logoLetter || "✚"}
-                  </span>
-                </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "26px",
-                      fontWeight: "900",
-                      color: "#cc0000",
-                      lineHeight: 1.1,
-                    }}
-                  >
-                    {s.clinicName}
-                  </div>
-                  <div
-                    style={{ fontSize: "12px", color: "#333", fontWeight: "600" }}
-                  >
-                    {s.tagline}
-                  </div>
-                </div>
-              </div>
-            </td>
+  // Split multi-line treatment into numbered lines (split by newline or comma)
+  const medLines: string[] = patient.treatment
+    ? patient.treatment
+        .split(/\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+    : [];
+  // Ensure at least 7 blank lines for medicines
+  while (medLines.length < 7) medLines.push("");
 
-            {/* RIGHT: Doctor info */}
-            <td
-              style={{ verticalAlign: "top", textAlign: "right", width: "40%" }}
-            >
-              <div
-                style={{ fontSize: "15px", fontWeight: "bold", color: "#000" }}
-              >
-                {s.doctorName}
-              </div>
-              <div style={{ fontSize: "11px", color: "#333" }}>
-                {s.qualification}
-              </div>
-              {s.specialization && (
-                <div
-                  style={{
-                    backgroundColor: "#cc0000",
-                    color: "#fff",
-                    fontSize: "11px",
-                    fontWeight: "bold",
-                    padding: "2px 6px",
-                    borderRadius: "3px",
-                    marginTop: "3px",
-                    display: "inline-block",
-                  }}
-                >
-                  {s.specialization}
-                </div>
-              )}
-              {s.timing && (
-                <div
-                  style={{
-                    backgroundColor: "#cc0000",
-                    color: "#fff",
-                    fontSize: "10px",
-                    padding: "2px 6px",
-                    borderRadius: "3px",
-                    marginTop: "3px",
-                    display: "inline-block",
-                  }}
-                >
-                  સમય: {s.timing}
-                </div>
-              )}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+  const adviceLines: string[] = patient.advice
+    ? patient.advice
+        .split(/\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+    : [];
+  while (adviceLines.length < 4) adviceLines.push("");
 
-      {/* DATE */}
-      <div
-        style={{ textAlign: "right", marginBottom: "14px", fontSize: "14px" }}
-      >
-        <span style={{ fontWeight: "600" }}>Date</span>{" "}
-        <span
-          style={{
-            letterSpacing: "2px",
-            borderBottom: "1px solid #000",
-            paddingBottom: "1px",
-          }}
-        >
-          {format(new Date(patient.visitDate + "T00:00:00"), "dd / MM / yyyy")}
-        </span>
+  const reportLines: string[] = patient.reports
+    ? patient.reports
+        .split(/\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+    : [];
+  while (reportLines.length < 3) reportLines.push("");
+
+  const medRowsHTML = medLines
+    .map(
+      (med, i) => `
+      <div class="med-row">
+        <span class="med-num">${i + 1}.</span>
+        <div class="field-line">${med}</div>
+      </div>`
+    )
+    .join("");
+
+  const adviceRowsHTML = adviceLines
+    .map(
+      (a) => `<div class="field-line advice-line">${a}</div>`
+    )
+    .join("");
+
+  const reportRowsHTML = reportLines
+    .map(
+      (r) => `<div class="field-line advice-line">${r}</div>`
+    )
+    .join("");
+
+  const complaintLines = patient.complaint
+    ? patient.complaint.split(/\n/).map((l) => l.trim()).filter(Boolean)
+    : [""];
+  while (complaintLines.length < 2) complaintLines.push("");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Prescription – ${patient.name}</title>
+<style>
+  /* ── Reset ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ── A5: 148mm × 210mm ── */
+  @page {
+    size: A5 portrait;
+    margin: 0;
+  }
+
+  html, body {
+    width: 148mm;
+    height: 210mm;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #fff;
+    color: #111;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .page {
+    width: 148mm;
+    height: 210mm;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: #1a3a2e;
+    padding: 10px 16px 9px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .header-left { display: flex; align-items: center; gap: 8px; }
+
+  .logo-mark {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 700; color: #fff;
+    flex-shrink: 0;
+  }
+
+  .clinic-name {
+    font-size: 18px; font-weight: 700; color: #fff;
+    letter-spacing: -0.3px; line-height: 1;
+  }
+
+  .clinic-tagline {
+    font-size: 7px; color: #9fcfb8;
+    letter-spacing: 0.9px; text-transform: uppercase; margin-top: 2px;
+  }
+
+  .doctor-info { text-align: right; }
+  .doctor-name { font-size: 11px; font-weight: 700; color: #fff; }
+  .doctor-deg  { font-size: 7.5px; color: #9fcfb8; margin-top: 1px; line-height: 1.5; }
+
+  /* ── Accent bar ── */
+  .accent-bar {
+    height: 2.5px;
+    background: linear-gradient(90deg, #2d6a4f 0%, #52b788 50%, #d4a017 100%);
+    flex-shrink: 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* ── Body content ── */
+  .content {
+    flex: 1;
+    padding: 9px 16px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  /* ── Common row ── */
+  .row {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    margin-bottom: 8px;
+  }
+
+  .bullet {
+    font-size: 10px; font-weight: 700; color: #2d6a4f;
+    padding-bottom: 2px; min-width: 10px; flex-shrink: 0;
+  }
+
+  .lbl {
+    font-size: 9.5px; font-weight: 500; color: #333;
+    white-space: nowrap; padding-bottom: 2px; flex-shrink: 0;
+  }
+
+  .field-line {
+    flex: 1;
+    border-bottom: 0.8px solid #1a3a2e;
+    min-height: 17px;
+    font-size: 10px;
+    color: #111;
+    font-weight: 500;
+    padding-bottom: 1px;
+    line-height: 1.4;
+  }
+
+  .field-fixed {
+    border-bottom: 0.8px solid #1a3a2e;
+    min-height: 17px;
+    font-size: 10px;
+    color: #111;
+    font-weight: 500;
+    padding-bottom: 1px;
+  }
+
+  /* ── Date row ── */
+  .date-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-end;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+
+  /* ── Rx section ── */
+  .rx-header-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    margin-bottom: 7px;
+  }
+
+  .rx-symbol {
+    font-size: 20px; font-weight: 700; color: #2d6a4f;
+    line-height: 1; padding-bottom: 1px;
+  }
+
+  .med-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    margin-bottom: 9px;
+    padding-left: 14px;
+  }
+
+  .med-num {
+    font-size: 9px; font-weight: 700; color: #2d6a4f;
+    min-width: 13px; padding-bottom: 2px; flex-shrink: 0;
+  }
+
+  /* ── Bottom two columns ── */
+  .bottom-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 2px;
+    flex: 1;
+  }
+
+  .col-header {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    margin-bottom: 7px;
+  }
+
+  .col-title {
+    font-size: 9.5px; font-weight: 600; color: #333;
+    padding-bottom: 2px; white-space: nowrap;
+  }
+
+  .col-title-line {
+    flex: 1;
+    border-bottom: 0.8px solid #1a3a2e;
+    height: 1px;
+    margin-bottom: 3px;
+  }
+
+  .advice-line {
+    flex: unset;
+    width: 100%;
+    padding-left: 14px;
+    margin-bottom: 9px;
+  }
+
+  /* ── Signature ── */
+  .sig-area {
+    margin-top: 6px;
+    text-align: right;
+  }
+  .sig-line {
+    display: inline-block;
+    width: 88px;
+    border-bottom: 0.8px solid #1a3a2e;
+    height: 20px;
+  }
+  .sig-label {
+    font-size: 7px; color: #888; text-align: right; margin-top: 2px;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    border-top: 0.5px solid #d0e8dd;
+    padding: 5px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8faf9;
+    flex-shrink: 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .footer-address {
+    font-size: 7px; color: #777; line-height: 1.6;
+  }
+
+  .footer-address strong { color: #1a3a2e; font-size: 8px; }
+
+  .next-visit-label {
+    font-size: 7.5px; color: #2d6a4f; font-weight: 600; margin-bottom: 2px; text-align: right;
+  }
+  .next-visit-line {
+    border-bottom: 0.8px solid #1a3a2e; min-width: 70px; height: 16px;
+  }
+
+  .not-valid {
+    text-align: center; font-size: 6.5px; color: #bbb;
+    letter-spacing: 0.3px; padding: 3px 0;
+    border-top: 0.4px solid #eee;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo-mark">${cs.logoLetter || "M"}</div>
+      <div>
+        <div class="clinic-name">${cs.clinicName}</div>
+        <div class="clinic-tagline">${cs.tagline}</div>
       </div>
+    </div>
+    <div class="doctor-info">
+      <div class="doctor-name">${cs.doctorName}</div>
+      <div class="doctor-deg">${cs.qualification}<br>Reg. No. GBI 17318</div>
+    </div>
+  </div>
 
-      {/* PATIENT INFO */}
-      <div style={{ lineHeight: "2.2", fontSize: "14px" }}>
-        <div>
-          <span
-            style={{
-              fontWeight: "700",
-              minWidth: "150px",
-              display: "inline-block",
-            }}
-          >
-            Patient Name .
-          </span>
-          <span
-            style={{
-              borderBottom: "1px dashed #555",
-              display: "inline-block",
-              minWidth: "380px",
-              paddingLeft: "6px",
-            }}
-          >
-            {patient.name}
-          </span>
+  <div class="accent-bar"></div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- Date -->
+    <div class="date-row">
+      <span class="lbl">Date :-</span>
+      <div class="field-fixed" style="width:90px;">${visitDate}</div>
+    </div>
+
+    <!-- 1. Patient Name -->
+    <div class="row">
+      <span class="bullet">•)</span>
+      <span class="lbl">Patient Name :-</span>
+      <div class="field-line">${patient.name || ""}</div>
+    </div>
+
+    <!-- 2. Mobile No -->
+    <div class="row">
+      <span class="bullet">•)</span>
+      <span class="lbl">Mobile No. :-</span>
+      <div class="field-line">${patient.mobile || ""}</div>
+    </div>
+
+    <!-- 3. Age / Weight / Address -->
+    <div class="row">
+      <span class="bullet">•)</span>
+      <span class="lbl">Age :-</span>
+      <div class="field-fixed" style="width:32px;">${ageStr}</div>
+      <span class="lbl" style="margin-left:5px;">Weight :-</span>
+      <div class="field-fixed" style="width:32px;">${patient.weight || ""}</div>
+      <span class="lbl" style="margin-left:5px;">Address :-</span>
+      <div class="field-line">${patient.address || ""}</div>
+    </div>
+
+    <!-- 4. Chief Complaint -->
+    <div class="row" style="margin-bottom:3px;">
+      <span class="bullet">•)</span>
+      <span class="lbl">Chief Complaint :- (C/O)</span>
+      <div class="field-line">${complaintLines[0]}</div>
+    </div>
+    <div class="row" style="padding-left:12px; margin-bottom:7px;">
+      <div class="field-line">${complaintLines[1] || ""}</div>
+    </div>
+
+    <!-- 5. Rx -->
+    <div class="rx-header-row">
+      <span class="bullet">•)</span>
+      <span class="rx-symbol">℞</span>
+      <div class="field-line"></div>
+    </div>
+    ${medRowsHTML}
+
+    <!-- 6. Advice + Reports -->
+    <div class="bottom-cols">
+      <div>
+        <div class="col-header">
+          <span class="bullet">•)</span>
+          <span class="col-title">Advice</span>
+          <div class="col-title-line"></div>
         </div>
-        {patient.patientNo && (
-          <div>
-            <span
-              style={{
-                fontWeight: "700",
-                minWidth: "150px",
-                display: "inline-block",
-              }}
-            >
-              Patient No.
-            </span>
-            <span
-              style={{
-                borderBottom: "1px dashed #555",
-                display: "inline-block",
-                minWidth: "380px",
-                paddingLeft: "6px",
-              }}
-            >
-              {patient.patientNo}
-            </span>
-          </div>
-        )}
-        <div>
-          <span
-            style={{
-              fontWeight: "700",
-              minWidth: "150px",
-              display: "inline-block",
-            }}
-          >
-            Mobile Number
-          </span>
-          <span
-            style={{
-              borderBottom: "1px dashed #555",
-              display: "inline-block",
-              minWidth: "380px",
-              paddingLeft: "6px",
-            }}
-          >
-            {patient.mobile}
-          </span>
-        </div>
-        <div
-          style={{ display: "flex", gap: "10px", alignItems: "baseline" }}
-        >
-          <span style={{ fontWeight: "700", whiteSpace: "nowrap" }}>Age</span>
-          <span
-            style={{
-              borderBottom: "1px dashed #555",
-              display: "inline-block",
-              minWidth: "60px",
-              paddingLeft: "4px",
-            }}
-          >
-            {age}
-          </span>
-          <span style={{ fontWeight: "700", whiteSpace: "nowrap" }}>
-            Weight
-          </span>
-          <span
-            style={{
-              borderBottom: "1px dashed #555",
-              display: "inline-block",
-              minWidth: "70px",
-              paddingLeft: "4px",
-            }}
-          >
-            {patient.weight || ""}
-          </span>
-          <span style={{ fontWeight: "700", whiteSpace: "nowrap" }}>
-            Address
-          </span>
-          <span
-            style={{
-              borderBottom: "1px dashed #555",
-              display: "inline-block",
-              flex: 1,
-              paddingLeft: "4px",
-            }}
-          >
-            {patient.address || ""}
-          </span>
-        </div>
+        ${adviceRowsHTML}
       </div>
-
-      <div style={{ height: "18px" }} />
-
-      {/* C/o */}
-      <div style={{ marginBottom: "18px" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-          <span
-            style={{
-              fontWeight: "700",
-              fontSize: "15px",
-              whiteSpace: "nowrap",
-              minWidth: "36px",
-            }}
-          >
-            C/o
-          </span>
-          <span
-            style={{
-              flex: 1,
-              borderBottom: "1px dashed #555",
-              paddingLeft: "4px",
-              minHeight: "22px",
-              display: "block",
-            }}
-          >
-            {patient.complaint || ""}
-          </span>
+      <div>
+        <div class="col-header">
+          <span class="bullet">•)</span>
+          <span class="col-title">Reports</span>
+          <div class="col-title-line"></div>
         </div>
-      </div>
-
-      {/* Rx */}
-      <div style={{ marginBottom: "6px" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-          <span
-            style={{
-              fontWeight: "700",
-              fontSize: "15px",
-              whiteSpace: "nowrap",
-              minWidth: "36px",
-            }}
-          >
-            Rx
-          </span>
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                borderBottom: "1px dashed #555",
-                paddingLeft: "4px",
-                minHeight: "22px",
-                whiteSpace: "pre-line",
-              }}
-            >
-              {patient.treatment || ""}
-            </div>
-            <div
-              style={{
-                borderBottom: "1px dashed #555",
-                height: "28px",
-                marginTop: "10px",
-              }}
-            />
-            <div
-              style={{
-                borderBottom: "1px dashed #555",
-                height: "28px",
-                marginTop: "10px",
-              }}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div style={{ height: "18px" }} />
-
-      {/* Advice */}
-      <div style={{ marginBottom: "14px" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-          <span
-            style={{
-              fontWeight: "700",
-              fontSize: "15px",
-              whiteSpace: "nowrap",
-              minWidth: "70px",
-            }}
-          >
-            Advice
-          </span>
-          <span
-            style={{
-              flex: 1,
-              borderBottom: "1px dashed #555",
-              paddingLeft: "4px",
-              minHeight: "22px",
-              display: "block",
-            }}
-          >
-            {patient.advice || ""}
-          </span>
-        </div>
-      </div>
-
-      {/* Reports */}
-      <div style={{ marginBottom: "30px" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-          <span
-            style={{
-              fontWeight: "700",
-              fontSize: "15px",
-              whiteSpace: "nowrap",
-              minWidth: "70px",
-            }}
-          >
-            Reports
-          </span>
-          <span
-            style={{
-              flex: 1,
-              borderBottom: "1px dashed #555",
-              paddingLeft: "4px",
-              minHeight: "22px",
-              display: "block",
-            }}
-          >
-            {patient.reports || ""}
-          </span>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div
-        style={{
-          borderTop: "2px solid #cc0000",
-          paddingTop: "8px",
-          marginTop: "20px",
-          backgroundColor: "#cc0000",
-          color: "#fff",
-          padding: "6px 12px",
-          borderRadius: "4px",
-          textAlign: "center",
-          fontSize: "11px",
-        }}
-      >
-        <div style={{ fontWeight: "700", fontSize: "12px" }}>
-          {s.footerAddress || s.address}
-          {s.phone ? ` .... Mo. ${phoneFmt}` : ""}
-        </div>
-        <div style={{ marginTop: "3px", fontSize: "10px" }}>
-          Not Valid For Medico - Legal Purpose
+        ${reportRowsHTML}
+        <div class="sig-area">
+          <div class="sig-line"></div>
+          <div class="sig-label">Doctor's Signature</div>
         </div>
       </div>
     </div>
-  );
+
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-address">
+      <strong>${cs.clinicName}</strong><br>
+      ${cs.address} &nbsp;|&nbsp; Mo. ${cs.phone}
+    </div>
+    <div>
+      <div class="next-visit-label">Next Visit</div>
+      <div class="next-visit-line"></div>
+    </div>
+  </div>
+
+  <div class="not-valid">Not valid for Medico – Legal Purpose</div>
+
+</div>
+</body>
+</html>`;
 }
 
-export function printPatientPrescription(patient: Patient) {
-  const el = document.getElementById("print-prescription");
-  if (!el) return;
-  el.style.display = "block";
-  window.print();
-  el.style.display = "none";
+// ── printPatientPrescription — opens a print window ──────────────────────────
+export function printPatientPrescription(patient: Patient): void {
+  const html = buildPrescriptionHTML(patient);
+  const win = window.open("", "_blank", "width=600,height=850");
+  if (!win) {
+    alert("Pop-up blocked! Please allow pop-ups for this site.");
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  // Give browser time to render before triggering print
+  win.onload = () => {
+    setTimeout(() => {
+      win.focus();
+      win.print();
+      // Close after print dialog closes (works in most browsers)
+      win.addEventListener("afterprint", () => win.close());
+    }, 350);
+  };
 }
+
+// ── PrintPrescription — hidden component that auto-triggers on mount ──────────
+// Rendered in Home.tsx as: {lastSaved && <PrintPrescription patient={lastSaved} />}
+// It does NOT auto-print on every render — only when explicitly called via
+// printPatientPrescription(). This component just mounts the hidden iframe
+// so the function is importable alongside it.
+export function PrintPrescription({ patient }: { patient: Patient }) {
+  // This component intentionally renders nothing visible.
+  // Printing is triggered imperatively via printPatientPrescription().
+  return null;
+}
+
+export default PrintPrescription;
