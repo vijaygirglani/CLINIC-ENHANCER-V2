@@ -69,7 +69,7 @@ function buildPrescriptionHTML(patient: Patient): string {
     .filter(Boolean)
     .join(" ");
 
-  // Split multi-line treatment into numbered lines (split by newline or comma)
+  // Split multi-line treatment into lines (split by newline)
   const medLines: string[] = patient.treatment
     ? patient.treatment
         .split(/\n/)
@@ -95,32 +95,26 @@ function buildPrescriptionHTML(patient: Patient): string {
     : [];
   while (reportLines.length < 3) reportLines.push("");
 
+  const complaint = patient.complaint || "";
+
+  // Med rows: first non-empty line gets content, rest are blank dashed lines
   const medRowsHTML = medLines
     .map(
-      (med, i) => `
-      <div class="med-row">
-        <span class="med-num">${i + 1}.</span>
-        <div class="field-line">${med}</div>
-      </div>`
+      (med) => `<div style="min-height: 18px; font-size: 10px; font-weight: 600; color: #111; padding: 3px 0; border-bottom: 1px dashed #c8e6d4;">${med}</div>`
     )
     .join("");
 
   const adviceRowsHTML = adviceLines
     .map(
-      (a) => `<div class="field-line advice-line">${a}</div>`
+      (a) => `<div style="min-height: 16px; font-size: 10px; font-weight: 600; color: #111; border-bottom: 1px dashed #f0c080; padding: 2px 0;">${a}</div>`
     )
     .join("");
 
   const reportRowsHTML = reportLines
     .map(
-      (r) => `<div class="field-line advice-line">${r}</div>`
+      (r) => `<div style="min-height: 16px; font-size: 10px; font-weight: 600; color: #111; border-bottom: 1px dashed #a8d8ea; padding: 2px 0;">${r}</div>`
     )
     .join("");
-
-  const complaintLines = patient.complaint
-    ? patient.complaint.split(/\n/).map((l) => l.trim()).filter(Boolean)
-    : [""];
-  while (complaintLines.length < 2) complaintLines.push("");
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -129,15 +123,8 @@ function buildPrescriptionHTML(patient: Patient): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Prescription – ${patient.name}</title>
 <style>
-  /* ── Reset ── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  /* ── A5: 148mm × 210mm ── */
-  @page {
-    size: A5 portrait;
-    margin: 0;
-  }
-
+  @page { size: A5 portrait; margin: 0; }
   html, body {
     width: 148mm;
     height: 210mm;
@@ -147,338 +134,148 @@ function buildPrescriptionHTML(patient: Patient): string {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
-
-  .page {
-    width: 148mm;
-    height: 210mm;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: #fff;
-  }
-
-  /* ── Header ── */
-  .header {
-    background: #1a3a2e;
-    padding: 10px 16px 9px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
-
-  .header-left { display: flex; align-items: center; gap: 8px; }
-
-  .logo-mark {
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.15);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px; font-weight: 700; color: #fff;
-    flex-shrink: 0;
-  }
-
-  .clinic-name {
-    font-size: 18px; font-weight: 700; color: #fff;
-    letter-spacing: -0.3px; line-height: 1;
-  }
-
-  .clinic-tagline {
-    font-size: 7px; color: #9fcfb8;
-    letter-spacing: 0.9px; text-transform: uppercase; margin-top: 2px;
-  }
-
-  .doctor-info { text-align: right; }
-  .doctor-name { font-size: 11px; font-weight: 700; color: #fff; }
-  .doctor-deg  { font-size: 7.5px; color: #9fcfb8; margin-top: 1px; line-height: 1.5; }
-
-  /* ── Accent bar ── */
-  .accent-bar {
-    height: 2.5px;
-    background: linear-gradient(90deg, #2d6a4f 0%, #52b788 50%, #d4a017 100%);
-    flex-shrink: 0;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  /* ── Body content ── */
-  .content {
-    flex: 1;
-    padding: 9px 16px 7px;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    overflow: hidden;
-  }
-
-  /* ── Common row ── */
-  .row {
-    display: flex;
-    align-items: flex-end;
-    gap: 5px;
-    margin-bottom: 8px;
-  }
-
-  .bullet {
-    font-size: 10px; font-weight: 700; color: #2d6a4f;
-    padding-bottom: 2px; min-width: 10px; flex-shrink: 0;
-  }
-
-  .lbl {
-    font-size: 9.5px; font-weight: 500; color: #333;
-    white-space: nowrap; padding-bottom: 2px; flex-shrink: 0;
-  }
-
-  .field-line {
-    flex: 1;
-    border-bottom: 0.8px solid #1a3a2e;
-    min-height: 17px;
-    font-size: 10px;
-    color: #111;
-    font-weight: 500;
-    padding-bottom: 1px;
-    line-height: 1.4;
-  }
-
-  .field-fixed {
-    border-bottom: 0.8px solid #1a3a2e;
-    min-height: 17px;
-    font-size: 10px;
-    color: #111;
-    font-weight: 500;
-    padding-bottom: 1px;
-  }
-
-  /* ── Date row ── */
-  .date-row {
-    display: flex;
-    justify-content: flex-end;
-    align-items: flex-end;
-    gap: 5px;
-    margin-bottom: 10px;
-  }
-
-  /* ── Rx section ── */
-  .rx-header-row {
-    display: flex;
-    align-items: flex-end;
-    gap: 5px;
-    margin-bottom: 7px;
-  }
-
-  .rx-symbol {
-    font-size: 20px; font-weight: 700; color: #2d6a4f;
-    line-height: 1; padding-bottom: 1px;
-  }
-
-  .med-row {
-    display: flex;
-    align-items: flex-end;
-    gap: 5px;
-    margin-bottom: 9px;
-    padding-left: 14px;
-  }
-
-  .med-num {
-    font-size: 9px; font-weight: 700; color: #2d6a4f;
-    min-width: 13px; padding-bottom: 2px; flex-shrink: 0;
-  }
-
-  /* ── Bottom two columns ── */
-  .bottom-cols {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    margin-top: 2px;
-    flex: 1;
-  }
-
-  .col-header {
-    display: flex;
-    align-items: flex-end;
-    gap: 5px;
-    margin-bottom: 7px;
-  }
-
-  .col-title {
-    font-size: 9.5px; font-weight: 600; color: #333;
-    padding-bottom: 2px; white-space: nowrap;
-  }
-
-  .col-title-line {
-    flex: 1;
-    border-bottom: 0.8px solid #1a3a2e;
-    height: 1px;
-    margin-bottom: 3px;
-  }
-
-  .advice-line {
-    flex: unset;
-    width: 100%;
-    padding-left: 14px;
-    margin-bottom: 9px;
-  }
-
-  /* ── Signature ── */
-  .sig-area {
-    margin-top: 6px;
-    text-align: right;
-  }
-  .sig-line {
-    display: inline-block;
-    width: 88px;
-    border-bottom: 0.8px solid #1a3a2e;
-    height: 20px;
-  }
-  .sig-label {
-    font-size: 7px; color: #888; text-align: right; margin-top: 2px;
-  }
-
-  /* ── Footer ── */
-  .footer {
-    border-top: 0.5px solid #d0e8dd;
-    padding: 5px 16px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #f8faf9;
-    flex-shrink: 0;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  .footer-address {
-    font-size: 7px; color: #777; line-height: 1.6;
-  }
-
-  .footer-address strong { color: #1a3a2e; font-size: 8px; }
-
-  .next-visit-label {
-    font-size: 7.5px; color: #2d6a4f; font-weight: 600; margin-bottom: 2px; text-align: right;
-  }
-  .next-visit-line {
-    border-bottom: 0.8px solid #1a3a2e; min-width: 70px; height: 16px;
-  }
-
-  .not-valid {
-    text-align: center; font-size: 6.5px; color: #bbb;
-    letter-spacing: 0.3px; padding: 3px 0;
-    border-top: 0.4px solid #eee;
-    flex-shrink: 0;
-  }
 </style>
 </head>
 <body>
-<div class="page">
+<div style="width: 148mm; min-height: 210mm; background: #fff; color: #111; display: flex; flex-direction: column; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif;">
 
   <!-- Header -->
-  <div class="header">
-    <div class="header-left">
-      <div class="logo-mark">${cs.logoLetter || "M"}</div>
+  <div style="background: linear-gradient(135deg, #0d3d2b 0%, #1a6b47 60%, #0d3d2b 100%); padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="width: 42px; height: 42px; border-radius: 10px; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative;">
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <rect x="11" y="3" width="6" height="22" rx="2" fill="#c0392b"/>
+          <rect x="3" y="11" width="22" height="6" rx="2" fill="#c0392b"/>
+        </svg>
+      </div>
       <div>
-        <div class="clinic-name">${cs.clinicName}</div>
-        <div class="clinic-tagline">${cs.tagline}</div>
+        <div style="font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.3px; line-height: 1;">${cs.clinicName}</div>
       </div>
     </div>
-    <div class="doctor-info">
-      <div class="doctor-name">${cs.doctorName}</div>
-      <div class="doctor-deg">${cs.qualification}<br>Reg. No. GBI 17318</div>
+    <div style="text-align: right;">
+      <div style="font-size: 12px; font-weight: 700; color: #fff;">${cs.doctorName}</div>
+      <div style="font-size: 9px; color: #a8e6c8; margin-top: 2px;">${cs.qualification}</div>
     </div>
   </div>
 
-  <div class="accent-bar"></div>
+  <!-- Rainbow accent bar -->
+  <div style="height: 4px; background: linear-gradient(90deg, #e74c3c, #e67e22, #f1c40f, #2ecc71, #3498db, #9b59b6); flex-shrink: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact;"></div>
+
+  <!-- Sub-header strip -->
+  <div style="background: linear-gradient(90deg, #eafaf1, #fef9e7, #eaf4fb); padding: 5px 18px; display: flex; justify-content: flex-end; align-items: center; border-bottom: 1px solid #d5e8d4; flex-shrink: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact;">
+    <span style="font-size: 9.5px; font-weight: 600; color: #555;">Date :-</span>
+    <span style="font-size: 10px; font-weight: 700; color: #1a6b47; margin-left: 6px; min-width: 90px;">${visitDate}</span>
+  </div>
 
   <!-- Content -->
-  <div class="content">
+  <div style="padding: 10px 18px 8px; display: flex; flex-direction: column; flex: 1;">
 
-    <!-- Date -->
-    <div class="date-row">
-      <span class="lbl">Date :-</span>
-      <div class="field-fixed" style="width:90px;">${visitDate}</div>
+    <!-- Patient info table -->
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
+      <tr>
+        <td style="width: 14px; padding: 4px 0; vertical-align: bottom;">
+          <span style="font-size: 11px; font-weight: 700; color: #e74c3c;">•</span>
+        </td>
+        <td style="white-space: nowrap; padding: 4px 6px 4px 2px; vertical-align: bottom;">
+          <span style="font-size: 9.5px; font-weight: 600; color: #2c3e50;">Patient Name :-</span>
+        </td>
+        <td style="border-bottom: 1.5px solid #3498db; padding: 4px 4px 2px; vertical-align: bottom;">
+          <span style="font-size: 10px; font-weight: 600; color: #111;">${patient.name || ""}</span>
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 14px; padding: 4px 0; vertical-align: bottom;">
+          <span style="font-size: 11px; font-weight: 700; color: #e67e22;">•</span>
+        </td>
+        <td style="white-space: nowrap; padding: 4px 6px 4px 2px; vertical-align: bottom;">
+          <span style="font-size: 9.5px; font-weight: 600; color: #2c3e50;">Mobile No. :-</span>
+        </td>
+        <td style="border-bottom: 1.5px solid #9b59b6; padding: 4px 4px 2px; vertical-align: bottom;">
+          <span style="font-size: 10px; font-weight: 600; color: #111;">${patient.mobile || ""}</span>
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 14px; padding: 4px 0; vertical-align: bottom;">
+          <span style="font-size: 11px; font-weight: 700; color: #2ecc71;">•</span>
+        </td>
+        <td style="white-space: nowrap; padding: 4px 6px 4px 2px; vertical-align: bottom;">
+          <span style="font-size: 9.5px; font-weight: 600; color: #2c3e50;">Age :-</span>
+        </td>
+        <td style="padding: 4px 0 2px; vertical-align: bottom;">
+          <div style="display: flex; align-items: flex-end; gap: 6px;">
+            <span style="border-bottom: 1.5px solid #e74c3c; min-width: 36px; padding-bottom: 2px; font-size: 10px; display: inline-block;">${ageStr}</span>
+            <span style="font-size: 9.5px; font-weight: 600; color: #2c3e50; white-space: nowrap;">Weight :-</span>
+            <span style="border-bottom: 1.5px solid #e67e22; min-width: 36px; padding-bottom: 2px; font-size: 10px; display: inline-block;">${patient.weight || ""}</span>
+            <span style="font-size: 9.5px; font-weight: 600; color: #2c3e50; white-space: nowrap;">Address :-</span>
+            <span style="border-bottom: 1.5px solid #3498db; flex: 1; min-width: 60px; padding-bottom: 2px; font-size: 10px; display: inline-block;">${patient.address || ""}</span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 14px; padding: 4px 0; vertical-align: bottom;">
+          <span style="font-size: 11px; font-weight: 700; color: #3498db;">•</span>
+        </td>
+        <td style="white-space: nowrap; padding: 4px 6px 4px 2px; vertical-align: bottom;">
+          <span style="font-size: 9.5px; font-weight: 600; color: #2c3e50;">Chief Complaint :-</span>
+        </td>
+        <td style="border-bottom: 1.5px solid #2ecc71; padding: 4px 4px 2px; vertical-align: bottom;">
+          <span style="font-size: 10px; font-weight: 600; color: #111;">${complaint}</span>
+        </td>
+      </tr>
+      <tr>
+        <td></td><td></td>
+        <td style="border-bottom: 1.5px solid #2ecc71; padding: 2px 4px 2px; height: 18px;"></td>
+      </tr>
+    </table>
+
+    <!-- Rx section -->
+    <div style="background: linear-gradient(90deg, #eafaf1, #f0f8ff); border-left: 4px solid #1a6b47; border-radius: 0 6px 6px 0; padding: 7px 10px 4px; margin-bottom: 8px; print-color-adjust: exact; -webkit-print-color-adjust: exact;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+        <span style="font-size: 22px; font-weight: 700; color: #c0392b; line-height: 1;">&#8478;</span>
+        <div style="flex: 1; height: 1.5px; background: linear-gradient(90deg, #c0392b, transparent);"></div>
+      </div>
+      <div style="padding-left: 10px;">
+        ${medRowsHTML}
+      </div>
     </div>
 
-    <!-- 1. Patient Name -->
-    <div class="row">
-      <span class="bullet">•)</span>
-      <span class="lbl">Patient Name :-</span>
-      <div class="field-line">${patient.name || ""}</div>
-    </div>
-
-    <!-- 2. Mobile No -->
-    <div class="row">
-      <span class="bullet">•)</span>
-      <span class="lbl">Mobile No. :-</span>
-      <div class="field-line">${patient.mobile || ""}</div>
-    </div>
-
-    <!-- 3. Age / Weight / Address -->
-    <div class="row">
-      <span class="bullet">•)</span>
-      <span class="lbl">Age :-</span>
-      <div class="field-fixed" style="width:32px;">${ageStr}</div>
-      <span class="lbl" style="margin-left:5px;">Weight :-</span>
-      <div class="field-fixed" style="width:32px;">${patient.weight || ""}</div>
-      <span class="lbl" style="margin-left:5px;">Address :-</span>
-      <div class="field-line">${patient.address || ""}</div>
-    </div>
-
-    <!-- 4. Chief Complaint -->
-    <div class="row" style="margin-bottom:3px;">
-      <span class="bullet">•)</span>
-      <span class="lbl">Chief Complaint :- (C/O)</span>
-      <div class="field-line">${complaintLines[0]}</div>
-    </div>
-    <div class="row" style="padding-left:12px; margin-bottom:7px;">
-      <div class="field-line">${complaintLines[1] || ""}</div>
-    </div>
-
-    <!-- 5. Rx -->
-    <div class="rx-header-row">
-      <span class="bullet">•)</span>
-      <span class="rx-symbol">℞</span>
-      <div class="field-line"></div>
-    </div>
-    ${medRowsHTML}
-
-    <!-- 6. Advice + Reports -->
-    <div class="bottom-cols">
-      <div>
-        <div class="col-header">
-          <span class="bullet">•)</span>
-          <span class="col-title">Advice</span>
-          <div class="col-title-line"></div>
-        </div>
+    <!-- Bottom two columns -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
+      <div style="background: linear-gradient(135deg, #fef9e7, #fdebd0); border-left: 3px solid #e67e22; border-radius: 0 6px 6px 0; padding: 6px 8px; print-color-adjust: exact; -webkit-print-color-adjust: exact;">
+        <div style="font-size: 9.5px; font-weight: 700; color: #e67e22; margin-bottom: 5px; letter-spacing: 0.5px; text-transform: uppercase;">• Advice</div>
         ${adviceRowsHTML}
       </div>
-      <div>
-        <div class="col-header">
-          <span class="bullet">•)</span>
-          <span class="col-title">Reports</span>
-          <div class="col-title-line"></div>
-        </div>
+      <div style="background: linear-gradient(135deg, #eaf4fb, #e8f8f5); border-left: 3px solid #3498db; border-radius: 0 6px 6px 0; padding: 6px 8px; print-color-adjust: exact; -webkit-print-color-adjust: exact;">
+        <div style="font-size: 9.5px; font-weight: 700; color: #3498db; margin-bottom: 5px; letter-spacing: 0.5px; text-transform: uppercase;">• Reports</div>
         ${reportRowsHTML}
-        <div class="sig-area">
-          <div class="sig-line"></div>
-          <div class="sig-label">Doctor's Signature</div>
+        <div style="margin-top: 8px; text-align: right;">
+          <div style="display: inline-block; width: 88px; height: 22px; border-bottom: 1.5px solid #9b59b6;"></div>
+          <div style="font-size: 7.5px; color: #9b59b6; text-align: right; margin-top: 2px; font-weight: 600;">Doctor's Signature</div>
         </div>
       </div>
     </div>
 
   </div>
 
+  <!-- Rainbow separator -->
+  <div style="height: 3px; background: linear-gradient(90deg, #9b59b6, #3498db, #2ecc71, #f1c40f, #e67e22, #e74c3c); margin: 4px 0 0; flex-shrink: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact;"></div>
+
   <!-- Footer -->
-  <div class="footer">
-    <div class="footer-address">
-      <strong>${cs.clinicName}</strong><br>
-      ${cs.address} &nbsp;|&nbsp; Mo. ${cs.phone}
+  <div style="padding: 8px 18px; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(90deg, #0d3d2b, #1a6b47); flex-shrink: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact;">
+    <div style="line-height: 1.7;">
+      <div style="font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 0.3px;">${cs.clinicName}</div>
+      <div style="font-size: 10px; font-weight: 600; color: #a8e6c8;">${cs.address}</div>
+      <div style="font-size: 11px; font-weight: 700; color: #f1c40f; letter-spacing: 0.5px;">&#128222; ${cs.phone}</div>
     </div>
     <div>
-      <div class="next-visit-label">Next Visit</div>
-      <div class="next-visit-line"></div>
+      <div style="font-size: 8px; color: #a8e6c8; font-weight: 600; margin-bottom: 3px; text-align: right;">Next Visit</div>
+      <div style="min-width: 80px; height: 18px; border-bottom: 1.5px solid #f1c40f;"></div>
     </div>
   </div>
 
-  <div class="not-valid">Not valid for Medico – Legal Purpose</div>
+  <div style="text-align: center; font-size: 7px; color: #999; letter-spacing: 0.3px; padding: 3px 0; background: #f9f9f9; flex-shrink: 0;">
+    Not valid for Medico – Legal Purpose
+  </div>
 
 </div>
 </body>
