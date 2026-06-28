@@ -77,7 +77,7 @@ function buildPrescriptionHTML(patient: Patient): string {
         .filter(Boolean)
     : [];
   // Ensure at least 7 blank lines for medicines
-  while (medLines.length < 7) medLines.push("");
+  while (medLines.length < 10) medLines.push("");
 
   const adviceLines: string[] = patient.advice
     ? patient.advice
@@ -85,7 +85,7 @@ function buildPrescriptionHTML(patient: Patient): string {
         .map((l) => l.trim())
         .filter(Boolean)
     : [];
-  while (adviceLines.length < 4) adviceLines.push("");
+  while (adviceLines.length < 2) adviceLines.push("");
 
   const reportLines: string[] = patient.reports
     ? patient.reports
@@ -93,7 +93,7 @@ function buildPrescriptionHTML(patient: Patient): string {
         .map((l) => l.trim())
         .filter(Boolean)
     : [];
-  while (reportLines.length < 3) reportLines.push("");
+  while (reportLines.length < 2) reportLines.push("");
 
   const complaint = patient.complaint || "";
 
@@ -154,7 +154,7 @@ function buildPrescriptionHTML(patient: Patient): string {
     </div>
     <div style="text-align: right;">
       <div style="font-size: 12px; font-weight: 700; color: #fff;">${cs.doctorName}</div>
-      <div style="font-size: 9px; color: #a8e6c8; margin-top: 2px;">${cs.qualification}</div>
+      <div style="font-size: 9px; color: #a8e6c8; margin-top: 2px;">B.A.M.S.</div>
     </div>
   </div>
 
@@ -248,11 +248,13 @@ function buildPrescriptionHTML(patient: Patient): string {
       <div style="background: linear-gradient(135deg, #eaf4fb, #e8f8f5); border-left: 3px solid #3498db; border-radius: 0 6px 6px 0; padding: 6px 8px; print-color-adjust: exact; -webkit-print-color-adjust: exact;">
         <div style="font-size: 9.5px; font-weight: 700; color: #3498db; margin-bottom: 5px; letter-spacing: 0.5px; text-transform: uppercase;">• Reports</div>
         ${reportRowsHTML}
-        <div style="margin-top: 8px; text-align: right;">
-          <div style="display: inline-block; width: 88px; height: 22px; border-bottom: 1.5px solid #9b59b6;"></div>
-          <div style="font-size: 7.5px; color: #9b59b6; text-align: right; margin-top: 2px; font-weight: 600;">Doctor's Signature</div>
-        </div>
       </div>
+    </div>
+
+    <!-- Doctor's Signature — separate below both columns -->
+    <div style="margin-top: 10px; text-align: right; padding-right: 4px;">
+      <div style="display: inline-block; width: 120px; height: 24px; border-bottom: 1.5px solid #9b59b6;"></div>
+      <div style="font-size: 7.5px; color: #9b59b6; text-align: right; margin-top: 2px; font-weight: 600;">Doctor's Signature</div>
     </div>
 
   </div>
