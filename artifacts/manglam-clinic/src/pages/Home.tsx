@@ -1511,14 +1511,37 @@ export default function Home() {
     const product = looseProduct.trim();
     const amount  = Number(looseAmount);
     if (!product || !amount || amount <= 0) return;
+    const today = getLiveToday();
     const entry: LooseSaleEntry = {
       id: genSaleId(), product, amount,
-      date: getLiveToday(),
+      date: today,
       time: format(new Date(), "hh:mm a"),
     };
     pushUndo(`Undo loose sale: ${product} ₹${amount}`);
     addLooseSale(entry);
     refreshLooseSales();
+
+    // ── Auto-save as a patient record in Daily Register ──
+    // Uses a fixed mobile "0000000000" as the loose-sale patient identifier.
+    // Each sale is saved as a separate visit so history is preserved per item.
+    const loosePatientMobile = "0000000000";
+    addPatient({
+      name: `Loose Med: ${product}`,
+      mobile: loosePatientMobile,
+      patientNo: 0,
+      age: 0, ageMonths: 0,
+      weight: "", address: "",
+      complaintCode: "", complaint: "Loose Medicine Sale",
+      treatment: product,
+      adviceCode: "", advice: "",
+      reports: "",
+      fees: amount,
+      paymentMode: "cash",
+      attachments: [],
+      registerType: "general",
+      visitDate: today,
+    });
+
     setLooseProduct("");
     setLooseAmount("");
   };
