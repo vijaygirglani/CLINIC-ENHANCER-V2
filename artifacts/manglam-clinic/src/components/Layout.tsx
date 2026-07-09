@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import {
   UserPlus, BookOpen, Leaf, Code2, BookMarked, ClipboardList, MessageCircle, Menu, X,
+  Package, Wallet,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -12,6 +13,8 @@ const NAV = [
   { to: "/advice-codes",      label: "Advice Master",        icon: ClipboardList },
   { to: "/broadcast",         label: "Broadcast",            icon: MessageCircle },
   { to: "/pathya-apathya",    label: "Pathya-Apathya",       icon: BookMarked },
+  { to: "/inventory",         label: "Inventory",            icon: Package },
+  { to: "/expenses",          label: "Expenses",             icon: Wallet },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
