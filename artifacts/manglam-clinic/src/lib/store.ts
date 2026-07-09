@@ -547,7 +547,9 @@ export function getMonthlyStats(year: number, month: number) {
     else dayMap[p.visitDate].generalFees += p.fees || 0;
   }
   const dailyBreakdown = Object.entries(dayMap).map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date));
-  return { totalPatients: patients.length, totalFees, generalPatients, ayurvedicPatients, generalFees, ayurvedicFees, dailyBreakdown };
+  const totalExpenses = getExpensesByMonth(year, month).reduce((s, e) => s + e.amount, 0);
+  const netTotal = totalFees - totalExpenses;
+  return { totalPatients: patients.length, totalFees, generalPatients, ayurvedicPatients, generalFees, ayurvedicFees, dailyBreakdown, totalExpenses, netTotal };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -750,6 +752,8 @@ export function exportBackup(): string {
     purchaseBills: getPurchaseBills(),
     medicineBills: getMedicineBills(),
     doctors: getDoctors(),
+    pharmacies: getPharmacies(),
+    expenses: getExpenses(),
     idCounter: parseInt(localStorage.getItem(COUNTER_KEY) || "0"),
   };
   return JSON.stringify(data, null, 2);
@@ -766,8 +770,10 @@ export function importBackup(jsonStr: string): { success: boolean; message: stri
     if (data.purchaseBills && Array.isArray(data.purchaseBills)) localStorage.setItem(PURCHASE_BILLS_KEY, JSON.stringify(data.purchaseBills));
     if (data.medicineBills && Array.isArray(data.medicineBills)) localStorage.setItem(MEDICINE_BILLS_KEY, JSON.stringify(data.medicineBills));
     if (data.doctors && Array.isArray(data.doctors)) localStorage.setItem(DOCTORS_KEY, JSON.stringify(data.doctors));
+    if (data.pharmacies && Array.isArray(data.pharmacies)) localStorage.setItem(PHARMACIES_KEY, JSON.stringify(data.pharmacies));
+    if (data.expenses && Array.isArray(data.expenses)) localStorage.setItem(EXPENSES_KEY, JSON.stringify(data.expenses));
     if (data.idCounter) localStorage.setItem(COUNTER_KEY, String(data.idCounter));
-    return { success: true, message: `Restored ${data.patients.length} patients, ${data.medicines?.length || 0} medicines.` };
+    return { success: true, message: `Restored ${data.patients.length} patients, ${data.medicines?.length || 0} medicines, ${data.expenses?.length || 0} expenses.` };
   } catch { return { success: false, message: "Failed to parse backup file." }; }
 }
 
@@ -1393,4 +1399,159 @@ export function restoreStockForPatient(patientId: number) {
   saveMedicines(medicines);
   const remaining = getMedicineBills().filter(b => b.patientId !== patientId);
   localStorage.setItem(MEDICINE_BILLS_KEY, JSON.stringify(remaining));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHARMACY / SUPPLIER MASTER
+// ═══════════════════════════════════════════════════════════════
+
+export interface Pharmacy {
+  id: number;
+  name: string;
+  contactPerson?: string;
+  phone?: string;
+  gstNo?: string;
+  address?: string;
+  createdAt: string;
+}
+
+const PHARMACIES_KEY = "cp_pharmacies";
+
+export function getPharmacies(): Pharmacy[] {
+  try { return JSON.parse(localStorage.getItem(PHARMACIES_KEY) || "[]"); }
+  catch { return []; }
+}
+
+function savePharmacies(pharmacies: Pharmacy[]) {
+  localStorage.setItem(PHARMACIES_KEY, JSON.stringify(pharmacies));
+}
+
+export function addPharmacy(data: Omit<Pharmacy, "id" | "createdAt">): Pharmacy {
+  const pharmacies = getPharmacies();
+  const pharmacy: Pharmacy = { ...data, id: nextId(), createdAt: new Date().toISOString() };
+  pharmacies.push(pharmacy);
+  savePharmacies(pharmacies);
+  return pharmacy;
+}
+
+export function updatePharmacy(id: number, data: Partial<Pharmacy>): Pharmacy | null {
+  const pharmacies = getPharmacies();
+  const idx = pharmacies.findIndex(p => p.id === id);
+  if (idx === -1) return null;
+  pharmacies[idx] = { ...pharmacies[idx], ...data };
+  savePharmacies(pharmacies);
+  return pharmacies[idx];
+}
+
+export function deletePharmacy(id: number): boolean {
+  const pharmacies = getPharmacies();
+  const filtered = pharmacies.filter(p => p.id !== id);
+  savePharmacies(filtered);
+  return filtered.length !== pharmacies.length;
+}
+
+// Last purchase info for a medicine — powers the "repeat buy" 1-click reorder
+export interface LastPurchaseInfo {
+  pharmacyName: string;
+  billDate: string;
+  ratePerUnit: number;
+  packSize: number;
+  mrp: number;
+  gstPct: number;
+  discountPct: number;
+}
+
+export function getLastPurchaseInfo(medicineName: string): LastPurchaseInfo | null {
+  const bills = getPurchaseBills().sort((a, b) => b.billDate.localeCompare(a.billDate));
+  for (const bill of bills) {
+    const item = bill.items.find(it => it.medicineName.toLowerCase() === medicineName.trim().toLowerCase());
+    if (item) {
+      return {
+        pharmacyName: bill.supplierName,
+        billDate: bill.billDate,
+        ratePerUnit: item.ratePerUnit,
+        packSize: item.packSize,
+        mrp: item.mrp,
+        gstPct: item.gstPct,
+        discountPct: item.discountPct,
+      };
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EXPENSES
+// ═══════════════════════════════════════════════════════════════
+
+export type ExpenseCategory =
+  | "Rent" | "Staff Salary" | "Electricity" | "Stock Purchase"
+  | "Equipment" | "Maintenance" | "Marketing" | "Misc";
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  "Rent", "Staff Salary", "Electricity", "Stock Purchase",
+  "Equipment", "Maintenance", "Marketing", "Misc",
+];
+
+export interface Expense {
+  id: number;
+  date: string;            // "YYYY-MM-DD"
+  category: ExpenseCategory | string;
+  amount: number;
+  paymentMode: "cash" | "online";
+  note?: string;
+  createdAt: string;
+}
+
+const EXPENSES_KEY = "cp_expenses";
+
+export function getExpenses(): Expense[] {
+  try { return JSON.parse(localStorage.getItem(EXPENSES_KEY) || "[]"); }
+  catch { return []; }
+}
+
+function saveExpenses(expenses: Expense[]) {
+  localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+}
+
+export function addExpense(data: Omit<Expense, "id" | "createdAt">): Expense {
+  const expenses = getExpenses();
+  const expense: Expense = { ...data, id: nextId(), createdAt: new Date().toISOString() };
+  expenses.push(expense);
+  saveExpenses(expenses);
+  return expense;
+}
+
+export function updateExpense(id: number, data: Partial<Expense>): Expense | null {
+  const expenses = getExpenses();
+  const idx = expenses.findIndex(e => e.id === id);
+  if (idx === -1) return null;
+  expenses[idx] = { ...expenses[idx], ...data };
+  saveExpenses(expenses);
+  return expenses[idx];
+}
+
+export function deleteExpense(id: number): boolean {
+  const expenses = getExpenses();
+  const filtered = expenses.filter(e => e.id !== id);
+  saveExpenses(filtered);
+  return filtered.length !== expenses.length;
+}
+
+export function getExpensesByDate(date: string): Expense[] {
+  return getExpenses().filter(e => e.date === date).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function getExpensesByMonth(year: number, month: number): Expense[] {
+  const monthStr = `${year}-${String(month).padStart(2, "0")}`;
+  return getExpenses().filter(e => e.date.startsWith(monthStr)).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export function getExpenseCategoryBreakdown(year: number, month: number): { category: string; total: number }[] {
+  const expenses = getExpensesByMonth(year, month);
+  const map: Record<string, number> = {};
+  for (const e of expenses) {
+    map[e.category] = (map[e.category] || 0) + e.amount;
+  }
+  return Object.entries(map).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total);
 }
