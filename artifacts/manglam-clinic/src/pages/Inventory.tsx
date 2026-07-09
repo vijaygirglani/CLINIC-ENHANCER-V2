@@ -6,6 +6,7 @@ import {
   getPurchaseBills, addPurchaseBill, deletePurchaseBill, calcLandingCost, getStockValuation,
   getExpiryList, getPharmacies, addPharmacy, updatePharmacy, deletePharmacy, getLastPurchaseInfo,
   updatePurchaseBillPayment, markPurchaseBillPaid, getPharmacyPurchaseSummary, getPurchaseBillPaymentStatus,
+  deletePurchaseBillItem,
   type MedicineItem, type PurchaseBill, type PurchaseBillItem, type Pharmacy, type ExpiryItem,
 } from "@/lib/store";
 import {
@@ -271,9 +272,26 @@ export default function Inventory() {
     refresh();
   };
 
+  const handleDeleteExpiryItem = (e: ExpiryItem) => {
+    if (!confirm(`Remove ${e.medicineName} (batch ${e.batchNo}) from stock? This deletes it from the purchase record too.`)) return;
+    deletePurchaseBillItem(e.billId, e.itemIndex);
+    toast({ title: "Removed", description: `${e.medicineName} removed from stock.` });
+    refresh();
+  };
+
   const [pharmacyFilter, setPharmacyFilter] = useState("all");
+  const [billSearch, setBillSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "partial" | "pending">("all");
   const pharmacySummary = getPharmacyPurchaseSummary();
-  const visibleBills = pharmacyFilter === "all" ? purchaseBills : purchaseBills.filter(b => b.supplierName === pharmacyFilter);
+  const visibleBills = purchaseBills.filter(b => {
+    if (pharmacyFilter !== "all" && b.supplierName !== pharmacyFilter) return false;
+    if (statusFilter !== "all" && getPurchaseBillPaymentStatus(b) !== statusFilter) return false;
+    if (billSearch.trim()) {
+      const q = billSearch.trim().toLowerCase();
+      if (!b.supplierName.toLowerCase().includes(q) && !(b.billNo || "").toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
   const filteredExpiry = expiryList.filter(e => expiryFilter === "all" ? true : e.status === expiryFilter);
 
@@ -582,10 +600,30 @@ export default function Inventory() {
 
             {/* Recent bills */}
             <div className="medical-card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 space-y-3">
                 <span className="text-sm font-semibold text-slate-700">
-                  Purchase bills {pharmacyFilter !== "all" && <span className="text-slate-400 font-normal">— {pharmacyFilter}</span>}
+                  Purchase bills <span className="text-slate-400 font-normal">({visibleBills.length})</span>
                 </span>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input value={billSearch} onChange={e => setBillSearch(e.target.value)}
+                      placeholder="Search company, bill number..."
+                      className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                  </div>
+                  <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
+                    className="px-3 py-2 rounded-lg border border-slate-200 text-sm font-medium bg-white">
+                    <option value="all">All status</option>
+                    <option value="paid">Paid</option>
+                    <option value="partial">Partially paid</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                  <select value={pharmacyFilter} onChange={e => setPharmacyFilter(e.target.value)}
+                    className="px-3 py-2 rounded-lg border border-slate-200 text-sm font-medium bg-white">
+                    <option value="all">All companies</option>
+                    {pharmacySummary.map(s => <option key={s.pharmacyName} value={s.pharmacyName}>{s.pharmacyName}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -601,7 +639,7 @@ export default function Inventory() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {visibleBills.length > 0 ? visibleBills.slice(0, 20).map(b => {
+                    {visibleBills.length > 0 ? (billSearch || statusFilter !== "all" || pharmacyFilter !== "all" ? visibleBills : visibleBills.slice(0, 20)).map(b => {
                       const status = getPurchaseBillPaymentStatus(b);
                       return (
                         <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
@@ -666,6 +704,7 @@ export default function Inventory() {
                       <th className="px-4 py-3 font-semibold text-slate-600 text-right">Qty (packs)</th>
                       <th className="px-4 py-3 font-semibold text-slate-600 text-right">Days left</th>
                       <th className="px-4 py-3 font-semibold text-slate-600">Status</th>
+                      <th className="px-4 py-3 font-semibold text-slate-600 text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -679,9 +718,15 @@ export default function Inventory() {
                         <td className="px-4 py-3">
                           <span className={`text-xs font-bold px-2 py-1 rounded-md border ${EXPIRY_STATUS_STYLE[e.status]}`}>{EXPIRY_STATUS_LABEL[e.status]}</span>
                         </td>
+                        <td className="px-4 py-3 text-center">
+                          <button onClick={() => handleDeleteExpiryItem(e)} title="Remove this batch from stock"
+                            className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">No batches match this filter.</td></tr>
+                      <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">No batches match this filter.</td></tr>
                     )}
                   </tbody>
                 </table>
