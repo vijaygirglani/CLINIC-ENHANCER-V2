@@ -38,13 +38,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </Link>
 
-            {/* Desktop Nav */}
-            <nav className="hidden lg:flex items-center gap-1 ml-4">
+            {/* Desktop Nav — scrolls horizontally instead of overflowing off-screen */}
+            <nav className="hidden lg:flex items-center gap-1 ml-4 flex-1 min-w-0 overflow-x-auto [scrollbar-width:thin] [-ms-overflow-style:none]">
               {NAV.map(({ to, label, icon: Icon }) => {
                 const active = location === to;
                 return (
                   <Link key={to} href={to}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap shrink-0
                       ${active
                         ? "bg-primary/10 text-primary"
                         : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -55,6 +55,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 );
               })}
             </nav>
+
+            {/* More menu — always-visible dropdown fallback for narrower desktop windows */}
+            <div className="hidden lg:block shrink-0">
+              <details className="relative">
+                <summary className="list-none cursor-pointer p-2 rounded-lg text-slate-500 hover:bg-slate-100 flex items-center justify-center">
+                  <Menu className="w-4 h-4" />
+                </summary>
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl border border-slate-200 shadow-lg py-1.5 z-50">
+                  {NAV.map(({ to, label, icon: Icon }) => {
+                    const active = location === to;
+                    return (
+                      <Link key={to} href={to}
+                        className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all
+                          ${active ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-100"}`}>
+                        <Icon className="w-4 h-4" />
+                        {label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </details>
+            </div>
 
             {/* Mobile hamburger */}
             <button className="ml-auto lg:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100"
