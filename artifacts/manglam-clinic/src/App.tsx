@@ -10,6 +10,8 @@ import ComplaintCodes from "@/pages/ComplaintCodes";
 import AdviceCodes from "@/pages/AdviceCodes";
 import Broadcast from "@/pages/Broadcast";
 import PathyaApathya from "@/pages/PathyaApathya";
+import Inventory from "@/pages/Inventory";
+import Expenses from "@/pages/Expenses";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -28,6 +30,8 @@ function Router() {
       <Route path="/advice-codes" component={AdviceCodes} />
       <Route path="/broadcast" component={Broadcast} />
       <Route path="/pathya-apathya" component={PathyaApathya} />
+      <Route path="/inventory" component={Inventory} />
+      <Route path="/expenses" component={Expenses} />
       <Route component={NotFound} />
     </Switch>
   );
