@@ -5,11 +5,12 @@ import {
   getMedicines, addMedicine, updateMedicine, deleteMedicine, getStockStatus, getStockAlertCounts,
   getPurchaseBills, addPurchaseBill, deletePurchaseBill, calcLandingCost, getStockValuation,
   getExpiryList, getPharmacies, addPharmacy, updatePharmacy, deletePharmacy, getLastPurchaseInfo,
+  updatePurchaseBillPayment, markPurchaseBillPaid, getPharmacyPurchaseSummary, getPurchaseBillPaymentStatus,
   type MedicineItem, type PurchaseBill, type PurchaseBillItem, type Pharmacy, type ExpiryItem,
 } from "@/lib/store";
 import {
   Package, Plus, Edit2, Trash2, IndianRupee, AlertTriangle, CalendarClock,
-  Building2, ShoppingCart, X, TrendingUp, Search,
+  Building2, ShoppingCart, X, TrendingUp, Search, CheckCircle2, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
@@ -152,56 +153,66 @@ export default function Inventory() {
   const [billPharmacy, setBillPharmacy] = useState("");
   const [billNo, setBillNo] = useState("");
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [billPendingAmount, setBillPendingAmount] = useState(0);
   const [billItems, setBillItems] = useState<PurchaseBillItem[]>([]);
 
+  // Primary fields (always visible)
   const [itemName, setItemName] = useState("");
-  const [itemPackSize, setItemPackSize] = useState(10);
+  const [itemExpiry, setItemExpiry] = useState("");
+  const [itemQty, setItemQty] = useState(1);
+  const [itemPurchasePrice, setItemPurchasePrice] = useState(0);
+
+  // Advanced / optional fields — hidden behind a toggle, sensible defaults
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [itemPackSize, setItemPackSize] = useState(1);
   const [itemMrp, setItemMrp] = useState(0);
   const [itemBatch, setItemBatch] = useState("");
-  const [itemExpiry, setItemExpiry] = useState("");
-  const [itemQtyPaid, setItemQtyPaid] = useState(1);
   const [itemQtyFree, setItemQtyFree] = useState(0);
-  const [itemRate, setItemRate] = useState(0);
   const [itemDiscount, setItemDiscount] = useState(0);
-  const [itemGst, setItemGst] = useState(12);
+  const [itemGst, setItemGst] = useState(0);
+
+  const itemRate = itemQty > 0 ? itemPurchasePrice / itemQty : 0; // rate per pack, derived from total price paid
 
   const lastPurchase = itemName.trim().length > 1 ? getLastPurchaseInfo(itemName) : null;
 
   const useLastPurchase = () => {
     if (!lastPurchase) return;
-    setItemRate(lastPurchase.ratePerUnit);
+    setItemPurchasePrice(Math.round(lastPurchase.ratePerUnit * itemQty * 100) / 100);
     setItemPackSize(lastPurchase.packSize);
     setItemMrp(lastPurchase.mrp);
     setItemGst(lastPurchase.gstPct);
     setItemDiscount(lastPurchase.discountPct);
     setBillPharmacy(lastPurchase.pharmacyName);
+    setShowAdvanced(true);
     toast({ title: "Filled from last purchase", description: `Rate, MRP & pack size copied from ${lastPurchase.pharmacyName} (${format(new Date(lastPurchase.billDate + "T00:00:00"), "dd MMM yyyy")}).` });
   };
 
   const itemCalc = calcLandingCost({
-    qtyPaid: itemQtyPaid, qtyFree: itemQtyFree, ratePerUnit: itemRate,
-    discountPct: itemDiscount, gstPct: itemGst, mrp: itemMrp, packSize: itemPackSize,
+    qtyPaid: itemQty, qtyFree: itemQtyFree, ratePerUnit: itemRate,
+    discountPct: itemDiscount, gstPct: itemGst, mrp: itemMrp || itemRate, packSize: itemPackSize,
   });
 
   const resetItemForm = () => {
-    setItemName(""); setItemPackSize(10); setItemMrp(0); setItemBatch(""); setItemExpiry("");
-    setItemQtyPaid(1); setItemQtyFree(0); setItemRate(0); setItemDiscount(0); setItemGst(12);
+    setItemName(""); setItemExpiry(""); setItemQty(1); setItemPurchasePrice(0);
+    setItemPackSize(1); setItemMrp(0); setItemBatch(""); setItemQtyFree(0); setItemDiscount(0); setItemGst(0);
+    setShowAdvanced(false);
   };
 
   const handleAddItem = () => {
-    if (!itemName.trim()) { toast({ variant: "destructive", title: "Medicine name required" }); return; }
-    if (itemRate <= 0) { toast({ variant: "destructive", title: "Rate required" }); return; }
+    if (!itemName.trim()) { toast({ variant: "destructive", title: "Item name required" }); return; }
+    if (itemQty <= 0) { toast({ variant: "destructive", title: "Quantity required" }); return; }
+    if (itemPurchasePrice <= 0) { toast({ variant: "destructive", title: "Purchase price required" }); return; }
     const existing = getMedicines().find(m => m.name.toLowerCase() === itemName.trim().toLowerCase());
     const medicineId = existing?.id ?? -1; // resolved to a real id on save (medicine may not exist yet)
     const newItem: PurchaseBillItem = {
       medicineId,
       medicineName: itemName.trim(),
-      mrp: itemMrp,
+      mrp: itemMrp || itemRate,
       packSize: itemPackSize,
       mrpPerTablet: itemCalc.mrpPerTablet,
       batchNo: itemBatch.trim(),
       expiryDate: itemExpiry.trim(),
-      qtyPaid: itemQtyPaid,
+      qtyPaid: itemQty,
       qtyFree: itemQtyFree,
       ratePerUnit: itemRate,
       discountPct: itemDiscount,
@@ -212,7 +223,7 @@ export default function Inventory() {
       totalTabletsReceived: itemCalc.totalTabletsReceived,
       taxableAmount: itemCalc.taxableAmount,
       gstAmount: itemCalc.gstAmount,
-      totalPaid: itemCalc.totalPaid,
+      totalPaid: itemDiscount || itemGst ? itemCalc.totalPaid : itemPurchasePrice,
     };
     setBillItems(prev => [...prev, newItem]);
     resetItemForm();
@@ -238,9 +249,12 @@ export default function Inventory() {
       return { ...item, medicineId: med.id };
     });
 
-    addPurchaseBill({ supplierName: billPharmacy.trim(), billNo: billNo.trim(), billDate, items, grandTotal: billGrandTotal });
+    addPurchaseBill({
+      supplierName: billPharmacy.trim(), billNo: billNo.trim(), billDate, items,
+      grandTotal: billGrandTotal, pendingAmount: billPendingAmount > 0 ? billPendingAmount : 0,
+    });
     toast({ title: "Purchase saved", description: `Stock updated for ${items.length} item(s).` });
-    setBillPharmacy(""); setBillNo(""); setBillDate(format(new Date(), "yyyy-MM-dd")); setBillItems([]);
+    setBillPharmacy(""); setBillNo(""); setBillDate(format(new Date(), "yyyy-MM-dd")); setBillItems([]); setBillPendingAmount(0);
     refresh();
   };
 
@@ -250,6 +264,16 @@ export default function Inventory() {
     toast({ title: "Deleted", description: "Purchase bill removed, stock reversed." });
     refresh();
   };
+
+  const handleMarkPaid = (id: number) => {
+    markPurchaseBillPaid(id);
+    toast({ title: "Marked as paid", description: "Pending amount cleared." });
+    refresh();
+  };
+
+  const [pharmacyFilter, setPharmacyFilter] = useState("all");
+  const pharmacySummary = getPharmacyPurchaseSummary();
+  const visibleBills = pharmacyFilter === "all" ? purchaseBills : purchaseBills.filter(b => b.supplierName === pharmacyFilter);
 
   const filteredExpiry = expiryList.filter(e => expiryFilter === "all" ? true : e.status === expiryFilter);
 
@@ -366,6 +390,28 @@ export default function Inventory() {
         {/* ── PURCHASE ENTRY TAB ── */}
         {tab === "purchase" && (
           <div className="space-y-6">
+            {/* Pharmacy-wise purchase & outstanding summary */}
+            {pharmacySummary.length > 0 && (
+              <div className="medical-card p-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Pharmacy-wise purchases</p>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {pharmacySummary.map(s => (
+                    <button key={s.pharmacyName} onClick={() => setPharmacyFilter(s.pharmacyName)}
+                      className={`text-left p-3 rounded-xl border transition-all ${pharmacyFilter === s.pharmacyName ? "border-primary bg-primary/5" : "border-slate-200 hover:bg-slate-50"}`}>
+                      <p className="font-semibold text-slate-800 text-sm truncate">{s.pharmacyName}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{s.billCount} bill{s.billCount > 1 ? "s" : ""} · {formatCurrency(s.totalPurchased)}</p>
+                      {s.totalPending > 0 && (
+                        <p className="text-xs font-bold text-amber-700 mt-1">Pending: {formatCurrency(s.totalPending)}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {pharmacyFilter !== "all" && (
+                  <button onClick={() => setPharmacyFilter("all")} className="mt-3 text-xs font-semibold text-primary hover:underline">Clear filter (showing all pharmacies)</button>
+                )}
+              </div>
+            )}
+
             <div className="medical-card p-5 space-y-4">
               <p className="text-sm font-semibold text-slate-700">Bill details</p>
               <div className="grid sm:grid-cols-3 gap-4">
@@ -378,7 +424,7 @@ export default function Inventory() {
                   </datalist>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Bill No.</label>
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Bill No. (optional)</label>
                   <input value={billNo} onChange={e => setBillNo(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="Optional" />
                 </div>
@@ -388,80 +434,101 @@ export default function Inventory() {
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
                 </div>
               </div>
+              <div className="sm:w-1/3">
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Pending amount (₹, optional)</label>
+                <input type="number" value={billPendingAmount || ""} onChange={e => setBillPendingAmount(Number(e.target.value))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0 = fully paid" />
+                <p className="text-[11px] text-slate-400 mt-1">Leave blank if you've paid the full bill amount.</p>
+              </div>
             </div>
 
             <div className="medical-card p-5 space-y-4">
               <p className="text-sm font-semibold text-slate-700">Add item</p>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">Medicine name</label>
-                <input value={itemName} onChange={e => setItemName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="e.g. Merci Tab" />
-              </div>
-              {lastPurchase && (
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-100 text-sm">
-                  <span className="text-blue-800">
-                    Last bought from <strong>{lastPurchase.pharmacyName}</strong> on {format(new Date(lastPurchase.billDate + "T00:00:00"), "dd MMM yyyy")} @ ₹{lastPurchase.ratePerUnit}/pack
-                  </span>
-                  <button type="button" onClick={useLastPurchase} className="shrink-0 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors">
-                    Use last purchase
-                  </button>
-                </div>
-              )}
               <div className="grid sm:grid-cols-4 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Pack size (tab/pack)</label>
-                  <input type="number" value={itemPackSize} onChange={e => setItemPackSize(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">MRP per pack (₹)</label>
-                  <input type="number" value={itemMrp} onChange={e => setItemMrp(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Batch no.</label>
-                  <input value={itemBatch} onChange={e => setItemBatch(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Item name</label>
+                  <input value={itemName} onChange={e => setItemName(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="e.g. Merci Tab" />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-500 mb-1 block">Expiry (MM/YY)</label>
                   <input value={itemExpiry} onChange={e => setItemExpiry(e.target.value)} placeholder="12/27"
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
                 </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Quantity</label>
+                  <input type="number" value={itemQty} onChange={e => setItemQty(Number(e.target.value))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                </div>
               </div>
-              <div className="grid sm:grid-cols-4 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Qty paid (packs)</label>
-                  <input type="number" value={itemQtyPaid} onChange={e => setItemQtyPaid(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Qty free (packs)</label>
-                  <input type="number" value={itemQtyFree} onChange={e => setItemQtyFree(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Rate/pack (₹)</label>
-                  <input type="number" value={itemRate} onChange={e => setItemRate(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Discount % / GST %</label>
-                  <div className="flex gap-2">
-                    <input type="number" value={itemDiscount} onChange={e => setItemDiscount(Number(e.target.value))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="Disc %" />
-                    <input type="number" value={itemGst} onChange={e => setItemGst(Number(e.target.value))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="GST %" />
-                  </div>
-                </div>
+              <div className="sm:w-1/3">
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Purchase price (₹, total for this quantity)</label>
+                <input type="number" value={itemPurchasePrice || ""} onChange={e => setItemPurchasePrice(Number(e.target.value))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0" />
               </div>
 
-              {itemRate > 0 && (
+              {lastPurchase && (
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-100 text-sm">
+                  <span className="text-blue-800">
+                    Last bought from <strong>{lastPurchase.pharmacyName}</strong> on {format(new Date(lastPurchase.billDate + "T00:00:00"), "dd MMM yyyy")} @ ₹{lastPurchase.ratePerUnit}/unit
+                  </span>
+                  <button type="button" onClick={useLastPurchase} className="shrink-0 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors">
+                    Use last purchase
+                  </button>
+                </div>
+              )}
+
+              <button type="button" onClick={() => setShowAdvanced(v => !v)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-primary transition-colors">
+                {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                More details (optional) — batch no., pack size, MRP, discount, GST, free qty
+              </button>
+
+              {showAdvanced && (
+                <div className="space-y-4 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="grid sm:grid-cols-4 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Batch no.</label>
+                      <input value={itemBatch} onChange={e => setItemBatch(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Pack size (units/pack)</label>
+                      <input type="number" value={itemPackSize} onChange={e => setItemPackSize(Number(e.target.value))}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">MRP per pack (₹)</label>
+                      <input type="number" value={itemMrp} onChange={e => setItemMrp(Number(e.target.value))}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Free qty (packs)</label>
+                      <input type="number" value={itemQtyFree} onChange={e => setItemQtyFree(Number(e.target.value))}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-4 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Discount %</label>
+                      <input type="number" value={itemDiscount} onChange={e => setItemDiscount(Number(e.target.value))}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">GST %</label>
+                      <input type="number" value={itemGst} onChange={e => setItemGst(Number(e.target.value))}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400">Discount/GST are applied on top of the purchase price above when filled in. Pack size defaults to 1 (i.e. quantity = individual units) unless changed.</p>
+                </div>
+              )}
+
+              {itemPurchasePrice > 0 && itemQty > 0 && (
                 <div className="flex flex-wrap gap-4 px-4 py-3 rounded-xl bg-slate-50 text-sm">
-                  <span className="text-slate-500">Landing cost/tab: <strong className="text-slate-800">₹{itemCalc.landingCostPerTablet.toFixed(2)}</strong></span>
-                  <span className="text-slate-500">Total tablets: <strong className="text-slate-800">{itemCalc.totalTabletsReceived}</strong></span>
-                  <span className="text-slate-500">Amount payable: <strong className="text-slate-800">{formatCurrency(itemCalc.totalPaid)}</strong></span>
-                  <span className="text-slate-500">Margin: <strong className="text-emerald-700">{itemCalc.profitPct.toFixed(1)}%</strong></span>
+                  <span className="text-slate-500">Rate/unit: <strong className="text-slate-800">₹{itemRate.toFixed(2)}</strong></span>
+                  <span className="text-slate-500">Total units: <strong className="text-slate-800">{itemCalc.totalTabletsReceived}</strong></span>
+                  <span className="text-slate-500">Amount payable: <strong className="text-slate-800">{formatCurrency(itemDiscount || itemGst ? itemCalc.totalPaid : itemPurchasePrice)}</strong></span>
                 </div>
               )}
 
@@ -476,10 +543,9 @@ export default function Inventory() {
                   <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200/60">
                       <tr>
-                        <th className="px-4 py-3 font-semibold text-slate-600">Medicine</th>
-                        <th className="px-4 py-3 font-semibold text-slate-600">Batch</th>
+                        <th className="px-4 py-3 font-semibold text-slate-600">Item</th>
                         <th className="px-4 py-3 font-semibold text-slate-600">Expiry</th>
-                        <th className="px-4 py-3 font-semibold text-slate-600 text-right">Tablets</th>
+                        <th className="px-4 py-3 font-semibold text-slate-600 text-right">Qty</th>
                         <th className="px-4 py-3 font-semibold text-slate-600 text-right">Amount</th>
                         <th className="px-4 py-3 font-semibold text-slate-600 text-center">Remove</th>
                       </tr>
@@ -488,7 +554,6 @@ export default function Inventory() {
                       {billItems.map((it, idx) => (
                         <tr key={idx}>
                           <td className="px-4 py-3 font-medium text-slate-800">{it.medicineName}</td>
-                          <td className="px-4 py-3 text-slate-500">{it.batchNo || "-"}</td>
                           <td className="px-4 py-3 text-slate-500">{it.expiryDate || "-"}</td>
                           <td className="px-4 py-3 text-right text-slate-700">{it.totalTabletsReceived}</td>
                           <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(it.totalPaid)}</td>
@@ -500,7 +565,7 @@ export default function Inventory() {
                     </tbody>
                     <tfoot>
                       <tr className="bg-slate-50 border-t border-slate-200">
-                        <td colSpan={4} className="px-4 py-3 text-right font-semibold text-slate-600">Bill total</td>
+                        <td colSpan={3} className="px-4 py-3 text-right font-semibold text-slate-600">Bill total</td>
                         <td className="px-4 py-3 text-right font-bold text-slate-900 text-base">{formatCurrency(billGrandTotal)}</td>
                         <td></td>
                       </tr>
@@ -517,8 +582,10 @@ export default function Inventory() {
 
             {/* Recent bills */}
             <div className="medical-card overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-                <span className="text-sm font-semibold text-slate-700">Recent purchase bills</span>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                <span className="text-sm font-semibold text-slate-700">
+                  Purchase bills {pharmacyFilter !== "all" && <span className="text-slate-400 font-normal">— {pharmacyFilter}</span>}
+                </span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -529,23 +596,41 @@ export default function Inventory() {
                       <th className="px-4 py-3 font-semibold text-slate-500">Bill no.</th>
                       <th className="px-4 py-3 font-semibold text-slate-500 text-center">Items</th>
                       <th className="px-4 py-3 font-semibold text-slate-500 text-right">Total</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500">Payment</th>
                       <th className="px-4 py-3 font-semibold text-slate-500 text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {purchaseBills.length > 0 ? purchaseBills.slice(0, 15).map(b => (
-                      <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{format(new Date(b.billDate + "T00:00:00"), "dd MMM yyyy")}</td>
-                        <td className="px-4 py-3 font-medium text-slate-800">{b.supplierName}</td>
-                        <td className="px-4 py-3 text-slate-500">{b.billNo || "-"}</td>
-                        <td className="px-4 py-3 text-center text-slate-600">{b.items.length}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(b.grandTotal)}</td>
-                        <td className="px-4 py-3 text-center">
-                          <button onClick={() => handleDeleteBill(b.id)} className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
-                        </td>
-                      </tr>
-                    )) : (
-                      <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">No purchase bills recorded yet.</td></tr>
+                    {visibleBills.length > 0 ? visibleBills.slice(0, 20).map(b => {
+                      const status = getPurchaseBillPaymentStatus(b);
+                      return (
+                        <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{format(new Date(b.billDate + "T00:00:00"), "dd MMM yyyy")}</td>
+                          <td className="px-4 py-3 font-medium text-slate-800">{b.supplierName}</td>
+                          <td className="px-4 py-3 text-slate-500">{b.billNo || "-"}</td>
+                          <td className="px-4 py-3 text-center text-slate-600">{b.items.length}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(b.grandTotal)}</td>
+                          <td className="px-4 py-3">
+                            {status === "paid" ? (
+                              <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700">Paid</span>
+                            ) : (
+                              <span className="text-xs font-bold px-2 py-1 rounded-md bg-amber-100 text-amber-700">
+                                {status === "partial" ? "Partially paid" : "Pending"} · {formatCurrency(b.pendingAmount || 0)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {status !== "paid" && (
+                                <button onClick={() => handleMarkPaid(b.id)} title="Mark as paid" className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><CheckCircle2 className="w-4 h-4" /></button>
+                              )}
+                              <button onClick={() => handleDeleteBill(b.id)} className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }) : (
+                      <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">No purchase bills recorded yet.</td></tr>
                     )}
                   </tbody>
                 </table>
