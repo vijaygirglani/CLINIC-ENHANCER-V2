@@ -1307,6 +1307,8 @@ export function deductMedicineStock(items: { medicineName: string; qty: number; 
 // ═══════════════════════════════════════════════════════════════
 
 export interface ExpiryItem {
+  billId: number;
+  itemIndex: number;
   medicineName: string;
   batchNo: string;
   expiryDate: string;   // "MM/YY"
@@ -1319,10 +1321,10 @@ export function getExpiryList(): ExpiryItem[] {
   const today = new Date();
   const items: ExpiryItem[] = [];
   for (const bill of getPurchaseBills()) {
-    for (const item of bill.items) {
-      if (!item.expiryDate || !item.batchNo) continue;
+    bill.items.forEach((item, itemIndex) => {
+      if (!item.expiryDate) return;
       const parts = item.expiryDate.split("/");
-      if (parts.length !== 2) continue;
+      if (parts.length !== 2) return;
       const month = parseInt(parts[0]) - 1;
       const year = parseInt(parts[1]) < 100 ? 2000 + parseInt(parts[1]) : parseInt(parts[1]);
       const expiry = new Date(year, month + 1, 0); // last day of expiry month
@@ -1333,16 +1335,46 @@ export function getExpiryList(): ExpiryItem[] {
       else if (daysToExpiry <= 30) status = "expiring-soon";
       else if (daysToExpiry <= 60) status = "expiring";
       items.push({
+        billId: bill.id,
+        itemIndex,
         medicineName: item.medicineName,
-        batchNo: item.batchNo,
+        batchNo: item.batchNo || "-",
         expiryDate: item.expiryDate,
         qty: item.totalQtyReceived,
         status,
         daysToExpiry,
       });
-    }
+    });
   }
   return items.sort((a, b) => a.daysToExpiry - b.daysToExpiry);
+}
+
+// Removes a single line-item from a purchase bill (e.g. an expired batch),
+// reverses just that item's stock, and removes the whole bill if it was the last item left.
+export function deletePurchaseBillItem(billId: number, itemIndex: number): boolean {
+  const bills = getPurchaseBills();
+  const bill = bills.find(b => b.id === billId);
+  if (!bill) return false;
+  const item = bill.items[itemIndex];
+  if (!item) return false;
+
+  const medicines = getMedicines();
+  const medIdx = medicines.findIndex(m => m.id === item.medicineId);
+  if (medIdx !== -1) {
+    medicines[medIdx].currentStock = Math.max(0, medicines[medIdx].currentStock - item.totalQtyReceived);
+  }
+  saveMedicines(medicines);
+
+  const remainingItems = bill.items.filter((_, i) => i !== itemIndex);
+  if (remainingItems.length === 0) {
+    const filtered = bills.filter(b => b.id !== billId);
+    savePurchaseBills(filtered);
+  } else {
+    bill.items = remainingItems;
+    bill.grandTotal = Math.max(0, bill.grandTotal - item.totalPaid);
+    savePurchaseBills(bills);
+  }
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════════
