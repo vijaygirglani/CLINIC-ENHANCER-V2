@@ -748,6 +748,8 @@ export default function DailyRegister() {
       "General (₹)": d.generalFees, "Ayurvedic (₹)": d.ayurvedicFees,
     }));
     rows.push({ "Date": "TOTAL", "Patients": monthlyStats.totalPatients, "Total Collection (₹)": monthlyStats.totalFees, "General (₹)": monthlyStats.generalFees, "Ayurvedic (₹)": monthlyStats.ayurvedicFees });
+    rows.push({ "Date": "TOTAL EXPENSES", "Patients": 0, "Total Collection (₹)": -monthlyStats.totalExpenses, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    rows.push({ "Date": "NET COLLECTION", "Patients": 0, "Total Collection (₹)": monthlyStats.netTotal, "General (₹)": 0, "Ayurvedic (₹)": 0 });
     exportToExcel(rows, `Monthly_Report_${MONTHS[monthlyMonth - 1]}_${monthlyYear}`);
     toast({ title: "Monthly Report Exported" });
   };
@@ -1131,17 +1133,19 @@ Manglam Hospital, Morbi`;
 
               {monthlyStats && (
                 <>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 px-6 py-4 bg-gradient-to-br from-primary/5 to-emerald-50/40 border-b border-slate-100">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4 px-6 py-4 bg-gradient-to-br from-primary/5 to-emerald-50/40 border-b border-slate-100">
                     {[
                       { label: "Total Patients", value: monthlyStats.totalPatients },
                       { label: "General Pts.", value: monthlyStats.generalPatients },
                       { label: "Ayurvedic Pts.", value: monthlyStats.ayurvedicPatients },
                       { label: "Total Collection", value: formatCurrency(monthlyStats.totalFees) },
                       { label: "Ayurvedic Fees", value: formatCurrency(monthlyStats.ayurvedicFees) },
+                      { label: "Total Expenses", value: formatCurrency(monthlyStats.totalExpenses), color: "text-rose-700" },
+                      { label: "Net Collection", value: formatCurrency(monthlyStats.netTotal), color: "text-emerald-700" },
                     ].map((item, i) => (
                       <div key={i} className="text-center">
                         <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{item.label}</p>
-                        <p className="text-xl font-display font-bold mt-1 text-slate-900">{item.value}</p>
+                        <p className={`text-xl font-display font-bold mt-1 ${item.color || "text-slate-900"}`}>{item.value}</p>
                       </div>
                     ))}
                   </div>
