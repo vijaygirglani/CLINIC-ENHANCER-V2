@@ -200,7 +200,15 @@ export interface PurchaseBill {
   billDate: string;
   items: PurchaseBillItem[];
   grandTotal: number;
+  pendingAmount?: number;   // amount still owed to the pharmacy for this bill (0 / undefined = fully paid)
   createdAt: string;
+}
+
+export function getPurchaseBillPaymentStatus(bill: PurchaseBill): "paid" | "partial" | "pending" {
+  const pending = bill.pendingAmount || 0;
+  if (pending <= 0) return "paid";
+  if (pending >= bill.grandTotal) return "pending";
+  return "partial";
 }
 
 export interface MedicineSaleItem {
@@ -982,6 +990,40 @@ export function deletePurchaseBill(id: number): boolean {
   const filtered = bills.filter(b => b.id !== id);
   savePurchaseBills(filtered);
   return true;
+}
+
+export function updatePurchaseBillPayment(id: number, pendingAmount: number): PurchaseBill | null {
+  const bills = getPurchaseBills();
+  const idx = bills.findIndex(b => b.id === id);
+  if (idx === -1) return null;
+  bills[idx] = { ...bills[idx], pendingAmount: Math.max(0, pendingAmount) };
+  savePurchaseBills(bills);
+  return bills[idx];
+}
+
+export function markPurchaseBillPaid(id: number): PurchaseBill | null {
+  return updatePurchaseBillPayment(id, 0);
+}
+
+export interface PharmacyPurchaseSummary {
+  pharmacyName: string;
+  billCount: number;
+  totalPurchased: number;
+  totalPending: number;
+}
+
+// Pharmacy-wise purchase tracking — total purchased & outstanding balance per pharmacy
+export function getPharmacyPurchaseSummary(): PharmacyPurchaseSummary[] {
+  const bills = getPurchaseBills();
+  const map: Record<string, PharmacyPurchaseSummary> = {};
+  for (const b of bills) {
+    const key = b.supplierName.trim() || "Unknown";
+    if (!map[key]) map[key] = { pharmacyName: key, billCount: 0, totalPurchased: 0, totalPending: 0 };
+    map[key].billCount += 1;
+    map[key].totalPurchased += b.grandTotal;
+    map[key].totalPending += b.pendingAmount || 0;
+  }
+  return Object.values(map).sort((a, b) => b.totalPending - a.totalPending || b.totalPurchased - a.totalPurchased);
 }
 
 // ═══════════════════════════════════════════════════════════════
