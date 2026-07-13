@@ -1629,3 +1629,144 @@ export function getExpenseCategoryBreakdown(year: number, month: number): { cate
   }
   return Object.entries(map).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// IMPORT HISTORICAL BILLS (CSV, from old billing software)
+// ═══════════════════════════════════════════════════════════════
+// Expected columns (header row, any case/order not required to match — matched by name):
+// Bill ID, Company, Bill Number, Bill Date (dd/mm/yyyy), Amount (INR), Status (paid/unpaid), Paid Date, Paid Via, Notes
+// Rows where Company = "CLINIC EXPENSES" are routed to the Expenses log instead of Purchase Bills.
+// Imported purchase bills carry the total & payment status only (no per-medicine stock impact) —
+// this is historical bookkeeping so pharmacy totals & pending dues aren't lost, without touching current stock.
+
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ',') { result.push(cur); cur = ""; }
+      else cur += ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseDDMMYYYY(s: string): string {
+  const parts = s.trim().split("/");
+  if (parts.length !== 3) return "";
+  const [dd, mm, yyyy] = parts;
+  if (!dd || !mm || !yyyy) return "";
+  return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+}
+
+export interface ImportBillsResult {
+  billsAdded: number;
+  expensesAdded: number;
+  skipped: number;
+  errors: string[];
+}
+
+export function importPharmaBillsCsv(csvText: string): ImportBillsResult {
+  const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (lines.length < 2) return { billsAdded: 0, expensesAdded: 0, skipped: 0, errors: ["File appears to be empty."] };
+
+  const header = parseCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+  const findCol = (...names: string[]) => {
+    for (const n of names) {
+      const i = header.indexOf(n);
+      if (i !== -1) return i;
+    }
+    return -1;
+  };
+  const iCompany = findCol("company");
+  const iBillNo = findCol("bill number", "bill no", "billno");
+  const iDate = findCol("bill date", "date");
+  const iAmount = findCol("amount (inr)", "amount");
+  const iStatus = findCol("status");
+  const iPaidVia = findCol("paid via", "payment mode");
+  const iNotes = findCol("notes", "note");
+
+  if (iCompany === -1 || iAmount === -1 || iDate === -1) {
+    return { billsAdded: 0, expensesAdded: 0, skipped: 0, errors: ["Couldn't find Company / Bill Date / Amount columns in the file header."] };
+  }
+
+  const existingBills = getPurchaseBills();
+  const existingExpenses = getExpenses();
+  const newBills: PurchaseBill[] = [];
+  const newExpenses: Expense[] = [];
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (let li = 1; li < lines.length; li++) {
+    const cols = parseCsvLine(lines[li]);
+    const company = (cols[iCompany] || "").trim();
+    const billNo = iBillNo !== -1 ? (cols[iBillNo] || "").trim() : "";
+    const rawDate = (cols[iDate] || "").trim();
+    const amount = parseFloat(cols[iAmount] || "0") || 0;
+    const status = iStatus !== -1 ? (cols[iStatus] || "").trim().toLowerCase() : "paid";
+    const paidVia = iPaidVia !== -1 ? (cols[iPaidVia] || "").trim().toLowerCase() : "";
+    const notes = iNotes !== -1 ? (cols[iNotes] || "").trim() : "";
+
+    if (!company || amount <= 0) { skipped++; continue; }
+    const date = parseDDMMYYYY(rawDate);
+    if (!date) { skipped++; errors.push(`Row ${li + 1}: couldn't read date "${rawDate}", skipped.`); continue; }
+
+    if (company.toUpperCase() === "CLINIC EXPENSES") {
+      const dup = existingExpenses.some(e => e.date === date && e.amount === amount && (e.note || "") === notes)
+        || newExpenses.some(e => e.date === date && e.amount === amount && (e.note || "") === notes);
+      if (dup) { skipped++; continue; }
+      const category: ExpenseCategory = /salary/i.test(notes) ? "Staff Salary"
+        : /rent/i.test(notes) ? "Rent"
+        : /card|market/i.test(notes) ? "Marketing"
+        : "Misc";
+      newExpenses.push({
+        id: nextId(), date, category, amount,
+        paymentMode: paidVia.includes("cash") ? "cash" : "cash",
+        note: notes || "Imported from old billing software",
+        createdAt: new Date().toISOString(),
+      });
+    } else {
+      const dup = existingBills.some(b => b.supplierName.toLowerCase() === company.toLowerCase() && b.billDate === date && b.grandTotal === amount && (b.billNo || "") === billNo)
+        || newBills.some(b => b.supplierName.toLowerCase() === company.toLowerCase() && b.billDate === date && b.grandTotal === amount && (b.billNo || "") === billNo);
+      if (dup) { skipped++; continue; }
+      const pending = status === "unpaid" ? amount : 0;
+      const itemName = notes || "Purchase (imported — item details not recorded)";
+      newBills.push({
+        id: nextId(),
+        supplierName: company,
+        billNo,
+        billDate: date,
+        items: [{
+          medicineId: -1,
+          medicineName: itemName,
+          mrp: amount, packSize: 1, mrpPerTablet: amount,
+          batchNo: "", expiryDate: "",
+          qtyPaid: 1, qtyFree: 0, ratePerUnit: amount,
+          discountPct: 0, gstPct: 0,
+          landingCostPerUnit: amount, landingCostPerTablet: amount,
+          totalQtyReceived: 1, totalTabletsReceived: 1,
+          taxableAmount: amount, gstAmount: 0, totalPaid: amount,
+        }],
+        grandTotal: amount,
+        pendingAmount: pending,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  if (newBills.length > 0) savePurchaseBills([...existingBills, ...newBills]);
+  if (newExpenses.length > 0) saveExpenses([...existingExpenses, ...newExpenses]);
+
+  return { billsAdded: newBills.length, expensesAdded: newExpenses.length, skipped, errors };
+}
