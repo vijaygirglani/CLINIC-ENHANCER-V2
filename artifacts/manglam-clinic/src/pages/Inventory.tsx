@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
@@ -6,12 +6,12 @@ import {
   getPurchaseBills, addPurchaseBill, deletePurchaseBill, calcLandingCost, getStockValuation,
   getExpiryList, getPharmacies, addPharmacy, updatePharmacy, deletePharmacy, getLastPurchaseInfo,
   updatePurchaseBillPayment, markPurchaseBillPaid, getPharmacyPurchaseSummary, getPurchaseBillPaymentStatus,
-  deletePurchaseBillItem,
+  deletePurchaseBillItem, importPharmaBillsCsv,
   type MedicineItem, type PurchaseBill, type PurchaseBillItem, type Pharmacy, type ExpiryItem,
 } from "@/lib/store";
 import {
   Package, Plus, Edit2, Trash2, IndianRupee, AlertTriangle, CalendarClock,
-  Building2, ShoppingCart, X, TrendingUp, Search, CheckCircle2, ChevronDown, ChevronUp,
+  Building2, ShoppingCart, X, TrendingUp, Search, CheckCircle2, ChevronDown, ChevronUp, Upload,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
@@ -279,6 +279,25 @@ export default function Inventory() {
     refresh();
   };
 
+  const csvImportRef = useRef<HTMLInputElement>(null);
+  const handleImportCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const result = importPharmaBillsCsv(text);
+      if (result.errors.length > 0) {
+        toast({ variant: "destructive", title: "Import finished with issues", description: `${result.billsAdded} bills, ${result.expensesAdded} expenses added. ${result.errors[0]}` });
+      } else {
+        toast({ title: "Import complete", description: `${result.billsAdded} purchase bill(s) and ${result.expensesAdded} expense(s) added${result.skipped ? `, ${result.skipped} skipped (duplicates or blank)` : ""}.` });
+      }
+      refresh();
+    };
+    reader.readAsText(file);
+    if (csvImportRef.current) csvImportRef.current.value = "";
+  };
+
   const [pharmacyFilter, setPharmacyFilter] = useState("all");
   const [billSearch, setBillSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "partial" | "pending">("all");
@@ -408,6 +427,14 @@ export default function Inventory() {
         {/* ── PURCHASE ENTRY TAB ── */}
         {tab === "purchase" && (
           <div className="space-y-6">
+            <input ref={csvImportRef} type="file" accept=".csv" className="hidden" onChange={handleImportCsv} />
+            <div className="flex justify-end">
+              <button onClick={() => csvImportRef.current?.click()}
+                className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-1.5 text-sm">
+                <Upload className="w-4 h-4" /> Import historical bills (CSV)
+              </button>
+            </div>
+
             {/* Pharmacy-wise purchase & outstanding summary */}
             {pharmacySummary.length > 0 && (
               <div className="medical-card p-4">
