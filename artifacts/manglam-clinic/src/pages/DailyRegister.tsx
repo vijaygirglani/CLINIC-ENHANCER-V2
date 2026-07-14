@@ -4,6 +4,7 @@ import { Layout } from "@/components/Layout";
 import {
   getDailyStats, updatePatient, deletePatient, getAllDates,
   exportBackup, importBackup, addPatient, getMonthlyStats, findAdviceCode,
+  getDoctors, updateDoctorSplit,
   type Patient, type DailyStats,
 } from "@/lib/store";
 import {
@@ -11,6 +12,7 @@ import {
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
   TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
   WalletCards, Loader2, MessageSquare, Search, ArrowRight, ShieldAlert, AlertTriangle, Paperclip,
+  Stethoscope, Percent,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -392,6 +394,11 @@ export default function DailyRegister() {
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   const [showMonthly, setShowMonthly] = useState(false);
+  const [doctorSplitDialogOpen, setDoctorSplitDialogOpen] = useState(false);
+  const [d1NameInput, setD1NameInput] = useState("");
+  const [d1PctInput, setD1PctInput] = useState(80);
+  const [d2NameInput, setD2NameInput] = useState("");
+  const [d2PctInput, setD2PctInput] = useState(20);
   const [allDates, setAllDates] = useState<{ date: string; count: number; totalFees: number }[]>([]);
   const [printPatient, setPrintPatient] = useState<Patient | null>(null);
   const [cardPatient, setCardPatient] = useState<Patient | null>(null);
@@ -748,10 +755,37 @@ export default function DailyRegister() {
       "General (₹)": d.generalFees, "Ayurvedic (₹)": d.ayurvedicFees,
     }));
     rows.push({ "Date": "TOTAL", "Patients": monthlyStats.totalPatients, "Total Collection (₹)": monthlyStats.totalFees, "General (₹)": monthlyStats.generalFees, "Ayurvedic (₹)": monthlyStats.ayurvedicFees });
+    rows.push({ "Date": "MANUAL EXPENSES", "Patients": 0, "Total Collection (₹)": -monthlyStats.manualExpenses, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    rows.push({ "Date": "PHARMACY PURCHASES (PAID)", "Patients": 0, "Total Collection (₹)": -monthlyStats.pharmacyExpenses, "General (₹)": 0, "Ayurvedic (₹)": 0 });
     rows.push({ "Date": "TOTAL EXPENSES", "Patients": 0, "Total Collection (₹)": -monthlyStats.totalExpenses, "General (₹)": 0, "Ayurvedic (₹)": 0 });
     rows.push({ "Date": "NET COLLECTION", "Patients": 0, "Total Collection (₹)": monthlyStats.netTotal, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    rows.push({ "Date": `${monthlyStats.doctorSplit.doctor1.name} (${monthlyStats.doctorSplit.doctor1.pct}%)`, "Patients": 0, "Total Collection (₹)": monthlyStats.doctorSplit.doctor1.amount, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    rows.push({ "Date": `${monthlyStats.doctorSplit.doctor2.name} (${monthlyStats.doctorSplit.doctor2.pct}%)`, "Patients": 0, "Total Collection (₹)": monthlyStats.doctorSplit.doctor2.amount, "General (₹)": 0, "Ayurvedic (₹)": 0 });
     exportToExcel(rows, `Monthly_Report_${MONTHS[monthlyMonth - 1]}_${monthlyYear}`);
     toast({ title: "Monthly Report Exported" });
+  };
+
+  const openDoctorSplitDialog = () => {
+    const doctors = getDoctors();
+    setD1NameInput(doctors[0]?.name || "Doctor 1");
+    setD1PctInput(doctors[0]?.profitSharePct ?? 80);
+    setD2NameInput(doctors[1]?.name || "Doctor 2");
+    setD2PctInput(doctors[1]?.profitSharePct ?? 20);
+    setDoctorSplitDialogOpen(true);
+  };
+
+  const saveDoctorSplit = () => {
+    const result = updateDoctorSplit(
+      { name: d1NameInput, profitSharePct: d1PctInput },
+      { name: d2NameInput, profitSharePct: d2PctInput }
+    );
+    if (!result.success) {
+      toast({ variant: "destructive", title: "Couldn't save", description: result.message });
+      return;
+    }
+    toast({ title: "Doctor split updated" });
+    setDoctorSplitDialogOpen(false);
+    refresh();
   };
 
   const buildDailyReportMsg = () => {
@@ -1133,21 +1167,58 @@ Manglam Hospital, Morbi`;
 
               {monthlyStats && (
                 <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4 px-6 py-4 bg-gradient-to-br from-primary/5 to-emerald-50/40 border-b border-slate-100">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 px-6 py-4 bg-gradient-to-br from-primary/5 to-emerald-50/40 border-b border-slate-100">
                     {[
                       { label: "Total Patients", value: monthlyStats.totalPatients },
                       { label: "General Pts.", value: monthlyStats.generalPatients },
                       { label: "Ayurvedic Pts.", value: monthlyStats.ayurvedicPatients },
                       { label: "Total Collection", value: formatCurrency(monthlyStats.totalFees) },
                       { label: "Ayurvedic Fees", value: formatCurrency(monthlyStats.ayurvedicFees) },
-                      { label: "Total Expenses", value: formatCurrency(monthlyStats.totalExpenses), color: "text-rose-700" },
-                      { label: "Net Collection", value: formatCurrency(monthlyStats.netTotal), color: "text-emerald-700" },
                     ].map((item, i) => (
                       <div key={i} className="text-center">
                         <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{item.label}</p>
-                        <p className={`text-xl font-display font-bold mt-1 ${item.color || "text-slate-900"}`}>{item.value}</p>
+                        <p className="text-xl font-display font-bold mt-1 text-slate-900">{item.value}</p>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="px-6 py-4 border-b border-slate-100">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Expenses</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {[
+                        { label: "Manual Expenses", value: formatCurrency(monthlyStats.manualExpenses), color: "text-rose-700" },
+                        { label: "Pharmacy Purchases (paid)", value: formatCurrency(monthlyStats.pharmacyExpenses), color: "text-rose-700" },
+                        { label: "Total Expenses", value: formatCurrency(monthlyStats.totalExpenses), color: "text-rose-800" },
+                        { label: "Net Collection", value: formatCurrency(monthlyStats.netTotal), color: "text-emerald-700" },
+                      ].map((item, i) => (
+                        <div key={i} className="text-center">
+                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{item.label}</p>
+                          <p className={`text-xl font-display font-bold mt-1 ${item.color}`}>{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Doctor Split (of Net Collection)</p>
+                      <button onClick={openDoctorSplitDialog} className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                        <Percent className="w-3.5 h-3.5" /> Edit split
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {[monthlyStats.doctorSplit.doctor1, monthlyStats.doctorSplit.doctor2].map((d, i) => (
+                        <div key={i} className="p-4 rounded-xl bg-white border border-slate-200 flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                            <Stethoscope className="w-4.5 h-4.5" />
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 font-medium">{d.name} · {d.pct}%</p>
+                            <p className="text-lg font-display font-bold text-slate-900">{formatCurrency(d.amount)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {monthlyStats.dailyBreakdown.length > 0 ? (
@@ -1469,6 +1540,46 @@ Manglam Hospital, Morbi`;
               <button type="submit" className="px-4 py-2 rounded-xl font-medium bg-primary text-white shadow-md hover:bg-primary/90">Save Changes</button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Doctor Split Edit Dialog ── */}
+      <Dialog open={doctorSplitDialogOpen} onOpenChange={setDoctorSplitDialogOpen}>
+        <DialogContent className="max-w-sm bg-white rounded-2xl p-6">
+          <DialogHeader><DialogTitle className="font-display text-xl">Edit Doctor Split</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Doctor 1 name</label>
+                <input value={d1NameInput} onChange={e => setD1NameInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-primary outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">%</label>
+                <input type="number" value={d1PctInput} onChange={e => setD1PctInput(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-primary outline-none" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Doctor 2 name</label>
+                <input value={d2NameInput} onChange={e => setD2NameInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-primary outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">%</label>
+                <input type="number" value={d2PctInput} onChange={e => setD2PctInput(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-primary outline-none" />
+              </div>
+            </div>
+            <p className={`text-xs ${d1PctInput + d2PctInput === 100 ? "text-slate-400" : "text-destructive font-semibold"}`}>
+              Total: {d1PctInput + d2PctInput}% {d1PctInput + d2PctInput !== 100 && "— must add up to 100%"}
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setDoctorSplitDialogOpen(false)} className="px-4 py-2 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700">Cancel</button>
+              <button type="button" onClick={saveDoctorSplit} className="px-4 py-2 rounded-xl font-medium bg-primary text-white shadow-md hover:bg-primary/90">Save</button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
