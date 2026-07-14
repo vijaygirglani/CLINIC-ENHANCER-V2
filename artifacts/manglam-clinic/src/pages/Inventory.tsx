@@ -2,16 +2,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
-  getMedicines, addMedicine, updateMedicine, deleteMedicine, getStockStatus, getStockAlertCounts,
-  getPurchaseBills, addPurchaseBill, deletePurchaseBill, calcLandingCost, getStockValuation,
-  getExpiryList, getPharmacies, addPharmacy, updatePharmacy, deletePharmacy, getLastPurchaseInfo,
-  updatePurchaseBillPayment, markPurchaseBillPaid, getPharmacyPurchaseSummary, getPurchaseBillPaymentStatus,
-  deletePurchaseBillItem, importPharmaBillsCsv,
-  type MedicineItem, type PurchaseBill, type PurchaseBillItem, type Pharmacy, type ExpiryItem,
+  getMedicines, addMedicine, updateMedicine, deleteMedicine, getStockStatus, getStockAlertCounts, getStockValuation,
+  getPurchaseBills, addSimplePurchaseBill, deletePurchaseBill, getPharmacyPurchaseSummary, getPurchaseBillPaymentStatus,
+  markPurchaseBillPaid, getPurchaseSummaryByMonth,
+  getExpiryList, addMedicineBatch, deleteMedicineBatch,
+  getPharmacies, addPharmacy, updatePharmacy, deletePharmacy, syncPharmaciesFromPurchases,
+  importPharmaBillsCsv,
+  type MedicineItem, type PurchaseBill, type Pharmacy, type ExpiryItem,
 } from "@/lib/store";
 import {
   Package, Plus, Edit2, Trash2, IndianRupee, AlertTriangle, CalendarClock,
-  Building2, ShoppingCart, X, TrendingUp, Search, CheckCircle2, ChevronDown, ChevronUp, Upload,
+  Building2, ShoppingCart, TrendingUp, Search, CheckCircle2, Upload, RefreshCw, Calendar,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
@@ -21,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 
 type Tab = "medicines" | "purchase" | "expiry" | "pharmacies";
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 const medicineSchema = z.object({
   name: z.string().min(1, "Required"),
@@ -44,12 +46,8 @@ const EXPIRY_STATUS_STYLE: Record<ExpiryItem["status"], string> = {
   expiring: "bg-yellow-100 text-yellow-700 border-yellow-200",
   good: "bg-emerald-100 text-emerald-700 border-emerald-200",
 };
-
 const EXPIRY_STATUS_LABEL: Record<ExpiryItem["status"], string> = {
-  expired: "Expired",
-  "expiring-soon": "≤30 days",
-  expiring: "≤60 days",
-  good: "Good",
+  expired: "Expired", "expiring-soon": "≤30 days", expiring: "≤60 days", good: "Good",
 };
 
 export default function Inventory() {
@@ -109,7 +107,7 @@ export default function Inventory() {
     refresh();
   };
   const handleDeleteMedicine = (id: number) => {
-    if (!confirm("Delete this medicine? This won't affect past purchase bills.")) return;
+    if (!confirm("Delete this medicine? Its batches will be removed too.")) return;
     deleteMedicine(id);
     toast({ title: "Deleted", description: "Medicine removed." });
     refresh();
@@ -149,136 +147,69 @@ export default function Inventory() {
     toast({ title: "Deleted", description: "Pharmacy removed." });
     refresh();
   };
+  const handleSyncPharmacies = () => {
+    const added = syncPharmaciesFromPurchases();
+    toast({ title: added > 0 ? "Synced" : "Nothing new", description: added > 0 ? `Added ${added} pharmacy name(s) from your purchase bills.` : "All pharmacy names from your purchase bills are already listed." });
+    refresh();
+  };
 
-  // ── Purchase entry (bill builder) ──
+  // ── Purchase entry (bill-level only) ──
   const [billPharmacy, setBillPharmacy] = useState("");
   const [billNo, setBillNo] = useState("");
   const [billDate, setBillDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [billAmount, setBillAmount] = useState(0);
   const [billPendingAmount, setBillPendingAmount] = useState(0);
-  const [billItems, setBillItems] = useState<PurchaseBillItem[]>([]);
+  const [billNotes, setBillNotes] = useState("");
 
-  // Primary fields (always visible)
-  const [itemName, setItemName] = useState("");
-  const [itemExpiry, setItemExpiry] = useState("");
-  const [itemQty, setItemQty] = useState(1);
-  const [itemPurchasePrice, setItemPurchasePrice] = useState(0);
-
-  // Advanced / optional fields — hidden behind a toggle, sensible defaults
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [itemPackSize, setItemPackSize] = useState(1);
-  const [itemMrp, setItemMrp] = useState(0);
-  const [itemBatch, setItemBatch] = useState("");
-  const [itemQtyFree, setItemQtyFree] = useState(0);
-  const [itemDiscount, setItemDiscount] = useState(0);
-  const [itemGst, setItemGst] = useState(0);
-
-  const itemRate = itemQty > 0 ? itemPurchasePrice / itemQty : 0; // rate per pack, derived from total price paid
-
-  const lastPurchase = itemName.trim().length > 1 ? getLastPurchaseInfo(itemName) : null;
-
-  const useLastPurchase = () => {
-    if (!lastPurchase) return;
-    setItemPurchasePrice(Math.round(lastPurchase.ratePerUnit * itemQty * 100) / 100);
-    setItemPackSize(lastPurchase.packSize);
-    setItemMrp(lastPurchase.mrp);
-    setItemGst(lastPurchase.gstPct);
-    setItemDiscount(lastPurchase.discountPct);
-    setBillPharmacy(lastPurchase.pharmacyName);
-    setShowAdvanced(true);
-    toast({ title: "Filled from last purchase", description: `Rate, MRP & pack size copied from ${lastPurchase.pharmacyName} (${format(new Date(lastPurchase.billDate + "T00:00:00"), "dd MMM yyyy")}).` });
+  const resetBillForm = () => {
+    setBillPharmacy(""); setBillNo(""); setBillDate(format(new Date(), "yyyy-MM-dd"));
+    setBillAmount(0); setBillPendingAmount(0); setBillNotes("");
   };
-
-  const itemCalc = calcLandingCost({
-    qtyPaid: itemQty, qtyFree: itemQtyFree, ratePerUnit: itemRate,
-    discountPct: itemDiscount, gstPct: itemGst, mrp: itemMrp || itemRate, packSize: itemPackSize,
-  });
-
-  const resetItemForm = () => {
-    setItemName(""); setItemExpiry(""); setItemQty(1); setItemPurchasePrice(0);
-    setItemPackSize(1); setItemMrp(0); setItemBatch(""); setItemQtyFree(0); setItemDiscount(0); setItemGst(0);
-    setShowAdvanced(false);
-  };
-
-  const handleAddItem = () => {
-    if (!itemName.trim()) { toast({ variant: "destructive", title: "Item name required" }); return; }
-    if (itemQty <= 0) { toast({ variant: "destructive", title: "Quantity required" }); return; }
-    if (itemPurchasePrice <= 0) { toast({ variant: "destructive", title: "Purchase price required" }); return; }
-    const existing = getMedicines().find(m => m.name.toLowerCase() === itemName.trim().toLowerCase());
-    const medicineId = existing?.id ?? -1; // resolved to a real id on save (medicine may not exist yet)
-    const newItem: PurchaseBillItem = {
-      medicineId,
-      medicineName: itemName.trim(),
-      mrp: itemMrp || itemRate,
-      packSize: itemPackSize,
-      mrpPerTablet: itemCalc.mrpPerTablet,
-      batchNo: itemBatch.trim(),
-      expiryDate: itemExpiry.trim(),
-      qtyPaid: itemQty,
-      qtyFree: itemQtyFree,
-      ratePerUnit: itemRate,
-      discountPct: itemDiscount,
-      gstPct: itemGst,
-      landingCostPerUnit: itemCalc.landingCostPerUnit,
-      landingCostPerTablet: itemCalc.landingCostPerTablet,
-      totalQtyReceived: itemCalc.totalQtyReceived,
-      totalTabletsReceived: itemCalc.totalTabletsReceived,
-      taxableAmount: itemCalc.taxableAmount,
-      gstAmount: itemCalc.gstAmount,
-      totalPaid: itemDiscount || itemGst ? itemCalc.totalPaid : itemPurchasePrice,
-    };
-    setBillItems(prev => [...prev, newItem]);
-    resetItemForm();
-  };
-
-  const removeItem = (idx: number) => setBillItems(prev => prev.filter((_, i) => i !== idx));
-
-  const billGrandTotal = billItems.reduce((s, it) => s + it.totalPaid, 0);
 
   const handleSaveBill = () => {
     if (!billPharmacy.trim()) { toast({ variant: "destructive", title: "Pharmacy name required" }); return; }
-    if (billItems.length === 0) { toast({ variant: "destructive", title: "Add at least one item" }); return; }
-
-    // Auto-create any medicines that don't exist yet in the master list
-    const items = billItems.map(item => {
-      let med = getMedicines().find(m => m.name.toLowerCase() === item.medicineName.toLowerCase());
-      if (!med) {
-        med = addMedicine({
-          name: item.medicineName, mrp: item.mrp, mrpPerTablet: item.mrpPerTablet,
-          packSize: item.packSize, reorderLevel: 10, currentStock: 0, landingCost: item.landingCostPerUnit,
-        });
-      }
-      return { ...item, medicineId: med.id };
+    if (billAmount <= 0) { toast({ variant: "destructive", title: "Amount required" }); return; }
+    addSimplePurchaseBill({
+      supplierName: billPharmacy.trim(), billNo: billNo.trim(), billDate,
+      grandTotal: billAmount, pendingAmount: Math.min(billPendingAmount, billAmount), notes: billNotes.trim() || undefined,
     });
-
-    addPurchaseBill({
-      supplierName: billPharmacy.trim(), billNo: billNo.trim(), billDate, items,
-      grandTotal: billGrandTotal, pendingAmount: billPendingAmount > 0 ? billPendingAmount : 0,
-    });
-    toast({ title: "Purchase saved", description: `Stock updated for ${items.length} item(s).` });
-    setBillPharmacy(""); setBillNo(""); setBillDate(format(new Date(), "yyyy-MM-dd")); setBillItems([]); setBillPendingAmount(0);
+    toast({ title: "Purchase bill saved" });
+    resetBillForm();
     refresh();
   };
 
   const handleDeleteBill = (id: number) => {
-    if (!confirm("Delete this purchase bill? Stock will be reversed.")) return;
+    if (!confirm("Delete this purchase bill?")) return;
     deletePurchaseBill(id);
-    toast({ title: "Deleted", description: "Purchase bill removed, stock reversed." });
+    toast({ title: "Deleted", description: "Purchase bill removed." });
     refresh();
   };
-
   const handleMarkPaid = (id: number) => {
     markPurchaseBillPaid(id);
-    toast({ title: "Marked as paid", description: "Pending amount cleared." });
+    toast({ title: "Marked as paid" });
     refresh();
   };
 
-  const handleDeleteExpiryItem = (e: ExpiryItem) => {
-    if (!confirm(`Remove ${e.medicineName} (batch ${e.batchNo}) from stock? This deletes it from the purchase record too.`)) return;
-    deletePurchaseBillItem(e.billId, e.itemIndex);
-    toast({ title: "Removed", description: `${e.medicineName} removed from stock.` });
-    refresh();
-  };
+  const [pharmacyFilter, setPharmacyFilter] = useState("all");
+  const [billSearch, setBillSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "partial" | "pending">("all");
+  const pharmacySummary = getPharmacyPurchaseSummary();
+  const visibleBills = purchaseBills.filter(b => {
+    if (pharmacyFilter !== "all" && b.supplierName !== pharmacyFilter) return false;
+    if (statusFilter !== "all" && getPurchaseBillPaymentStatus(b) !== statusFilter) return false;
+    if (billSearch.trim()) {
+      const q = billSearch.trim().toLowerCase();
+      if (!b.supplierName.toLowerCase().includes(q) && !(b.billNo || "").toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
+  // Monthly purchase summary
+  const [summaryMonth, setSummaryMonth] = useState(new Date().getMonth() + 1);
+  const [summaryYear, setSummaryYear] = useState(new Date().getFullYear());
+  const monthlyPurchaseSummary = getPurchaseSummaryByMonth(summaryYear, summaryMonth);
+
+  // CSV import
   const csvImportRef = useRef<HTMLInputElement>(null);
   const handleImportCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -298,19 +229,27 @@ export default function Inventory() {
     if (csvImportRef.current) csvImportRef.current.value = "";
   };
 
-  const [pharmacyFilter, setPharmacyFilter] = useState("all");
-  const [billSearch, setBillSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "partial" | "pending">("all");
-  const pharmacySummary = getPharmacyPurchaseSummary();
-  const visibleBills = purchaseBills.filter(b => {
-    if (pharmacyFilter !== "all" && b.supplierName !== pharmacyFilter) return false;
-    if (statusFilter !== "all" && getPurchaseBillPaymentStatus(b) !== statusFilter) return false;
-    if (billSearch.trim()) {
-      const q = billSearch.trim().toLowerCase();
-      if (!b.supplierName.toLowerCase().includes(q) && !(b.billNo || "").toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
+  // ── Expiry tracker — quick add batch ──
+  const [batchMedicineId, setBatchMedicineId] = useState<number | "">("");
+  const [batchNo, setBatchNo] = useState("");
+  const [batchExpiry, setBatchExpiry] = useState("");
+  const [batchQty, setBatchQty] = useState(1);
+
+  const handleAddBatch = () => {
+    if (!batchMedicineId) { toast({ variant: "destructive", title: "Select a medicine" }); return; }
+    if (!batchExpiry.trim()) { toast({ variant: "destructive", title: "Expiry (MM/YY) required" }); return; }
+    addMedicineBatch(Number(batchMedicineId), { batchNo: batchNo.trim(), expiryDate: batchExpiry.trim(), qty: batchQty });
+    toast({ title: "Batch added" });
+    setBatchMedicineId(""); setBatchNo(""); setBatchExpiry(""); setBatchQty(1);
+    refresh();
+  };
+
+  const handleDeleteExpiryItem = (e: ExpiryItem) => {
+    if (!confirm(`Remove ${e.medicineName} (batch ${e.batchNo}) from the expiry tracker?`)) return;
+    deleteMedicineBatch(e.medicineId, e.batchIndex);
+    toast({ title: "Removed" });
+    refresh();
+  };
 
   const filteredExpiry = expiryList.filter(e => expiryFilter === "all" ? true : e.status === expiryFilter);
 
@@ -325,7 +264,7 @@ export default function Inventory() {
             </div>
             <div>
               <h2 className="text-2xl font-display text-slate-900">Inventory</h2>
-              <p className="text-slate-500 text-sm">Medicines, purchases, stock &amp; expiry tracking.</p>
+              <p className="text-slate-500 text-sm">Purchases, pharmacies, medicines &amp; expiry tracking.</p>
             </div>
           </div>
         </div>
@@ -385,7 +324,6 @@ export default function Inventory() {
                     <th className="px-4 py-3 font-semibold text-slate-500 text-right">Pack size</th>
                     <th className="px-4 py-3 font-semibold text-slate-500 text-right">Reorder at</th>
                     <th className="px-4 py-3 font-semibold text-slate-500 text-right">MRP/tab</th>
-                    <th className="px-4 py-3 font-semibold text-slate-500 text-right">Cost/tab</th>
                     <th className="px-4 py-3 font-semibold text-slate-500">Status</th>
                     <th className="px-4 py-3 font-semibold text-slate-500 text-right">Actions</th>
                   </tr>
@@ -393,7 +331,6 @@ export default function Inventory() {
                 <tbody className="divide-y divide-slate-100">
                   {medicines.length > 0 ? medicines.map(m => {
                     const status = getStockStatus(m);
-                    const costPerTab = m.packSize > 1 ? m.landingCost / m.packSize : m.landingCost;
                     return (
                       <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-4 py-3 font-medium text-slate-800">{m.name}</td>
@@ -401,7 +338,6 @@ export default function Inventory() {
                         <td className="px-4 py-3 text-right text-slate-500">{m.packSize}</td>
                         <td className="px-4 py-3 text-right text-slate-500">{m.reorderLevel}</td>
                         <td className="px-4 py-3 text-right text-slate-700">₹{m.mrpPerTablet?.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right text-slate-500">₹{costPerTab?.toFixed(2) || "0.00"}</td>
                         <td className="px-4 py-3">
                           {status === "out" && <span className="text-xs font-bold px-2 py-1 rounded-md bg-red-100 text-red-700">Out of stock</span>}
                           {status === "low" && <span className="text-xs font-bold px-2 py-1 rounded-md bg-amber-100 text-amber-700">Low stock</span>}
@@ -416,11 +352,12 @@ export default function Inventory() {
                       </tr>
                     );
                   }) : (
-                    <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-500">No medicines yet. Add one, or record a purchase and it'll be created automatically.</td></tr>
+                    <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">No medicines yet. Add one, set its stock &amp; reorder level manually.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
+            <p className="text-xs text-slate-400 px-4 py-3 border-t border-slate-100">Stock here is managed manually — it's no longer linked to Purchase Entry. Use "Expiry Tracker" to log batch/expiry info for a medicine.</p>
           </div>
         )}
 
@@ -433,6 +370,39 @@ export default function Inventory() {
                 className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-1.5 text-sm">
                 <Upload className="w-4 h-4" /> Import historical bills (CSV)
               </button>
+            </div>
+
+            {/* Monthly purchase summary */}
+            <div className="medical-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Monthly purchase summary</p>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <select value={summaryMonth} onChange={e => setSummaryMonth(Number(e.target.value))}
+                    className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-medium bg-white">
+                    {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                  </select>
+                  <select value={summaryYear} onChange={e => setSummaryYear(Number(e.target.value))}
+                    className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-medium bg-white">
+                    {[summaryYear - 1, summaryYear, summaryYear + 1].map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl bg-slate-50">
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase">Total Purchased</p>
+                  <p className="text-lg font-display font-bold text-slate-900">{formatCurrency(monthlyPurchaseSummary.totalPurchased)}</p>
+                  <p className="text-[11px] text-slate-400">{monthlyPurchaseSummary.billCount} bill(s)</p>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-50">
+                  <p className="text-[11px] font-semibold text-emerald-700 uppercase">Paid</p>
+                  <p className="text-lg font-display font-bold text-emerald-800">{formatCurrency(monthlyPurchaseSummary.totalPaid)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-amber-50">
+                  <p className="text-[11px] font-semibold text-amber-700 uppercase">Pending</p>
+                  <p className="text-lg font-display font-bold text-amber-800">{formatCurrency(monthlyPurchaseSummary.totalPending)}</p>
+                </div>
+              </div>
             </div>
 
             {/* Pharmacy-wise purchase & outstanding summary */}
@@ -457,8 +427,9 @@ export default function Inventory() {
               </div>
             )}
 
+            {/* Simple bill entry */}
             <div className="medical-card p-5 space-y-4">
-              <p className="text-sm font-semibold text-slate-700">Bill details</p>
+              <p className="text-sm font-semibold text-slate-700">Add purchase bill</p>
               <div className="grid sm:grid-cols-3 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-500 mb-1 block">Pharmacy / Supplier</label>
@@ -479,153 +450,29 @@ export default function Inventory() {
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
                 </div>
               </div>
-              <div className="sm:w-1/3">
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">Pending amount (₹, optional)</label>
-                <input type="number" value={billPendingAmount || ""} onChange={e => setBillPendingAmount(Number(e.target.value))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0 = fully paid" />
-                <p className="text-[11px] text-slate-400 mt-1">Leave blank if you've paid the full bill amount.</p>
-              </div>
-            </div>
-
-            <div className="medical-card p-5 space-y-4">
-              <p className="text-sm font-semibold text-slate-700">Add item</p>
-              <div className="grid sm:grid-cols-4 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Item name</label>
-                  <input value={itemName} onChange={e => setItemName(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="e.g. Merci Tab" />
+              <div className="grid sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Total amount (₹)</label>
+                  <input type="number" value={billAmount || ""} onChange={e => setBillAmount(Number(e.target.value))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Expiry (MM/YY)</label>
-                  <input value={itemExpiry} onChange={e => setItemExpiry(e.target.value)} placeholder="12/27"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Pending amount (₹, optional)</label>
+                  <input type="number" value={billPendingAmount || ""} onChange={e => setBillPendingAmount(Number(e.target.value))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0 = fully paid" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Quantity</label>
-                  <input type="number" value={itemQty} onChange={e => setItemQty(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Notes (optional)</label>
+                  <input value={billNotes} onChange={e => setBillNotes(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="e.g. medicines bought" />
                 </div>
               </div>
-              <div className="sm:w-1/3">
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">Purchase price (₹, total for this quantity)</label>
-                <input type="number" value={itemPurchasePrice || ""} onChange={e => setItemPurchasePrice(Number(e.target.value))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0" />
-              </div>
-
-              {lastPurchase && (
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-100 text-sm">
-                  <span className="text-blue-800">
-                    Last bought from <strong>{lastPurchase.pharmacyName}</strong> on {format(new Date(lastPurchase.billDate + "T00:00:00"), "dd MMM yyyy")} @ ₹{lastPurchase.ratePerUnit}/unit
-                  </span>
-                  <button type="button" onClick={useLastPurchase} className="shrink-0 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors">
-                    Use last purchase
-                  </button>
-                </div>
-              )}
-
-              <button type="button" onClick={() => setShowAdvanced(v => !v)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-primary transition-colors">
-                {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                More details (optional) — batch no., pack size, MRP, discount, GST, free qty
-              </button>
-
-              {showAdvanced && (
-                <div className="space-y-4 p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="grid sm:grid-cols-4 gap-4">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Batch no.</label>
-                      <input value={itemBatch} onChange={e => setItemBatch(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Pack size (units/pack)</label>
-                      <input type="number" value={itemPackSize} onChange={e => setItemPackSize(Number(e.target.value))}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500 mb-1 block">MRP per pack (₹)</label>
-                      <input type="number" value={itemMrp} onChange={e => setItemMrp(Number(e.target.value))}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Free qty (packs)</label>
-                      <input type="number" value={itemQtyFree} onChange={e => setItemQtyFree(Number(e.target.value))}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                    </div>
-                  </div>
-                  <div className="grid sm:grid-cols-4 gap-4">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Discount %</label>
-                      <input type="number" value={itemDiscount} onChange={e => setItemDiscount(Number(e.target.value))}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500 mb-1 block">GST %</label>
-                      <input type="number" value={itemGst} onChange={e => setItemGst(Number(e.target.value))}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-slate-400">Discount/GST are applied on top of the purchase price above when filled in. Pack size defaults to 1 (i.e. quantity = individual units) unless changed.</p>
-                </div>
-              )}
-
-              {itemPurchasePrice > 0 && itemQty > 0 && (
-                <div className="flex flex-wrap gap-4 px-4 py-3 rounded-xl bg-slate-50 text-sm">
-                  <span className="text-slate-500">Rate/unit: <strong className="text-slate-800">₹{itemRate.toFixed(2)}</strong></span>
-                  <span className="text-slate-500">Total units: <strong className="text-slate-800">{itemCalc.totalTabletsReceived}</strong></span>
-                  <span className="text-slate-500">Amount payable: <strong className="text-slate-800">{formatCurrency(itemDiscount || itemGst ? itemCalc.totalPaid : itemPurchasePrice)}</strong></span>
-                </div>
-              )}
-
-              <button onClick={handleAddItem} className="px-4 py-2.5 rounded-xl font-semibold bg-slate-800 text-white hover:bg-slate-900 transition-all flex items-center gap-1.5 text-sm">
-                <Plus className="w-4 h-4" /> Add item to bill
+              <button onClick={handleSaveBill} className="px-5 py-2.5 rounded-xl font-semibold bg-primary text-white shadow-lg shadow-primary/25 hover:shadow-xl transition-all">
+                Save purchase bill
               </button>
             </div>
 
-            {billItems.length > 0 && (
-              <div className="medical-card overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200/60">
-                      <tr>
-                        <th className="px-4 py-3 font-semibold text-slate-600">Item</th>
-                        <th className="px-4 py-3 font-semibold text-slate-600">Expiry</th>
-                        <th className="px-4 py-3 font-semibold text-slate-600 text-right">Qty</th>
-                        <th className="px-4 py-3 font-semibold text-slate-600 text-right">Amount</th>
-                        <th className="px-4 py-3 font-semibold text-slate-600 text-center">Remove</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {billItems.map((it, idx) => (
-                        <tr key={idx}>
-                          <td className="px-4 py-3 font-medium text-slate-800">{it.medicineName}</td>
-                          <td className="px-4 py-3 text-slate-500">{it.expiryDate || "-"}</td>
-                          <td className="px-4 py-3 text-right text-slate-700">{it.totalTabletsReceived}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(it.totalPaid)}</td>
-                          <td className="px-4 py-3 text-center">
-                            <button onClick={() => removeItem(idx)} className="p-1.5 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><X className="w-4 h-4" /></button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-slate-50 border-t border-slate-200">
-                        <td colSpan={3} className="px-4 py-3 text-right font-semibold text-slate-600">Bill total</td>
-                        <td className="px-4 py-3 text-right font-bold text-slate-900 text-base">{formatCurrency(billGrandTotal)}</td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-                <div className="px-4 py-3 border-t border-slate-100 flex justify-end">
-                  <button onClick={handleSaveBill} className="px-5 py-2.5 rounded-xl font-semibold bg-primary text-white shadow-lg shadow-primary/25 hover:shadow-xl transition-all">
-                    Save purchase bill
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Recent bills */}
+            {/* Purchase bills table */}
             <div className="medical-card overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 space-y-3">
                 <span className="text-sm font-semibold text-slate-700">
@@ -659,7 +506,7 @@ export default function Inventory() {
                       <th className="px-4 py-3 font-semibold text-slate-500">Date</th>
                       <th className="px-4 py-3 font-semibold text-slate-500">Pharmacy</th>
                       <th className="px-4 py-3 font-semibold text-slate-500">Bill no.</th>
-                      <th className="px-4 py-3 font-semibold text-slate-500 text-center">Items</th>
+                      <th className="px-4 py-3 font-semibold text-slate-500">Notes</th>
                       <th className="px-4 py-3 font-semibold text-slate-500 text-right">Total</th>
                       <th className="px-4 py-3 font-semibold text-slate-500">Payment</th>
                       <th className="px-4 py-3 font-semibold text-slate-500 text-center">Actions</th>
@@ -673,7 +520,7 @@ export default function Inventory() {
                           <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{format(new Date(b.billDate + "T00:00:00"), "dd MMM yyyy")}</td>
                           <td className="px-4 py-3 font-medium text-slate-800">{b.supplierName}</td>
                           <td className="px-4 py-3 text-slate-500">{b.billNo || "-"}</td>
-                          <td className="px-4 py-3 text-center text-slate-600">{b.items.length}</td>
+                          <td className="px-4 py-3 text-slate-500 max-w-[180px] truncate">{b.notes || "-"}</td>
                           <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(b.grandTotal)}</td>
                           <td className="px-4 py-3">
                             {status === "paid" ? (
@@ -707,6 +554,39 @@ export default function Inventory() {
         {/* ── EXPIRY TRACKER TAB ── */}
         {tab === "expiry" && (
           <div className="space-y-4">
+            <div className="medical-card p-5 space-y-4">
+              <p className="text-sm font-semibold text-slate-700">Add batch (for expiry tracking)</p>
+              <div className="grid sm:grid-cols-4 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Medicine</label>
+                  <select value={batchMedicineId} onChange={e => setBatchMedicineId(e.target.value ? Number(e.target.value) : "")}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none bg-white">
+                    <option value="">Select medicine...</option>
+                    {medicines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Batch no. (optional)</label>
+                  <input value={batchNo} onChange={e => setBatchNo(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Expiry (MM/YY)</label>
+                  <input value={batchExpiry} onChange={e => setBatchExpiry(e.target.value)} placeholder="12/27"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Quantity</label>
+                  <input type="number" value={batchQty} onChange={e => setBatchQty(Number(e.target.value))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                </div>
+              </div>
+              <button onClick={handleAddBatch} className="px-4 py-2.5 rounded-xl font-semibold bg-slate-800 text-white hover:bg-slate-900 transition-all flex items-center gap-1.5 text-sm">
+                <Plus className="w-4 h-4" /> Add batch
+              </button>
+              {medicines.length === 0 && <p className="text-xs text-amber-600">Add a medicine on the Medicines tab first.</p>}
+            </div>
+
             <div className="flex items-center gap-2 flex-wrap">
               {([
                 { key: "all", label: "All" },
@@ -728,7 +608,7 @@ export default function Inventory() {
                       <th className="px-4 py-3 font-semibold text-slate-600">Medicine</th>
                       <th className="px-4 py-3 font-semibold text-slate-600">Batch</th>
                       <th className="px-4 py-3 font-semibold text-slate-600">Expiry</th>
-                      <th className="px-4 py-3 font-semibold text-slate-600 text-right">Qty (packs)</th>
+                      <th className="px-4 py-3 font-semibold text-slate-600 text-right">Qty</th>
                       <th className="px-4 py-3 font-semibold text-slate-600 text-right">Days left</th>
                       <th className="px-4 py-3 font-semibold text-slate-600">Status</th>
                       <th className="px-4 py-3 font-semibold text-slate-600 text-center">Actions</th>
@@ -746,7 +626,7 @@ export default function Inventory() {
                           <span className={`text-xs font-bold px-2 py-1 rounded-md border ${EXPIRY_STATUS_STYLE[e.status]}`}>{EXPIRY_STATUS_LABEL[e.status]}</span>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <button onClick={() => handleDeleteExpiryItem(e)} title="Remove this batch from stock"
+                          <button onClick={() => handleDeleteExpiryItem(e)} title="Remove this batch"
                             className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -767,9 +647,14 @@ export default function Inventory() {
           <div className="medical-card overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
               <span className="text-sm text-slate-500">{pharmacies.length} pharmacies</span>
-              <button onClick={openNewPharmacy} className="px-4 py-2 rounded-xl font-semibold bg-primary text-white shadow-lg shadow-primary/25 hover:shadow-xl transition-all flex items-center gap-1.5 text-sm">
-                <Plus className="w-4 h-4" /> Add Pharmacy
-              </button>
+              <div className="flex gap-2">
+                <button onClick={handleSyncPharmacies} className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-1.5 text-sm">
+                  <RefreshCw className="w-4 h-4" /> Sync from Purchase Bills
+                </button>
+                <button onClick={openNewPharmacy} className="px-4 py-2 rounded-xl font-semibold bg-primary text-white shadow-lg shadow-primary/25 hover:shadow-xl transition-all flex items-center gap-1.5 text-sm">
+                  <Plus className="w-4 h-4" /> Add Pharmacy
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -797,7 +682,7 @@ export default function Inventory() {
                       </td>
                     </tr>
                   )) : (
-                    <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">No pharmacies yet. Add your regular suppliers here.</td></tr>
+                    <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">No pharmacies yet. Add one, or sync from your purchase bills.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -836,7 +721,7 @@ export default function Inventory() {
                 <input type="number" {...medForm.register("currentStock")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
               </div>
             </div>
-            <p className="text-xs text-slate-400">Tip: stock updates automatically when you record a purchase. Only edit "Current stock" here for manual corrections (e.g. after a physical count).</p>
+            <p className="text-xs text-slate-400">Stock &amp; expiry are fully manual now — update "Current stock" here any time, and add batches on the Expiry Tracker tab.</p>
             <div className="flex justify-end gap-3 pt-4">
               <button type="button" onClick={() => setMedDialogOpen(false)} className="px-5 py-2.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">Cancel</button>
               <button type="submit" className="px-5 py-2.5 rounded-xl font-medium bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all">Save</button>
