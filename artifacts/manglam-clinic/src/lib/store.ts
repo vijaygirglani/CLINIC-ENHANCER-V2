@@ -158,6 +158,12 @@ export interface AdviceCode {
 // NEW TYPES — Medicine, Inventory, Billing, Profit
 // ═══════════════════════════════════════════════════════════════
 
+export interface MedicineBatch {
+  batchNo: string;
+  expiryDate: string;   // "MM/YY"
+  qty: number;
+}
+
 export interface MedicineItem {
   id: number;
   name: string;           // "Merci Tab"
@@ -167,6 +173,7 @@ export interface MedicineItem {
   reorderLevel: number;   // alert when stock <= this (in tablets)
   currentStock: number;   // total TABLETS on hand
   landingCost: number;    // landing cost per PACK (divide by packSize for per-tablet)
+  batches?: MedicineBatch[]; // manually-tracked batches, for expiry tracking only (independent of currentStock)
   createdAt: string;
 }
 
@@ -193,14 +200,21 @@ export interface PurchaseBillItem {
   totalPaid: number;
 }
 
+export interface PurchaseBillPayment {
+  date: string;    // "YYYY-MM-DD" — when this portion was actually paid
+  amount: number;
+}
+
 export interface PurchaseBill {
   id: number;
   supplierName: string;
   billNo: string;
   billDate: string;
-  items: PurchaseBillItem[];
+  items: PurchaseBillItem[];   // kept for backward compatibility with older/imported bills — new bills leave this empty
+  notes?: string;              // free-text description (e.g. medicines bought), optional
   grandTotal: number;
   pendingAmount?: number;   // amount still owed to the pharmacy for this bill (0 / undefined = fully paid)
+  payments: PurchaseBillPayment[]; // cash-basis payment log — what was actually paid, and when
   createdAt: string;
 }
 
@@ -555,9 +569,21 @@ export function getMonthlyStats(year: number, month: number) {
     else dayMap[p.visitDate].generalFees += p.fees || 0;
   }
   const dailyBreakdown = Object.entries(dayMap).map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date));
-  const totalExpenses = getExpensesByMonth(year, month).reduce((s, e) => s + e.amount, 0);
+  const manualExpenses = getExpensesByMonth(year, month).reduce((s, e) => s + e.amount, 0);
+  const pharmacyExpenses = getPharmacyPaidAmountByMonth(year, month);
+  const totalExpenses = manualExpenses + pharmacyExpenses;
   const netTotal = totalFees - totalExpenses;
-  return { totalPatients: patients.length, totalFees, generalPatients, ayurvedicPatients, generalFees, ayurvedicFees, dailyBreakdown, totalExpenses, netTotal };
+  const doctors = getDoctors();
+  const d1 = doctors[0] || { name: "Doctor 1", profitSharePct: 80 };
+  const d2 = doctors[1] || { name: "Doctor 2", profitSharePct: 20 };
+  const doctorSplit = {
+    doctor1: { name: d1.name, pct: d1.profitSharePct, amount: Math.round(netTotal * (d1.profitSharePct / 100) * 100) / 100 },
+    doctor2: { name: d2.name, pct: d2.profitSharePct, amount: Math.round(netTotal * (d2.profitSharePct / 100) * 100) / 100 },
+  };
+  return {
+    totalPatients: patients.length, totalFees, generalPatients, ayurvedicPatients, generalFees, ayurvedicFees, dailyBreakdown,
+    manualExpenses, pharmacyExpenses, totalExpenses, netTotal, doctorSplit,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -790,8 +816,8 @@ export function importBackup(jsonStr: string): { success: boolean; message: stri
 // ═══════════════════════════════════════════════════════════════
 
 const DEFAULT_DOCTORS: Doctor[] = [
-  { id: 1, name: "Doctor 1", profitSharePct: 60 },
-  { id: 2, name: "Doctor 2", profitSharePct: 40 },
+  { id: 1, name: "Doctor 1", profitSharePct: 80 },
+  { id: 2, name: "Doctor 2", profitSharePct: 20 },
 ];
 
 export function getDoctors(): Doctor[] {
@@ -803,6 +829,19 @@ export function getDoctors(): Doctor[] {
 
 export function saveDoctors(doctors: Doctor[]) {
   localStorage.setItem(DOCTORS_KEY, JSON.stringify(doctors));
+}
+
+// Updates the doctor revenue-split settings (name + %) — validates the two percentages add up to 100.
+export function updateDoctorSplit(doctor1: { name: string; profitSharePct: number }, doctor2: { name: string; profitSharePct: number }): { success: boolean; message?: string } {
+  const total = doctor1.profitSharePct + doctor2.profitSharePct;
+  if (Math.abs(total - 100) > 0.01) {
+    return { success: false, message: `Percentages must add up to 100 (currently ${total}).` };
+  }
+  saveDoctors([
+    { id: 1, name: doctor1.name.trim() || "Doctor 1", profitSharePct: doctor1.profitSharePct },
+    { id: 2, name: doctor2.name.trim() || "Doctor 2", profitSharePct: doctor2.profitSharePct },
+  ]);
+  return { success: true };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -927,7 +966,16 @@ export function getStockAlertCounts(): { out: number; low: number } {
 // ═══════════════════════════════════════════════════════════════
 
 export function getPurchaseBills(): PurchaseBill[] {
-  try { return JSON.parse(localStorage.getItem(PURCHASE_BILLS_KEY) || "[]"); }
+  try {
+    const raw: (PurchaseBill & { payments?: PurchaseBillPayment[] })[] = JSON.parse(localStorage.getItem(PURCHASE_BILLS_KEY) || "[]");
+    // Backfill `payments` for bills saved before payment-tracking existed — best-effort assumes any already-paid
+    // portion was paid on the bill's own date, so cash-basis reporting works without needing a re-import.
+    return raw.map(b => {
+      if (b.payments) return b as PurchaseBill;
+      const paidAmount = Math.max(0, (b.grandTotal || 0) - (b.pendingAmount || 0));
+      return { ...b, payments: paidAmount > 0 ? [{ date: b.billDate, amount: paidAmount }] : [] };
+    });
+  }
   catch { return []; }
 }
 
@@ -935,40 +983,27 @@ function savePurchaseBills(bills: PurchaseBill[]) {
   localStorage.setItem(PURCHASE_BILLS_KEY, JSON.stringify(bills));
 }
 
-export function addPurchaseBill(data: Omit<PurchaseBill, "id" | "createdAt">): PurchaseBill {
+// Bill-level purchase entry — pharmacy, bill no., date, total, pending amount, optional notes.
+// No item/medicine linkage — stock & expiry are managed manually on the Medicines tab.
+export function addSimplePurchaseBill(data: {
+  supplierName: string; billNo: string; billDate: string; grandTotal: number; pendingAmount: number; notes?: string;
+}): PurchaseBill {
   const bills = getPurchaseBills();
-  const bill: PurchaseBill = { ...data, id: nextId(), createdAt: new Date().toISOString() };
+  const paidNow = Math.max(0, data.grandTotal - data.pendingAmount);
+  const bill: PurchaseBill = {
+    id: nextId(),
+    supplierName: data.supplierName,
+    billNo: data.billNo,
+    billDate: data.billDate,
+    items: [],
+    notes: data.notes,
+    grandTotal: data.grandTotal,
+    pendingAmount: Math.max(0, data.pendingAmount),
+    payments: paidNow > 0 ? [{ date: data.billDate, amount: paidNow }] : [],
+    createdAt: new Date().toISOString(),
+  };
   bills.push(bill);
   savePurchaseBills(bills);
-
-  // Update stock in TABLETS for each item
-  for (const item of data.items) {
-    const medicines = getMedicines(); // fresh read each iteration
-    const idx = medicines.findIndex(m =>
-      m.name.toLowerCase() === item.medicineName.trim().toLowerCase()
-    );
-    if (idx !== -1) {
-      const tabletsReceived = item.totalTabletsReceived || (item.totalQtyReceived * (item.packSize || 1));
-      const oldStock = medicines[idx].currentStock; // in tablets
-      const oldPackSize = medicines[idx].packSize || 1;
-      const oldCostPerPack = medicines[idx].landingCost || 0;
-      const oldCostPerTab = oldPackSize > 0 ? oldCostPerPack / oldPackSize : oldCostPerPack;
-      const newPackSize = item.packSize || 1;
-      const newCostPerPack = item.landingCostPerUnit; // cost per pack
-      const newCostPerTab = newPackSize > 0 ? newCostPerPack / newPackSize : newCostPerPack;
-      const newStock = oldStock + tabletsReceived;
-      // Weighted average cost per tablet
-      const avgCostPerTab = newStock > 0
-        ? ((oldStock * oldCostPerTab) + (tabletsReceived * newCostPerTab)) / newStock
-        : newCostPerTab;
-      // Store as cost per PACK
-      medicines[idx].currentStock = newStock;
-      medicines[idx].packSize = newPackSize;
-      medicines[idx].landingCost = Math.round(avgCostPerTab * newPackSize * 10000) / 10000;
-      medicines[idx].mrpPerTablet = item.mrp / newPackSize;
-      saveMedicines(medicines); // save immediately after each update
-    }
-  }
   return bill;
 }
 
@@ -977,21 +1012,52 @@ export function deletePurchaseBill(id: number): boolean {
   const bill = bills.find(b => b.id === id);
   if (!bill) return false;
 
-  // Reverse stock changes
+  // Reverse any stock this bill may have contributed (legacy/imported bills with items)
   const medicines = getMedicines();
+  let touched = false;
   for (const item of bill.items) {
     const idx = medicines.findIndex(m => m.id === item.medicineId);
     if (idx !== -1) {
       medicines[idx].currentStock = Math.max(0, medicines[idx].currentStock - item.totalQtyReceived);
+      touched = true;
     }
   }
-  saveMedicines(medicines);
+  if (touched) saveMedicines(medicines);
 
   const filtered = bills.filter(b => b.id !== id);
   savePurchaseBills(filtered);
   return true;
 }
 
+// Records a cash-basis payment against a bill — reduces pending amount and logs when it was paid.
+export function recordPurchaseBillPayment(id: number, amountPaidNow: number, paymentDate: string): PurchaseBill | null {
+  const bills = getPurchaseBills();
+  const idx = bills.findIndex(b => b.id === id);
+  if (idx === -1) return null;
+  const bill = bills[idx];
+  const currentPending = bill.pendingAmount || 0;
+  const amount = Math.min(Math.max(0, amountPaidNow), currentPending);
+  if (amount <= 0) return bill;
+  bills[idx] = {
+    ...bill,
+    pendingAmount: Math.max(0, currentPending - amount),
+    payments: [...(bill.payments || []), { date: paymentDate, amount }],
+  };
+  savePurchaseBills(bills);
+  return bills[idx];
+}
+
+export function markPurchaseBillPaid(id: number, paymentDate?: string): PurchaseBill | null {
+  const bill = getPurchaseBills().find(b => b.id === id);
+  if (!bill) return null;
+  const pending = bill.pendingAmount || 0;
+  if (pending <= 0) return bill;
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return recordPurchaseBillPayment(id, pending, paymentDate || todayStr);
+}
+
+// Legacy alias kept so existing pendingAmount edits (e.g. from imports) still work.
 export function updatePurchaseBillPayment(id: number, pendingAmount: number): PurchaseBill | null {
   const bills = getPurchaseBills();
   const idx = bills.findIndex(b => b.id === id);
@@ -999,10 +1065,6 @@ export function updatePurchaseBillPayment(id: number, pendingAmount: number): Pu
   bills[idx] = { ...bills[idx], pendingAmount: Math.max(0, pendingAmount) };
   savePurchaseBills(bills);
   return bills[idx];
-}
-
-export function markPurchaseBillPaid(id: number): PurchaseBill | null {
-  return updatePurchaseBillPayment(id, 0);
 }
 
 export interface PharmacyPurchaseSummary {
@@ -1024,6 +1086,49 @@ export function getPharmacyPurchaseSummary(): PharmacyPurchaseSummary[] {
     map[key].totalPending += b.pendingAmount || 0;
   }
   return Object.values(map).sort((a, b) => b.totalPending - a.totalPending || b.totalPurchased - a.totalPurchased);
+}
+
+// Purchases grouped by bill date's month — "of what was billed this month, how much is paid/pending"
+export function getPurchaseSummaryByMonth(year: number, month: number): { totalPurchased: number; totalPaid: number; totalPending: number; billCount: number } {
+  const monthStr = `${year}-${String(month).padStart(2, "0")}`;
+  const bills = getPurchaseBills().filter(b => b.billDate.startsWith(monthStr));
+  const totalPurchased = bills.reduce((s, b) => s + b.grandTotal, 0);
+  const totalPending = bills.reduce((s, b) => s + (b.pendingAmount || 0), 0);
+  return { totalPurchased, totalPaid: totalPurchased - totalPending, totalPending, billCount: bills.length };
+}
+
+// Cash-basis: total actually PAID to pharmacies during a given calendar month, regardless of the bill's own month.
+export function getPharmacyPaidAmountByMonth(year: number, month: number): number {
+  const monthStr = `${year}-${String(month).padStart(2, "0")}`;
+  let total = 0;
+  for (const bill of getPurchaseBills()) {
+    for (const p of bill.payments || []) {
+      if (p.date.startsWith(monthStr)) total += p.amount;
+    }
+  }
+  return total;
+}
+
+// Adds any pharmacy/company name found in Purchase Bills that isn't already in the Pharmacy master list.
+export function syncPharmaciesFromPurchases(): number {
+  const existing = getPharmacies();
+  const existingNames = new Set(existing.map(p => p.name.trim().toLowerCase()));
+  const billNames = new Set<string>();
+  for (const b of getPurchaseBills()) {
+    const name = b.supplierName.trim();
+    if (name) billNames.add(name);
+  }
+  let added = 0;
+  const toAdd: Pharmacy[] = [];
+  for (const name of billNames) {
+    if (!existingNames.has(name.toLowerCase())) {
+      toAdd.push({ id: nextId(), name, createdAt: new Date().toISOString() });
+      existingNames.add(name.toLowerCase());
+      added++;
+    }
+  }
+  if (toAdd.length > 0) savePharmacies([...existing, ...toAdd]);
+  return added;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1307,8 +1412,8 @@ export function deductMedicineStock(items: { medicineName: string; qty: number; 
 // ═══════════════════════════════════════════════════════════════
 
 export interface ExpiryItem {
-  billId: number;
-  itemIndex: number;
+  medicineId: number;
+  batchIndex: number;
   medicineName: string;
   batchNo: string;
   expiryDate: string;   // "MM/YY"
@@ -1317,13 +1422,15 @@ export interface ExpiryItem {
   daysToExpiry: number;
 }
 
+// Manually-tracked expiry list — sourced from each medicine's `batches[]`, entered directly on the Medicines tab.
+// Independent of Purchase Entry (which is bill-level only and doesn't carry item/expiry data).
 export function getExpiryList(): ExpiryItem[] {
   const today = new Date();
   const items: ExpiryItem[] = [];
-  for (const bill of getPurchaseBills()) {
-    bill.items.forEach((item, itemIndex) => {
-      if (!item.expiryDate) return;
-      const parts = item.expiryDate.split("/");
+  for (const med of getMedicines()) {
+    (med.batches || []).forEach((batch, batchIndex) => {
+      if (!batch.expiryDate) return;
+      const parts = batch.expiryDate.split("/");
       if (parts.length !== 2) return;
       const month = parseInt(parts[0]) - 1;
       const year = parseInt(parts[1]) < 100 ? 2000 + parseInt(parts[1]) : parseInt(parts[1]);
@@ -1335,12 +1442,12 @@ export function getExpiryList(): ExpiryItem[] {
       else if (daysToExpiry <= 30) status = "expiring-soon";
       else if (daysToExpiry <= 60) status = "expiring";
       items.push({
-        billId: bill.id,
-        itemIndex,
-        medicineName: item.medicineName,
-        batchNo: item.batchNo || "-",
-        expiryDate: item.expiryDate,
-        qty: item.totalQtyReceived,
+        medicineId: med.id,
+        batchIndex,
+        medicineName: med.name,
+        batchNo: batch.batchNo || "-",
+        expiryDate: batch.expiryDate,
+        qty: batch.qty,
         status,
         daysToExpiry,
       });
@@ -1349,31 +1456,21 @@ export function getExpiryList(): ExpiryItem[] {
   return items.sort((a, b) => a.daysToExpiry - b.daysToExpiry);
 }
 
-// Removes a single line-item from a purchase bill (e.g. an expired batch),
-// reverses just that item's stock, and removes the whole bill if it was the last item left.
-export function deletePurchaseBillItem(billId: number, itemIndex: number): boolean {
-  const bills = getPurchaseBills();
-  const bill = bills.find(b => b.id === billId);
-  if (!bill) return false;
-  const item = bill.items[itemIndex];
-  if (!item) return false;
-
+export function addMedicineBatch(medicineId: number, batch: MedicineBatch): boolean {
   const medicines = getMedicines();
-  const medIdx = medicines.findIndex(m => m.id === item.medicineId);
-  if (medIdx !== -1) {
-    medicines[medIdx].currentStock = Math.max(0, medicines[medIdx].currentStock - item.totalQtyReceived);
-  }
+  const idx = medicines.findIndex(m => m.id === medicineId);
+  if (idx === -1) return false;
+  medicines[idx].batches = [...(medicines[idx].batches || []), batch];
   saveMedicines(medicines);
+  return true;
+}
 
-  const remainingItems = bill.items.filter((_, i) => i !== itemIndex);
-  if (remainingItems.length === 0) {
-    const filtered = bills.filter(b => b.id !== billId);
-    savePurchaseBills(filtered);
-  } else {
-    bill.items = remainingItems;
-    bill.grandTotal = Math.max(0, bill.grandTotal - item.totalPaid);
-    savePurchaseBills(bills);
-  }
+export function deleteMedicineBatch(medicineId: number, batchIndex: number): boolean {
+  const medicines = getMedicines();
+  const idx = medicines.findIndex(m => m.id === medicineId);
+  if (idx === -1) return false;
+  medicines[idx].batches = (medicines[idx].batches || []).filter((_, i) => i !== batchIndex);
+  saveMedicines(medicines);
   return true;
 }
 
@@ -1694,6 +1791,7 @@ export function importPharmaBillsCsv(csvText: string): ImportBillsResult {
   const iDate = findCol("bill date", "date");
   const iAmount = findCol("amount (inr)", "amount");
   const iStatus = findCol("status");
+  const iPaidDate = findCol("paid date");
   const iPaidVia = findCol("paid via", "payment mode");
   const iNotes = findCol("notes", "note");
 
@@ -1715,6 +1813,7 @@ export function importPharmaBillsCsv(csvText: string): ImportBillsResult {
     const rawDate = (cols[iDate] || "").trim();
     const amount = parseFloat(cols[iAmount] || "0") || 0;
     const status = iStatus !== -1 ? (cols[iStatus] || "").trim().toLowerCase() : "paid";
+    const rawPaidDate = iPaidDate !== -1 ? (cols[iPaidDate] || "").trim() : "";
     const paidVia = iPaidVia !== -1 ? (cols[iPaidVia] || "").trim().toLowerCase() : "";
     const notes = iNotes !== -1 ? (cols[iNotes] || "").trim() : "";
 
@@ -1740,26 +1839,19 @@ export function importPharmaBillsCsv(csvText: string): ImportBillsResult {
       const dup = existingBills.some(b => b.supplierName.toLowerCase() === company.toLowerCase() && b.billDate === date && b.grandTotal === amount && (b.billNo || "") === billNo)
         || newBills.some(b => b.supplierName.toLowerCase() === company.toLowerCase() && b.billDate === date && b.grandTotal === amount && (b.billNo || "") === billNo);
       if (dup) { skipped++; continue; }
-      const pending = status === "unpaid" ? amount : 0;
-      const itemName = notes || "Purchase (imported — item details not recorded)";
+      const isPaid = status === "paid";
+      const pending = isPaid ? 0 : amount;
+      const paidDate = parseDDMMYYYY(rawPaidDate) || date; // fall back to bill date if Paid Date missing
       newBills.push({
         id: nextId(),
         supplierName: company,
         billNo,
         billDate: date,
-        items: [{
-          medicineId: -1,
-          medicineName: itemName,
-          mrp: amount, packSize: 1, mrpPerTablet: amount,
-          batchNo: "", expiryDate: "",
-          qtyPaid: 1, qtyFree: 0, ratePerUnit: amount,
-          discountPct: 0, gstPct: 0,
-          landingCostPerUnit: amount, landingCostPerTablet: amount,
-          totalQtyReceived: 1, totalTabletsReceived: 1,
-          taxableAmount: amount, gstAmount: 0, totalPaid: amount,
-        }],
+        items: [],
+        notes: notes || undefined,
         grandTotal: amount,
         pendingAmount: pending,
+        payments: isPaid ? [{ date: paidDate, amount }] : [],
         createdAt: new Date().toISOString(),
       });
     }
