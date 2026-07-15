@@ -178,3 +178,48 @@ export async function getCloudCount(): Promise<number> {
   const data = await res.json();
   return Array.isArray(data) ? data.length : 0;
 }
+
+// ── Clean up duplicate cloud rows for a set of local patients ──────────────────
+// The old sync bug (fixed now) could push the "same" patient under slightly different
+// composite ids before the key-normalization was made consistent. Deleting a duplicate
+// locally doesn't remove those old cloud rows, so the next sync/auto-pull silently
+// brings them back. This finds any cloud row matching the same natural key (by content,
+// not by stored id) and removes it, then re-pushes the single kept record so exactly
+// one clean cloud row remains per patient.
+export async function cleanupCloudDuplicates(
+  keptPatients: any[]
+): Promise<{ deletedFromCloud: number }> {
+  let deletedFromCloud = 0;
+  const dates = Array.from(new Set(keptPatients.map(p => p.visitDate).filter(Boolean)));
+
+  for (const date of dates) {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/patients?select=id,mobile,name,visit_date&visit_date=eq.${encodeURIComponent(date)}`,
+      { headers: HEADERS }
+    );
+    if (!res.ok) continue;
+    const rows: { id: string; mobile: string; name: string; visit_date: string }[] = await res.json();
+
+    const keptForDate = keptPatients.filter(p => p.visitDate === date);
+    const keptKeys = new Set(keptForDate.map(p => naturalKey(p)));
+
+    for (const row of rows) {
+      const rowKey = naturalKey({ mobile: row.mobile, visitDate: row.visit_date, name: row.name });
+      // Any cloud row matching a kept patient's key, but whose stored id isn't that same
+      // canonical key, is a stale duplicate row from before the key fix — remove it.
+      if (keptKeys.has(rowKey) && row.id !== rowKey) {
+        const delRes = await fetch(`${SUPABASE_URL}/rest/v1/patients?id=eq.${encodeURIComponent(row.id)}`, {
+          method: "DELETE", headers: HEADERS,
+        });
+        if (delRes.ok) deletedFromCloud++;
+      }
+    }
+  }
+
+  // Re-push the kept records so exactly one clean, canonical row exists per patient.
+  if (keptPatients.length > 0) {
+    try { await pushToCloud(keptPatients); } catch { /* best-effort */ }
+  }
+
+  return { deletedFromCloud };
+}
