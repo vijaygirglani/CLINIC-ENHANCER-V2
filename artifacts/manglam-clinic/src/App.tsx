@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { migrateLegacyPatientsKey } from "@/lib/store";
 
 import Home from "@/pages/Home";
 import DailyRegister from "@/pages/DailyRegister";
@@ -38,6 +40,7 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => { migrateLegacyPatientsKey(); }, []);
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
