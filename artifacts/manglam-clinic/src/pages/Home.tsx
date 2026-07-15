@@ -87,7 +87,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  pushToCloud, pullFromCloud, fromCloud,
+  pushToCloud, pullFromCloud, fromCloud, naturalKey,
   getLastSync, setLastSync as setLastSyncStorage, getDeviceLabel,
 } from "@/lib/supabase-sync";
 
@@ -1475,6 +1475,37 @@ export default function Home() {
   const [cloudStatus, setCloudStatus] = useState<"idle"|"pushing"|"pulling"|"done"|"error">("idle");
   const [cloudMsg, setCloudMsg] = useState("");
   const [lastSyncTime, setLastSyncTime] = useState<string|null>(() => getLastSync());
+
+  // Silent best-effort pull on page load — so this device catches up with any other device's
+  // changes automatically, without needing the manual Sync button for routine use.
+  useEffect(() => {
+    (async () => {
+      try {
+        const cloudRecords = await pullFromCloud();
+        const existing: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
+        const existingKeys = new Set(existing.map((p: any) => naturalKey(p)));
+        const merged = [...existing];
+        let idSeed = Date.now();
+        let imported = 0;
+        for (const rec of cloudRecords) {
+          const key = naturalKey(rec as any);
+          if (existingKeys.has(key)) continue;
+          const local = fromCloud(rec);
+          local.id = idSeed++;
+          merged.push(local);
+          existingKeys.add(key);
+          imported++;
+        }
+        if (imported > 0) {
+          merged.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+          localStorage.setItem(PATIENTS_STORE_KEY, JSON.stringify(merged));
+        }
+        setLastSyncStorage(); setLastSyncTime(getLastSync());
+      } catch { /* silent — manual Sync button still available if this fails */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [filterMode, setFilterMode] = useState<FilterMode>("history");
   const [filterQuery, setFilterQuery] = useState("");
   const [filterResults, setFilterResults] = useState<Patient[]>([]);
@@ -1956,77 +1987,50 @@ export default function Home() {
     setPatientTags([]);
   };
 
-  // ── Cloud Sync handlers ──
-  const handleCloudPush = async () => {
-    setCloudSyncing(true); setCloudStatus("pushing"); setCloudMsg("Uploading records to cloud…");
+  // ── Cloud Sync handler — one tap: push local changes, then pull anything new, no duplicates ──
+  const handleSyncNow = async () => {
+    setCloudSyncing(true); setCloudStatus("pushing"); setCloudMsg("Uploading your changes…");
     try {
+      // Step 1 — dedupe local records (by the same natural key used on the cloud) and push them up.
       const allLocal: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
-
-      // ── Deduplicate local store before pushing ──
-      // Same logic as pull: prefer numeric id, fallback to mobile+visitDate+name
-      const seenIds  = new Set<string>();
       const seenKeys = new Set<string>();
-      const deduped  = allLocal.filter((p: any) => {
-        const id  = p.id ? String(p.id) : "";
-        const key = `${(p.mobile||"").trim()}_${p.visitDate}_${(p.name||"").trim().toLowerCase()}`;
-        if (id && seenIds.has(id))   return false;
-        if (seenKeys.has(key))       return false;
-        if (id) seenIds.add(id);
+      const deduped = allLocal.filter((p: any) => {
+        const key = naturalKey(p);
+        if (seenKeys.has(key)) return false;
         seenKeys.add(key);
         return true;
       });
-
-      // If duplicates were found locally, clean them up silently
       if (deduped.length < allLocal.length) {
         localStorage.setItem(PATIENTS_STORE_KEY, JSON.stringify(deduped));
-        toast({ title: `🧹 Removed ${allLocal.length - deduped.length} duplicate(s) from local data before upload.` });
       }
-
       const { pushed } = await pushToCloud(deduped);
-      setLastSyncStorage(); setLastSyncTime(getLastSync()); setCloudStatus("done");
-      setCloudMsg(`✅ ${pushed} record(s) uploaded successfully!`);
-    } catch (e: any) { setCloudStatus("error"); setCloudMsg(`❌ Upload failed: ${e.message}`); }
-    finally { setCloudSyncing(false); }
-  };
-  const handleCloudPull = async () => {
-    setCloudSyncing(true); setCloudStatus("pulling"); setCloudMsg("Downloading records from cloud…");
-    try {
+
+      // Step 2 — pull everything from the cloud and merge in only what's genuinely new here.
+      setCloudStatus("pulling"); setCloudMsg("Checking for updates from other devices…");
       const cloudRecords = await pullFromCloud();
-      const existing: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
-
-      // ── Stable dedup: prefer numeric `id` (Date.now() at creation), fallback to mobile+visitDate+name ──
-      // NOTE: We do NOT use `patientNo` because it is auto-generated per-device and differs between PC and Mobile.
-      const seenIds  = new Set(existing.map((p: any) => String(p.id)).filter(Boolean));
-      const seenKeys = new Set(existing.map((p: any) => `${(p.mobile||"").trim()}_${p.visitDate}_${(p.name||"").trim().toLowerCase()}`));
-
+      const existingKeys = new Set(deduped.map((p: any) => naturalKey(p)));
+      const merged = [...deduped];
+      let idSeed = Date.now();
       let imported = 0;
-      const merged = [...existing];
-
       for (const rec of cloudRecords) {
+        const key = naturalKey(rec as any);
+        if (existingKeys.has(key)) continue; // already have it locally — never re-insert
         const local = fromCloud(rec);
-        const recId  = local.id ? String(local.id) : "";
-        const recKey = `${(local.mobile||"").trim()}_${local.visitDate}_${(local.name||"").trim().toLowerCase()}`;
-
-        const dupById  = recId  && seenIds.has(recId);
-        const dupByKey = seenKeys.has(recKey);
-
-        if (!dupById && !dupByKey) {
-          // Insert directly — do NOT call addPatient() which would regenerate patientNo
-          merged.push(local);
-          if (recId)  seenIds.add(recId);
-          seenKeys.add(recKey);
-          imported++;
-        }
+        local.id = idSeed++; // fresh, guaranteed-unique local id — never derived from mobile/patientNo
+        merged.push(local);
+        existingKeys.add(key);
+        imported++;
       }
-
-      // Sort merged array by id descending so newest records appear first
       merged.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
       localStorage.setItem(PATIENTS_STORE_KEY, JSON.stringify(merged));
 
       setLastSyncStorage(); setLastSyncTime(getLastSync()); setCloudStatus("done");
-      setCloudMsg(`✅ ${cloudRecords.length} in cloud · ${imported} new record(s) imported!`);
-    } catch (e: any) { setCloudStatus("error"); setCloudMsg(`❌ Download failed: ${e.message}`); }
-    finally { setCloudSyncing(false); }
+      setCloudMsg(`✅ Synced — ${pushed} uploaded, ${imported} new record(s) received.`);
+    } catch (e: any) {
+      setCloudStatus("error"); setCloudMsg(`❌ Sync failed: ${e.message}`);
+    } finally {
+      setCloudSyncing(false);
+    }
   };
 
   const onSubmit = (data: PatientFormValues) => savePatient(data, "general");
@@ -2264,22 +2268,14 @@ export default function Home() {
                   </div>
                 )}
                 {cloudStatus === "idle" && (
-                  <div className="bg-amber-50 rounded-2xl px-4 py-3 space-y-1.5 border border-amber-100">
-                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">How to sync</p>
-                    <p className="text-xs text-amber-800">1. On <strong>PC</strong> → tap <strong>Upload</strong> to send records to cloud</p>
-                    <p className="text-xs text-amber-800">2. On <strong>Mobile</strong> → tap <strong>Download</strong> to receive them</p>
-                    <p className="text-xs text-amber-800">💡 Every patient save also auto-uploads silently!</p>
+                  <div className="bg-blue-50 rounded-2xl px-4 py-3 border border-blue-100">
+                    <p className="text-xs text-blue-800">Tap Sync to upload anything new from this device and bring in anything new from your other device — automatically, no duplicates.</p>
                   </div>
                 )}
-                <button onClick={handleCloudPush} disabled={cloudSyncing}
+                <button onClick={handleSyncNow} disabled={cloudSyncing}
                   className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg shadow-blue-300/30 disabled:opacity-50">
-                  {cloudSyncing && cloudStatus==="pushing" ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
-                  Upload to Cloud (this device → ☁️)
-                </button>
-                <button onClick={handleCloudPull} disabled={cloudSyncing}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-emerald-600 hover:to-teal-700 transition-all shadow-lg shadow-emerald-300/30 disabled:opacity-50">
-                  {cloudSyncing && cloudStatus==="pulling" ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudDownload className="w-4 h-4" />}
-                  Download from Cloud (☁️ → this device)
+                  {cloudSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
+                  {cloudSyncing ? (cloudStatus === "pushing" ? "Uploading…" : "Checking for updates…") : "Sync Now"}
                 </button>
                 <button onClick={() => setShowSyncModal(false)} disabled={cloudSyncing}
                   className="w-full py-3 rounded-2xl bg-slate-100 text-slate-600 font-semibold text-sm hover:bg-slate-200 transition-all disabled:opacity-50">
