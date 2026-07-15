@@ -34,10 +34,20 @@ export interface CloudPatient {
   device: string;
 }
 
+// A single, stable identity for a patient record — used for BOTH the cloud row id
+// AND local dedup matching, so push and pull always agree on what counts as "the same patient".
+// Must be called with the exact same normalization everywhere, or records will silently duplicate
+// whenever a mobile number is typed with different spacing/prefix on different devices.
+export function naturalKey(p: any): string {
+  const mobileDigits = (p.mobile || "").replace(/\D/g, "").slice(-10);
+  const name = (p.name || "").trim().toLowerCase().replace(/\s+/g, "_");
+  return `${mobileDigits}_${p.visitDate || ""}_${name}`;
+}
+
 // Convert local Patient → CloudPatient
 export function toCloud(p: any, device: string): CloudPatient {
   return {
-    id: `${(p.mobile || "").replace(/\D/g, "").slice(-10)}_${p.visitDate}_${(p.name || "").trim().toLowerCase().replace(/\s+/g, "_")}`,
+    id: naturalKey(p),
     name: p.name,
     mobile: p.mobile,
     address: p.address || "",
@@ -59,10 +69,12 @@ export function toCloud(p: any, device: string): CloudPatient {
   };
 }
 
-// Convert CloudPatient → local Patient shape
+// Convert CloudPatient → local Patient shape.
+// NOTE: deliberately does NOT set `id` — local ids are per-device and not portable, so the caller
+// must assign a fresh, guaranteed-unique local id only when actually inserting a new record.
+// Matching across devices should always go through `naturalKey()`, never a numeric id.
 export function fromCloud(c: CloudPatient): any {
   return {
-    id: parseInt(c.mobile.replace(/\D/g, "").slice(-6) + c.patient_no) || Date.now(),
     name: c.name,
     mobile: c.mobile,
     address: c.address,
