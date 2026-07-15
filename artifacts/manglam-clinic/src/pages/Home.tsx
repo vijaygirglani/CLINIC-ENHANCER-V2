@@ -136,7 +136,7 @@ function useUndoManager(toast: ReturnType<typeof useToast>["toast"], onAfterUndo
 }
 
 // ── Global Search helpers ─────────────────────────────────────────────────────
-const PATIENTS_STORE_KEY = "manglam_patients"; // must match store.ts
+import { PATIENTS_KEY as PATIENTS_STORE_KEY } from "@/lib/store"; // the ONE real patient storage key — sync/search must use this, not a stale copy
 function getAllPatientsForSearch(): Patient[] {
   try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); }
   catch { return []; }
