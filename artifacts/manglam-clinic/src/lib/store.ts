@@ -356,10 +356,41 @@ export function migrateLegacyPatientsKey(): { migrated: number } {
     let idSeed = Date.now();
     let migrated = 0;
 
-    for (const p of legacy) {
-      const key = keyOf(p);
+    for (const raw of legacy) {
+      // Only accept records that have a real, usable visit date — the whole app is organized
+      // by visitDate, so a record without one can't be safely displayed anywhere and would
+      // silently corrupt every date-based screen (Daily Register, Monthly Report, etc).
+      const visitDate: string | undefined = raw.visitDate || raw.date;
+      if (!visitDate || typeof visitDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate)) continue;
+      const name = typeof raw.name === "string" && raw.name.trim() ? raw.name : (typeof raw.patientName === "string" ? raw.patientName : "");
+      if (!name.trim()) continue; // unnamed records aren't useful and risk breaking name-based lookups
+
+      const normalized: Patient = {
+        id: 0, // placeholder, replaced below
+        name,
+        mobile: typeof raw.mobile === "string" ? raw.mobile : (typeof raw.phone === "string" ? raw.phone : ""),
+        address: typeof raw.address === "string" ? raw.address : "",
+        age: typeof raw.age === "number" ? raw.age : 0,
+        ageMonths: typeof raw.ageMonths === "number" ? raw.ageMonths : 0,
+        weight: typeof raw.weight === "string" ? raw.weight : "",
+        complaintCode: typeof raw.complaintCode === "string" ? raw.complaintCode : "",
+        complaint: typeof raw.complaint === "string" ? raw.complaint : "",
+        treatment: typeof raw.treatment === "string" ? raw.treatment : "",
+        advice: typeof raw.advice === "string" ? raw.advice : "",
+        reports: typeof raw.reports === "string" ? raw.reports : "",
+        fees: typeof raw.fees === "number" ? raw.fees : 0,
+        paymentMode: raw.paymentMode === "online" ? "online" : "cash",
+        patientNo: typeof raw.patientNo === "number" ? raw.patientNo : 0,
+        registerType: raw.registerType === "ayurvedic" ? "ayurvedic" : "general",
+        visitDate,
+        attachments: Array.isArray(raw.attachments) ? raw.attachments : [],
+        createdAt: typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString(),
+      } as Patient;
+
+      const key = keyOf(normalized);
       if (existingKeys.has(key)) continue;
-      merged.push({ ...p, id: idSeed++ }); // fresh local id — legacy ids aren't from this store's counter
+      normalized.id = idSeed++;
+      merged.push(normalized);
       existingKeys.add(key);
       migrated++;
     }
@@ -373,6 +404,24 @@ export function migrateLegacyPatientsKey(): { migrated: number } {
   } catch {
     localStorage.setItem(LEGACY_MIGRATION_FLAG, "1");
     return { migrated: 0 };
+  }
+}
+
+// Safety net: removes any patient record that's missing a usable visitDate/name — these can only
+// have gotten in via a bad merge/import, and would otherwise crash every date-based screen.
+// Cheap and idempotent, so it's safe to run on every app load.
+export function repairMalformedPatients(): { removed: number } {
+  try {
+    const patients = getPatients();
+    const valid = patients.filter(p =>
+      typeof p.visitDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.visitDate) &&
+      typeof p.name === "string" && p.name.trim().length > 0
+    );
+    const removed = patients.length - valid.length;
+    if (removed > 0) savePatients(valid);
+    return { removed };
+  } catch {
+    return { removed: 0 };
   }
 }
 
@@ -402,12 +451,12 @@ export function deletePatient(id: number): boolean {
 
 export function getPatientsByDate(date: string): Patient[] {
   return getPatients().filter((p) => p.visitDate === date)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
 }
 
 export function getAyurvedicPatientsByDate(date: string): Patient[] {
   return getPatients().filter((p) => p.visitDate === date && p.registerType === "ayurvedic")
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -464,16 +513,16 @@ export function getUniqueContacts(): PatientContact[] {
 export function lookupByMobile(mobile: string): { latestInfo?: Patient; history: Patient[] } {
   const q = (mobile || "").trim();
   if (q.length < 3) return { history: [] };
-  const all = getPatients().filter((p) => p.mobile.toLowerCase().includes(q.toLowerCase()));
-  const sorted = all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const all = getPatients().filter((p) => (p.mobile || "").toLowerCase().includes(q.toLowerCase()));
+  const sorted = all.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   return { latestInfo: sorted[0], history: sorted };
 }
 
 export function lookupByName(name: string): { latestInfo?: Patient; history: Patient[] } {
   const q = (name || "").trim();
   if (q.length < 2) return { history: [] };
-  const all = getPatients().filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
-  const sorted = all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const all = getPatients().filter((p) => (p.name || "").toLowerCase().includes(q.toLowerCase()));
+  const sorted = all.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   return { latestInfo: sorted[0], history: sorted };
 }
 
@@ -482,7 +531,7 @@ export function lookupByComplaint(query: string): Patient[] {
   const q = query.toLowerCase();
   return getPatients()
     .filter(p => (p.complaint || "").toLowerCase().includes(q) || (p.complaintCode || "").toLowerCase().includes(q))
-    .sort((a, b) => b.visitDate.localeCompare(a.visitDate));
+    .sort((a, b) => (b.visitDate || "").localeCompare(a.visitDate || ""));
 }
 
 export function lookupByAddress(query: string): Patient[] {
@@ -490,7 +539,7 @@ export function lookupByAddress(query: string): Patient[] {
   const q = query.toLowerCase();
   return getPatients()
     .filter(p => (p.address || "").toLowerCase().includes(q))
-    .sort((a, b) => b.visitDate.localeCompare(a.visitDate));
+    .sort((a, b) => (b.visitDate || "").localeCompare(a.visitDate || ""));
 }
 
 export interface PatientSuggestion {
@@ -508,7 +557,7 @@ export interface PatientSuggestion {
 export function searchPatientSuggestions(query: string): PatientSuggestion[] {
   if (!query || query.length < 2) return [];
   const q = query.toLowerCase();
-  const all = getPatients().filter(p => p.name.toLowerCase().includes(q));
+  const all = getPatients().filter(p => (p.name || "").toLowerCase().includes(q));
   const byMobile = new Map<string, Patient[]>();
   for (const p of all) {
     if (!byMobile.has(p.mobile)) byMobile.set(p.mobile, []);
@@ -516,7 +565,7 @@ export function searchPatientSuggestions(query: string): PatientSuggestion[] {
   }
   const suggestions: PatientSuggestion[] = [];
   for (const [mobile, visits] of byMobile) {
-    const sorted = visits.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const sorted = visits.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
     const latest = sorted[0];
     suggestions.push({
       name: latest.name, mobile, age: latest.age || 0,
@@ -601,7 +650,7 @@ export function getAllAyurvedicDates(): { date: string; count: number; totalFees
 
 export function getMonthlyStats(year: number, month: number) {
   const monthStr = `${year}-${String(month).padStart(2, "0")}`;
-  const patients = getPatients().filter((p) => p.visitDate.startsWith(monthStr));
+  const patients = getPatients().filter((p) => (p.visitDate || "").startsWith(monthStr));
   const totalFees = patients.reduce((sum, p) => sum + (p.fees || 0), 0);
   const generalPatients = patients.filter(p => p.registerType !== "ayurvedic").length;
   const ayurvedicPatients = patients.filter(p => p.registerType === "ayurvedic").length;
@@ -1308,7 +1357,7 @@ export function getStockLedger(): StockLedgerEntry[] {
 
 export function getStockLedgerForMedicine(medicineId: number): StockLedgerEntry[] {
   return getStockLedger().filter(e => e.medicineId === medicineId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 }
 
 function addStockLedgerEntry(data: Omit<StockLedgerEntry, "id" | "createdAt">) {
@@ -1757,7 +1806,7 @@ export function deleteExpense(id: number): boolean {
 }
 
 export function getExpensesByDate(date: string): Expense[] {
-  return getExpenses().filter(e => e.date === date).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return getExpenses().filter(e => e.date === date).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 }
 
 export function getExpensesByMonth(year: number, month: number): Expense[] {
