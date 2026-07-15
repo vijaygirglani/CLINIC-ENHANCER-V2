@@ -449,6 +449,46 @@ export function deletePatient(id: number): boolean {
   return filtered.length !== patients.length;
 }
 
+export function deletePatientsByIds(ids: number[]): number {
+  const idSet = new Set(ids);
+  const all = getPatients();
+  const filtered = all.filter(p => !idSet.has(p.id));
+  const removed = all.length - filtered.length;
+  if (removed > 0) savePatients(filtered);
+  return removed;
+}
+
+export interface DuplicatePatientGroup {
+  key: string;
+  patients: Patient[]; // sorted oldest → newest by id
+}
+
+function patientDupKey(p: Patient): string {
+  const mobileDigits = (p.mobile || "").replace(/\D/g, "").slice(-10);
+  const name = (p.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return `${p.visitDate}_${mobileDigits}_${name}`;
+}
+
+// Finds patients that look like duplicate entries — same visit date, mobile & name.
+// Pass a date to scope to one day (matches the Daily Register view), or omit to scan everything.
+export function findDuplicatePatients(date?: string): DuplicatePatientGroup[] {
+  const all = getPatients();
+  const scoped = date ? all.filter(p => p.visitDate === date) : all;
+  const map = new Map<string, Patient[]>();
+  for (const p of scoped) {
+    const key = patientDupKey(p);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(p);
+  }
+  const groups: DuplicatePatientGroup[] = [];
+  for (const [key, patients] of map.entries()) {
+    if (patients.length > 1) {
+      groups.push({ key, patients: patients.sort((a, b) => (a.id || 0) - (b.id || 0)) });
+    }
+  }
+  return groups.sort((a, b) => b.patients.length - a.patients.length);
+}
+
 export function getPatientsByDate(date: string): Patient[] {
   return getPatients().filter((p) => p.visitDate === date)
     .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
