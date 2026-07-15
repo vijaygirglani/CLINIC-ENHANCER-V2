@@ -442,31 +442,54 @@ export function updatePatient(id: number, data: Partial<Patient>): Patient | nul
   return patients[idx];
 }
 
+// Canonical identity for a patient — same visit date, mobile & name. Used both for duplicate
+// detection and for the permanent-deletion blocklist below, so a deleted patient can never be
+// silently reintroduced by a future sync, import, or migration.
+export function patientKey(p: any): string {
+  const mobileDigits = (p.mobile || "").replace(/\D/g, "").slice(-10);
+  const name = (p.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return `${p.visitDate || ""}_${mobileDigits}_${name}`;
+}
+
+const DELETED_PATIENT_KEYS_KEY = "cp_deleted_patient_keys";
+
+export function getDeletedPatientKeys(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(DELETED_PATIENT_KEYS_KEY) || "[]")); }
+  catch { return new Set(); }
+}
+
+function recordDeletedPatientKeys(keys: string[]) {
+  if (keys.length === 0) return;
+  const existing = getDeletedPatientKeys();
+  for (const k of keys) existing.add(k);
+  localStorage.setItem(DELETED_PATIENT_KEYS_KEY, JSON.stringify(Array.from(existing)));
+}
+
 export function deletePatient(id: number): boolean {
   const patients = getPatients();
+  const target = patients.find(p => p.id === id);
   const filtered = patients.filter((p) => p.id !== id);
   savePatients(filtered);
+  if (target) recordDeletedPatientKeys([patientKey(target)]);
   return filtered.length !== patients.length;
 }
 
 export function deletePatientsByIds(ids: number[]): number {
   const idSet = new Set(ids);
   const all = getPatients();
+  const toRemove = all.filter(p => idSet.has(p.id));
   const filtered = all.filter(p => !idSet.has(p.id));
   const removed = all.length - filtered.length;
-  if (removed > 0) savePatients(filtered);
+  if (removed > 0) {
+    savePatients(filtered);
+    recordDeletedPatientKeys(toRemove.map(patientKey));
+  }
   return removed;
 }
 
 export interface DuplicatePatientGroup {
   key: string;
   patients: Patient[]; // sorted oldest → newest by id
-}
-
-function patientDupKey(p: Patient): string {
-  const mobileDigits = (p.mobile || "").replace(/\D/g, "").slice(-10);
-  const name = (p.name || "").trim().toLowerCase().replace(/\s+/g, " ");
-  return `${p.visitDate}_${mobileDigits}_${name}`;
 }
 
 // Finds patients that look like duplicate entries — same visit date, mobile & name.
@@ -476,7 +499,7 @@ export function findDuplicatePatients(date?: string): DuplicatePatientGroup[] {
   const scoped = date ? all.filter(p => p.visitDate === date) : all;
   const map = new Map<string, Patient[]>();
   for (const p of scoped) {
-    const key = patientDupKey(p);
+    const key = patientKey(p);
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(p);
   }
