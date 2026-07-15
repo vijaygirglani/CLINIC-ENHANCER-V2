@@ -271,7 +271,7 @@ export interface StockLedgerEntry {
 // STORAGE KEYS — all cp_ prefixed
 // ═══════════════════════════════════════════════════════════════
 
-const PATIENTS_KEY        = "cp_patients";
+export const PATIENTS_KEY = "cp_patients";
 const CODES_KEY           = "cp_complaint_codes";
 const ADVICE_CODES_KEY    = "cp_advice_codes";
 const COUNTER_KEY         = "cp_id_counter";
@@ -327,6 +327,53 @@ export function getPatients(): Patient[] {
 
 function savePatients(patients: Patient[]) {
   localStorage.setItem(PATIENTS_KEY, JSON.stringify(patients));
+}
+
+// ── One-time migration: earlier versions of this app (and a stale cloud-sync bug) wrote
+// patient records to a different localStorage key ("manglam_patients") that the rest of the
+// app never actually reads. Anything sitting there is real data that never made it in —
+// pull it into the real store once, deduped, without touching anything already here.
+const LEGACY_PATIENTS_KEY = "manglam_patients";
+const LEGACY_MIGRATION_FLAG = "cp_legacy_patients_migrated";
+
+export function migrateLegacyPatientsKey(): { migrated: number } {
+  if (localStorage.getItem(LEGACY_MIGRATION_FLAG)) return { migrated: 0 };
+  try {
+    const legacyRaw = localStorage.getItem(LEGACY_PATIENTS_KEY);
+    if (!legacyRaw) { localStorage.setItem(LEGACY_MIGRATION_FLAG, "1"); return { migrated: 0 }; }
+    const legacy: any[] = JSON.parse(legacyRaw);
+    if (!Array.isArray(legacy) || legacy.length === 0) {
+      localStorage.setItem(LEGACY_MIGRATION_FLAG, "1");
+      return { migrated: 0 };
+    }
+
+    const keyOf = (p: any) =>
+      `${(p.mobile || "").replace(/\D/g, "").slice(-10)}_${p.visitDate || ""}_${(p.name || "").trim().toLowerCase().replace(/\s+/g, "_")}`;
+
+    const existing = getPatients();
+    const existingKeys = new Set(existing.map(keyOf));
+    const merged = [...existing];
+    let idSeed = Date.now();
+    let migrated = 0;
+
+    for (const p of legacy) {
+      const key = keyOf(p);
+      if (existingKeys.has(key)) continue;
+      merged.push({ ...p, id: idSeed++ }); // fresh local id — legacy ids aren't from this store's counter
+      existingKeys.add(key);
+      migrated++;
+    }
+
+    if (migrated > 0) {
+      merged.sort((a, b) => (b.id || 0) - (a.id || 0));
+      savePatients(merged);
+    }
+    localStorage.setItem(LEGACY_MIGRATION_FLAG, "1");
+    return { migrated };
+  } catch {
+    localStorage.setItem(LEGACY_MIGRATION_FLAG, "1");
+    return { migrated: 0 };
+  }
 }
 
 export function addPatient(data: Omit<Patient, "id" | "createdAt">): Patient {
