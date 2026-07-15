@@ -25,7 +25,6 @@ function getLooseSalesForDate(date: string): LooseSaleEntry[] {
 // ── Follow-up reminder helpers ────────────────────────────────────────────────
 
 import { exportToExcel, parseExcelFile } from "@/lib/export";
-import { cleanupCloudDuplicates } from "@/lib/supabase-sync";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -818,34 +817,12 @@ export default function DailyRegister() {
     });
   };
 
-  const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
-
-  const handleDeleteSelectedDuplicates = async () => {
+  const handleDeleteSelectedDuplicates = () => {
     if (selectedDuplicateIds.size === 0) return;
-    setCleaningDuplicates(true);
-    try {
-      const removed = deletePatientsByIds(Array.from(selectedDuplicateIds));
-
-      // The record kept in each group is whichever one WASN'T selected for deletion.
-      const keptPatients = duplicateGroups
-        .filter(g => g.patients.some(p => selectedDuplicateIds.has(p.id))) // only groups we actually touched
-        .map(g => g.patients.find(p => !selectedDuplicateIds.has(p.id)))
-        .filter((p): p is Patient => !!p);
-
-      let cloudMsg = "";
-      try {
-        const { deletedFromCloud } = await cleanupCloudDuplicates(keptPatients);
-        if (deletedFromCloud > 0) cloudMsg = ` Also removed ${deletedFromCloud} stale copy/copies from the cloud so they won't come back.`;
-      } catch {
-        cloudMsg = " (Couldn't reach the cloud to clean it up too — if they reappear after a sync, just run Find Duplicates again.)";
-      }
-
-      toast({ title: "Duplicates removed", description: `${removed} duplicate entr${removed === 1 ? "y" : "ies"} deleted.${cloudMsg}` });
-      setShowDuplicatesModal(false);
-      refresh();
-    } finally {
-      setCleaningDuplicates(false);
-    }
+    const removed = deletePatientsByIds(Array.from(selectedDuplicateIds));
+    toast({ title: "Duplicates removed", description: `${removed} duplicate entr${removed === 1 ? "y" : "ies"} permanently deleted — they won't come back on future syncs.` });
+    setShowDuplicatesModal(false);
+    refresh();
   };
 
   const buildDailyReportMsg = () => {
@@ -1703,10 +1680,9 @@ Manglam Hospital, Morbi`;
                 <span className="text-sm text-slate-500">{selectedDuplicateIds.size} selected for deletion</span>
                 <div className="flex gap-3">
                   <button onClick={() => setShowDuplicatesModal(false)} className="px-4 py-2 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700">Cancel</button>
-                  <button onClick={handleDeleteSelectedDuplicates} disabled={selectedDuplicateIds.size === 0 || cleaningDuplicates}
+                  <button onClick={handleDeleteSelectedDuplicates} disabled={selectedDuplicateIds.size === 0}
                     className="px-4 py-2 rounded-xl font-medium bg-destructive text-white shadow-md hover:bg-destructive/90 disabled:opacity-50 flex items-center gap-1.5">
-                    {cleaningDuplicates ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                    {cleaningDuplicates ? "Cleaning up…" : `Delete Selected (${selectedDuplicateIds.size})`}
+                    <Trash2 className="w-4 h-4" /> Delete Selected ({selectedDuplicateIds.size})
                   </button>
                 </div>
               </div>
