@@ -12,6 +12,7 @@ import {
   PRESET_TAGS, getAllTags, getCustomTags,
   saveCustomTag, deleteCustomTag,
   getPatientTags, savePatientTags,
+  getDeletedPatientKeys, patientKey,
 } from "@/lib/store";
 import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
 import {
@@ -1484,6 +1485,7 @@ export default function Home() {
         const cloudRecords = await pullFromCloud();
         const existing: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
         const existingKeys = new Set(existing.map((p: any) => naturalKey(p)));
+        const deletedKeys = getDeletedPatientKeys();
         const merged = [...existing];
         let idSeed = Date.now();
         let imported = 0;
@@ -1491,6 +1493,7 @@ export default function Home() {
           const key = naturalKey(rec as any);
           if (existingKeys.has(key)) continue;
           const local = fromCloud(rec);
+          if (deletedKeys.has(patientKey(local))) continue; // permanently deleted — never bring back
           local.id = idSeed++;
           merged.push(local);
           existingKeys.add(key);
@@ -2009,6 +2012,7 @@ export default function Home() {
       setCloudStatus("pulling"); setCloudMsg("Checking for updates from other devices…");
       const cloudRecords = await pullFromCloud();
       const existingKeys = new Set(deduped.map((p: any) => naturalKey(p)));
+      const deletedKeys = getDeletedPatientKeys();
       const merged = [...deduped];
       let idSeed = Date.now();
       let imported = 0;
@@ -2016,6 +2020,7 @@ export default function Home() {
         const key = naturalKey(rec as any);
         if (existingKeys.has(key)) continue; // already have it locally — never re-insert
         const local = fromCloud(rec);
+        if (deletedKeys.has(patientKey(local))) continue; // permanently deleted — never bring back
         local.id = idSeed++; // fresh, guaranteed-unique local id — never derived from mobile/patientNo
         merged.push(local);
         existingKeys.add(key);
