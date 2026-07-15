@@ -2,17 +2,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
-  getDailyStats, updatePatient, deletePatient, getAllDates,
+  getDailyStats, updatePatient, deletePatient, deletePatientsByIds, getAllDates,
   exportBackup, importBackup, addPatient, getMonthlyStats, findAdviceCode,
-  getDoctors, updateDoctorSplit,
-  type Patient, type DailyStats,
+  getDoctors, updateDoctorSplit, findDuplicatePatients,
+  type Patient, type DailyStats, type DuplicatePatientGroup,
 } from "@/lib/store";
 import {
   Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
   TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
   WalletCards, Loader2, MessageSquare, Search, ArrowRight, ShieldAlert, AlertTriangle, Paperclip,
-  Stethoscope, Percent,
+  Stethoscope, Percent, Copy,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -399,6 +399,10 @@ export default function DailyRegister() {
   const [d1PctInput, setD1PctInput] = useState(80);
   const [d2NameInput, setD2NameInput] = useState("");
   const [d2PctInput, setD2PctInput] = useState(20);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+  const [duplicateScope, setDuplicateScope] = useState<"day" | "all">("day");
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicatePatientGroup[]>([]);
+  const [selectedDuplicateIds, setSelectedDuplicateIds] = useState<Set<number>>(new Set());
   const [allDates, setAllDates] = useState<{ date: string; count: number; totalFees: number }[]>([]);
   const [printPatient, setPrintPatient] = useState<Patient | null>(null);
   const [cardPatient, setCardPatient] = useState<Patient | null>(null);
@@ -788,6 +792,39 @@ export default function DailyRegister() {
     refresh();
   };
 
+  const scanForDuplicates = (scope: "day" | "all") => {
+    const groups = findDuplicatePatients(scope === "day" ? selectedDate : undefined);
+    setDuplicateGroups(groups);
+    // Default suggestion: keep the oldest entry in each group, pre-select the rest for deletion.
+    const preselected = new Set<number>();
+    for (const g of groups) {
+      for (const p of g.patients.slice(1)) preselected.add(p.id);
+    }
+    setSelectedDuplicateIds(preselected);
+  };
+
+  const openDuplicatesModal = () => {
+    setDuplicateScope("day");
+    scanForDuplicates("day");
+    setShowDuplicatesModal(true);
+  };
+
+  const toggleDuplicateSelection = (id: number) => {
+    setSelectedDuplicateIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleDeleteSelectedDuplicates = () => {
+    if (selectedDuplicateIds.size === 0) return;
+    const removed = deletePatientsByIds(Array.from(selectedDuplicateIds));
+    toast({ title: "Duplicates removed", description: `${removed} duplicate entr${removed === 1 ? "y" : "ies"} deleted.` });
+    setShowDuplicatesModal(false);
+    refresh();
+  };
+
   const buildDailyReportMsg = () => {
     const generalCount = (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length;
     const ayurvedicCount = (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length;
@@ -929,6 +966,10 @@ Manglam Hospital, Morbi`;
               <button onClick={() => { setShowClearModal(true); setClearConfirmText(""); }}
                 className="px-3 py-2 rounded-xl font-semibold bg-red-600 text-white shadow-sm hover:bg-red-700 text-sm flex items-center gap-1.5">
                 <ShieldAlert className="w-4 h-4" /> Clear Data
+              </button>
+              <button onClick={openDuplicatesModal}
+                className="px-3 py-2 rounded-xl font-semibold bg-amber-500 text-white shadow-sm hover:bg-amber-600 text-sm flex items-center gap-1.5">
+                <Copy className="w-4 h-4" /> Find Duplicates
               </button>
             </div>
           </div>
@@ -1580,6 +1621,73 @@ Manglam Hospital, Morbi`;
               <button type="button" onClick={saveDoctorSplit} className="px-4 py-2 rounded-xl font-medium bg-primary text-white shadow-md hover:bg-primary/90">Save</button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Duplicate Patients Dialog ── */}
+      <Dialog open={showDuplicatesModal} onOpenChange={setShowDuplicatesModal}>
+        <DialogContent className="max-w-2xl bg-white rounded-2xl p-6 max-h-[85vh] flex flex-col">
+          <DialogHeader><DialogTitle className="font-display text-xl flex items-center gap-2"><Copy className="w-5 h-5 text-amber-500" /> Duplicate Patients</DialogTitle></DialogHeader>
+
+          <div className="flex items-center gap-2 mt-2 mb-3">
+            <button onClick={() => { setDuplicateScope("day"); scanForDuplicates("day"); }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${duplicateScope === "day" ? "bg-primary/10 text-primary" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              {format(new Date(selectedDate + "T00:00:00"), "dd MMM yyyy")} only
+            </button>
+            <button onClick={() => { setDuplicateScope("all"); scanForDuplicates("all"); }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${duplicateScope === "all" ? "bg-primary/10 text-primary" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              All dates
+            </button>
+          </div>
+
+          {duplicateGroups.length === 0 ? (
+            <div className="py-12 text-center text-slate-400">
+              <Copy className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p>No duplicate patients found {duplicateScope === "day" ? "for this date" : "in your records"}.</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-slate-500 mb-3">
+                Found <strong>{duplicateGroups.length}</strong> group(s) — matched by same date, mobile &amp; name.
+                The oldest entry in each group is pre-selected to <strong>keep</strong>; the rest are checked for deletion. Review and adjust before deleting.
+              </p>
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                {duplicateGroups.map(g => (
+                  <div key={g.key} className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-600 flex items-center justify-between">
+                      <span>{g.patients[0].name} · {g.patients[0].mobile} · {format(new Date(g.patients[0].visitDate + "T00:00:00"), "dd MMM yyyy")}</span>
+                      <span className="text-amber-700">{g.patients.length} entries</span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {g.patients.map((p, idx) => (
+                        <label key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50">
+                          <input type="checkbox" checked={selectedDuplicateIds.has(p.id)} onChange={() => toggleDuplicateSelection(p.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-destructive focus:ring-destructive/30" />
+                          <span className="flex-1">
+                            <span className="font-medium text-slate-800">{p.complaint || p.complaintCode || "-"}</span>
+                            <span className="text-slate-400"> · Fees ₹{p.fees || 0} · {p.registerType === "ayurvedic" ? "Ayurvedic" : "General"}</span>
+                          </span>
+                          {idx === 0 && !selectedDuplicateIds.has(p.id) && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">KEEP</span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-4">
+                <span className="text-sm text-slate-500">{selectedDuplicateIds.size} selected for deletion</span>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowDuplicatesModal(false)} className="px-4 py-2 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700">Cancel</button>
+                  <button onClick={handleDeleteSelectedDuplicates} disabled={selectedDuplicateIds.size === 0}
+                    className="px-4 py-2 rounded-xl font-medium bg-destructive text-white shadow-md hover:bg-destructive/90 disabled:opacity-50 flex items-center gap-1.5">
+                    <Trash2 className="w-4 h-4" /> Delete Selected ({selectedDuplicateIds.size})
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
