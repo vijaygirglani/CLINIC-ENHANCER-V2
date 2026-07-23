@@ -142,6 +142,7 @@ export interface ComplaintCode {
   code: string;
   complaint: string;
   treatment: string;
+  defaultFees?: number; // auto-fills the consultation fee in Patient Registration when this code is used
   medicines?: ComplaintCodeMedicine[];
   createdAt: string;
 }
@@ -798,7 +799,7 @@ export function importComplaintCodes(jsonStr: string): { success: boolean; messa
       const exists = existing.find((c) => c.code === item.code.toUpperCase());
       if (!exists) {
         counter++;
-        existing.push({ id: counter, code: item.code.toUpperCase(), complaint: item.complaint, treatment: item.treatment, createdAt: item.createdAt || new Date().toISOString() });
+        existing.push({ id: counter, code: item.code.toUpperCase(), complaint: item.complaint, treatment: item.treatment, defaultFees: typeof item.defaultFees === "number" ? item.defaultFees : undefined, createdAt: item.createdAt || new Date().toISOString() });
         added++;
       }
     }
