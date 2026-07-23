@@ -16,6 +16,7 @@ const codeSchema = z.object({
   code: z.string().min(1, "Required"),
   complaint: z.string().min(1, "Required"),
   treatment: z.string().min(1, "Required"),
+  defaultFees: z.coerce.number().min(0).optional(),
 });
 
 export default function ComplaintCodes() {
@@ -31,18 +32,18 @@ export default function ComplaintCodes() {
 
   const form = useForm({
     resolver: zodResolver(codeSchema),
-    defaultValues: { code: "", complaint: "", treatment: "" },
+    defaultValues: { code: "", complaint: "", treatment: "", defaultFees: undefined as number | undefined },
   });
 
   const handleOpenNew = () => {
     setEditingId(null);
-    form.reset({ code: "", complaint: "", treatment: "" });
+    form.reset({ code: "", complaint: "", treatment: "", defaultFees: undefined });
     setIsDialogOpen(true);
   };
 
   const handleOpenEdit = (item: ComplaintCode) => {
     setEditingId(item.id);
-    form.reset({ code: item.code, complaint: item.complaint, treatment: item.treatment });
+    form.reset({ code: item.code, complaint: item.complaint, treatment: item.treatment, defaultFees: item.defaultFees });
     setIsDialogOpen(true);
   };
 
@@ -66,13 +67,13 @@ export default function ComplaintCodes() {
   };
 
   const handleExportCodes = () => {
-    const exportData = codes.map(c => ({ Code: c.code, Complaint: c.complaint, Treatment: c.treatment }));
+    const exportData = codes.map(c => ({ Code: c.code, Complaint: c.complaint, Treatment: c.treatment, "Default Fees (₹)": c.defaultFees || "" }));
     exportToExcel(exportData, "Manglam_Complaint_Codes");
     toast({ title: "Exported", description: "Codes exported to Excel." });
   };
 
   const handleExportJSON = () => {
-    const json = JSON.stringify(codes.map(c => ({ code: c.code, complaint: c.complaint, treatment: c.treatment })), null, 2);
+    const json = JSON.stringify(codes.map(c => ({ code: c.code, complaint: c.complaint, treatment: c.treatment, defaultFees: c.defaultFees })), null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -153,6 +154,7 @@ export default function ComplaintCodes() {
                   <th className="px-6 py-4 font-semibold text-slate-500">Code</th>
                   <th className="px-6 py-4 font-semibold text-slate-500">Complaint</th>
                   <th className="px-6 py-4 font-semibold text-slate-500">Treatment Plan</th>
+                  <th className="px-6 py-4 font-semibold text-slate-500 text-right">Default Fees</th>
                   <th className="px-6 py-4 font-semibold text-slate-500 text-right">Actions</th>
                 </tr>
               </thead>
@@ -165,6 +167,7 @@ export default function ComplaintCodes() {
                       </td>
                       <td className="px-6 py-4 font-medium text-slate-800">{code.complaint}</td>
                       <td className="px-6 py-4 text-slate-600 max-w-md truncate">{code.treatment}</td>
+                      <td className="px-6 py-4 text-right text-slate-700 font-semibold">{code.defaultFees ? `₹${code.defaultFees}` : "-"}</td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => handleOpenEdit(code)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
@@ -175,7 +178,7 @@ export default function ComplaintCodes() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                       {codes.length === 0 ? "No complaint codes yet. Add your first one!" : "No matching codes found."}
                     </td>
                   </tr>
@@ -207,6 +210,11 @@ export default function ComplaintCodes() {
               <label className="text-xs font-semibold text-slate-500 mb-1 block">Standard Treatment</label>
               <textarea {...form.register("treatment")} rows={3} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none resize-none transition-all" placeholder="Prescription list..." />
               {form.formState.errors.treatment && <p className="text-destructive text-xs mt-1">{form.formState.errors.treatment.message}</p>}
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Default Fees (₹, optional)</label>
+              <input type="number" {...form.register("defaultFees")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all" placeholder="e.g. 200" />
+              <p className="text-[11px] text-slate-400 mt-1">Auto-fills the consultation fee in Patient Registration whenever this code is used. Leave blank to not auto-fill.</p>
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <button type="button" onClick={() => setIsDialogOpen(false)} className="px-5 py-2.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">Cancel</button>
