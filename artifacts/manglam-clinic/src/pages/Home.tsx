@@ -12,7 +12,6 @@ import {
   PRESET_TAGS, getAllTags, getCustomTags,
   saveCustomTag, deleteCustomTag,
   getPatientTags, savePatientTags,
-  getDeletedPatientKeys, patientKey,
 } from "@/lib/store";
 import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
 import {
@@ -21,7 +20,7 @@ import {
   Zap, Search, SlidersHorizontal, Sheet, Link, ClipboardPaste,
   Hourglass, CheckCircle2, WalletCards, MessageSquare, ChevronDown, Stethoscope,
   ShoppingBag, PackagePlus, Trash2, IndianRupee, Keyboard, Clock,
-  Cloud, CloudUpload, CloudDownload, Tag, Plus, Pencil, AlertTriangle,
+  Tag, Plus, Pencil, AlertTriangle,
 } from "lucide-react";
 
 // ── Pending Fees helpers ──────────────────────────────────────────────
@@ -87,10 +86,6 @@ function genSaleId() { return Date.now().toString(36) + Math.random().toString(3
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  pushToCloud, pullFromCloud, fromCloud, naturalKey,
-  getLastSync, setLastSync as setLastSyncStorage, getDeviceLabel,
-} from "@/lib/supabase-sync";
 
 // ── Undo Manager Hook ─────────────────────────────────────────────────────────
 function useUndoManager(toast: ReturnType<typeof useToast>["toast"], onAfterUndo?: () => void) {
@@ -1463,51 +1458,19 @@ export default function Home() {
   const [historyMobile, setHistoryMobile] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [keyFindings, setKeyFindings] = useState<string>("");
-  const [seenByJenit, setSeenByJenit] = useState(false);
+  const [seenByJenit, setSeenByJenitState] = useState(() => localStorage.getItem("cp_seen_by_jenit_default") === "1");
+  const setSeenByJenit = (value: boolean | ((v: boolean) => boolean)) => {
+    setSeenByJenitState(prev => {
+      const next = typeof value === "function" ? value(prev) : value;
+      localStorage.setItem("cp_seen_by_jenit_default", next ? "1" : "0");
+      return next;
+    });
+  };
   const [viewingAttachments, setViewingAttachments] = useState<{ files: string[]; patientName: string; date: string } | null>(null);
   const [lastSaved, setLastSaved] = useState<Patient | null>(null);
   const [showCard, setShowCard] = useState(false);
   const [patientTags, setPatientTags] = useState<PatientTag[]>([]);
   const [showClinicSettings, setShowClinicSettings] = useState(false);
-
-  // ── Cloud Sync state ──
-  const [showSyncModal, setShowSyncModal] = useState(false);
-  const [cloudSyncing, setCloudSyncing] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState<"idle"|"pushing"|"pulling"|"done"|"error">("idle");
-  const [cloudMsg, setCloudMsg] = useState("");
-  const [lastSyncTime, setLastSyncTime] = useState<string|null>(() => getLastSync());
-
-  // Silent best-effort pull on page load — so this device catches up with any other device's
-  // changes automatically, without needing the manual Sync button for routine use.
-  useEffect(() => {
-    (async () => {
-      try {
-        const cloudRecords = await pullFromCloud();
-        const existing: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
-        const existingKeys = new Set(existing.map((p: any) => naturalKey(p)));
-        const deletedKeys = getDeletedPatientKeys();
-        const merged = [...existing];
-        let idSeed = Date.now();
-        let imported = 0;
-        for (const rec of cloudRecords) {
-          const key = naturalKey(rec as any);
-          if (existingKeys.has(key)) continue;
-          const local = fromCloud(rec);
-          if (deletedKeys.has(patientKey(local))) continue; // permanently deleted — never bring back
-          local.id = idSeed++;
-          merged.push(local);
-          existingKeys.add(key);
-          imported++;
-        }
-        if (imported > 0) {
-          merged.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
-          localStorage.setItem(PATIENTS_STORE_KEY, JSON.stringify(merged));
-        }
-        setLastSyncStorage(); setLastSyncTime(getLastSync());
-      } catch { /* silent — manual Sync button still available if this fails */ }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [filterMode, setFilterMode] = useState<FilterMode>("history");
   const [filterQuery, setFilterQuery] = useState("");
@@ -1667,6 +1630,9 @@ export default function Home() {
       if (codeRecord) {
         form.setValue("complaint", codeRecord.complaint);
         form.setValue("treatment", codeRecord.treatment);
+        if (codeRecord.defaultFees && codeRecord.defaultFees > 0) {
+          form.setValue("fees", codeRecord.defaultFees);
+        }
       }
     }
   }, [complaintCodeValue, form, editingPatientId]);
@@ -1951,7 +1917,6 @@ export default function Home() {
       sjf[String(saved.id)] = true;
       localStorage.setItem("cp_seen_by_jenit", JSON.stringify(sjf));
     }
-    pushToCloud((() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })()).then(() => { setLastSyncStorage(); setLastSyncTime(getLastSync()); }).catch(() => {});
 
     // ── Push basic info to Google Sheet (Apps Script web app) ──
     // Silently updates/adds the patient row in Sheet1 (Name|Mobile|Age|Weight|Address).
@@ -1977,7 +1942,6 @@ export default function Home() {
     if (nameRef.current) nameRef.current.value = "";
     setAttachments([]);
     setKeyFindings("");
-    setSeenByJenit(false);
     setIvCode("");
     setIvTreatment("");
     setIvNotes("");
@@ -1988,54 +1952,6 @@ export default function Home() {
     setPaMatches([]);
     setShowPAPanel(false);
     setPatientTags([]);
-  };
-
-  // ── Cloud Sync handler — one tap: push local changes, then pull anything new, no duplicates ──
-  const handleSyncNow = async () => {
-    setCloudSyncing(true); setCloudStatus("pushing"); setCloudMsg("Uploading your changes…");
-    try {
-      // Step 1 — dedupe local records (by the same natural key used on the cloud) and push them up.
-      const allLocal: any[] = (() => { try { return JSON.parse(localStorage.getItem(PATIENTS_STORE_KEY) || "[]"); } catch { return []; } })();
-      const seenKeys = new Set<string>();
-      const deduped = allLocal.filter((p: any) => {
-        const key = naturalKey(p);
-        if (seenKeys.has(key)) return false;
-        seenKeys.add(key);
-        return true;
-      });
-      if (deduped.length < allLocal.length) {
-        localStorage.setItem(PATIENTS_STORE_KEY, JSON.stringify(deduped));
-      }
-      const { pushed } = await pushToCloud(deduped);
-
-      // Step 2 — pull everything from the cloud and merge in only what's genuinely new here.
-      setCloudStatus("pulling"); setCloudMsg("Checking for updates from other devices…");
-      const cloudRecords = await pullFromCloud();
-      const existingKeys = new Set(deduped.map((p: any) => naturalKey(p)));
-      const deletedKeys = getDeletedPatientKeys();
-      const merged = [...deduped];
-      let idSeed = Date.now();
-      let imported = 0;
-      for (const rec of cloudRecords) {
-        const key = naturalKey(rec as any);
-        if (existingKeys.has(key)) continue; // already have it locally — never re-insert
-        const local = fromCloud(rec);
-        if (deletedKeys.has(patientKey(local))) continue; // permanently deleted — never bring back
-        local.id = idSeed++; // fresh, guaranteed-unique local id — never derived from mobile/patientNo
-        merged.push(local);
-        existingKeys.add(key);
-        imported++;
-      }
-      merged.sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
-      localStorage.setItem(PATIENTS_STORE_KEY, JSON.stringify(merged));
-
-      setLastSyncStorage(); setLastSyncTime(getLastSync()); setCloudStatus("done");
-      setCloudMsg(`✅ Synced — ${pushed} uploaded, ${imported} new record(s) received.`);
-    } catch (e: any) {
-      setCloudStatus("error"); setCloudMsg(`❌ Sync failed: ${e.message}`);
-    } finally {
-      setCloudSyncing(false);
-    }
   };
 
   const onSubmit = (data: PatientFormValues) => savePatient(data, "general");
@@ -2245,53 +2161,6 @@ export default function Home() {
         </div>
       )}
 
-      <AnimatePresence>
-        {showSyncModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-            onClick={() => !cloudSyncing && setShowSyncModal(false)}>
-            <motion.div initial={{ scale: 0.9, opacity: 0, y: 16 }} animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 26 }}
-              onClick={e => e.stopPropagation()}
-              className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
-              <div style={{ background: "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)" }} className="px-6 py-5">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center"><Cloud className="w-6 h-6 text-white" /></div>
-                  <div><p className="text-white font-bold text-lg leading-tight">Cloud Sync</p><p className="text-blue-100 text-xs">PC ↔ Mobile — Always in sync</p></div>
-                  <button onClick={() => setShowSyncModal(false)} className="ml-auto p-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-colors"><X className="w-4 h-4" /></button>
-                </div>
-              </div>
-              <div className="px-6 py-5 space-y-4">
-                <div className="flex items-center justify-between bg-slate-50 rounded-2xl px-4 py-3">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">This device</span>
-                  <span className="text-sm font-bold text-slate-700">{getDeviceLabel() === "mobile" ? "📱 Mobile" : "💻 PC / Desktop"}</span>
-                </div>
-                {lastSyncTime && <p className="text-center text-xs text-slate-400">Last synced: <span className="font-semibold text-slate-600">{format(new Date(lastSyncTime), "dd MMM yyyy, hh:mm a")}</span></p>}
-                {cloudMsg && (
-                  <div className={`rounded-2xl px-4 py-3 text-sm font-medium text-center ${cloudStatus==="error"?"bg-red-50 text-red-600":cloudStatus==="done"?"bg-green-50 text-green-700":"bg-blue-50 text-blue-700"}`}>
-                    {cloudSyncing && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}{cloudMsg}
-                  </div>
-                )}
-                {cloudStatus === "idle" && (
-                  <div className="bg-blue-50 rounded-2xl px-4 py-3 border border-blue-100">
-                    <p className="text-xs text-blue-800">Tap Sync to upload anything new from this device and bring in anything new from your other device — automatically, no duplicates.</p>
-                  </div>
-                )}
-                <button onClick={handleSyncNow} disabled={cloudSyncing}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg shadow-blue-300/30 disabled:opacity-50">
-                  {cloudSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
-                  {cloudSyncing ? (cloudStatus === "pushing" ? "Uploading…" : "Checking for updates…") : "Sync Now"}
-                </button>
-                <button onClick={() => setShowSyncModal(false)} disabled={cloudSyncing}
-                  className="w-full py-3 rounded-2xl bg-slate-100 text-slate-600 font-semibold text-sm hover:bg-slate-200 transition-all disabled:opacity-50">
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* ── MAIN FORM ── */}
         <div className="lg:col-span-8 space-y-6">
@@ -2322,14 +2191,6 @@ export default function Home() {
                   title="Connect Google Sheet"
                   className="p-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-all">
                   <Sheet className="w-4 h-4" />
-                </button>
-                <button type="button"
-                  onClick={() => { setCloudStatus("idle"); setCloudMsg(""); setShowSyncModal(true); }}
-                  title="Cloud Sync — PC ↔ Mobile"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md shadow-blue-200 relative">
-                  <Cloud className="w-4 h-4" />
-                  <span className="hidden sm:inline">Cloud</span>
-                  {lastSyncTime && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-400 border border-white" title="Synced" />}
                 </button>
               </div>
             </div>
