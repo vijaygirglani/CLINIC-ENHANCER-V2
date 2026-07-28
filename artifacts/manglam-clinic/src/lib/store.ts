@@ -578,7 +578,7 @@ export function lookupByMobile(mobile: string): { latestInfo?: Patient; history:
   const q = (mobile || "").trim();
   if (q.length < 3) return { history: [] };
   const all = getPatients().filter((p) => (p.mobile || "").toLowerCase().includes(q.toLowerCase()));
-  const sorted = all.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  const sorted = all.sort((a, b) => (b.visitDate || "").localeCompare(a.visitDate || "") || (b.createdAt || "").localeCompare(a.createdAt || ""));
   return { latestInfo: sorted[0], history: sorted };
 }
 
@@ -586,7 +586,7 @@ export function lookupByName(name: string): { latestInfo?: Patient; history: Pat
   const q = (name || "").trim();
   if (q.length < 2) return { history: [] };
   const all = getPatients().filter((p) => (p.name || "").toLowerCase().includes(q.toLowerCase()));
-  const sorted = all.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  const sorted = all.sort((a, b) => (b.visitDate || "").localeCompare(a.visitDate || "") || (b.createdAt || "").localeCompare(a.createdAt || ""));
   return { latestInfo: sorted[0], history: sorted };
 }
 
@@ -629,7 +629,7 @@ export function searchPatientSuggestions(query: string): PatientSuggestion[] {
   }
   const suggestions: PatientSuggestion[] = [];
   for (const [mobile, visits] of byMobile) {
-    const sorted = visits.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    const sorted = visits.sort((a, b) => (b.visitDate || "").localeCompare(a.visitDate || "") || (b.createdAt || "").localeCompare(a.createdAt || ""));
     const latest = sorted[0];
     suggestions.push({
       name: latest.name, mobile, age: latest.age || 0,
@@ -638,7 +638,7 @@ export function searchPatientSuggestions(query: string): PatientSuggestion[] {
       lastVisit: latest.visitDate, recentVisits: sorted.slice(0, 3),
     });
   }
-  return suggestions.sort((a, b) => b.lastVisit.localeCompare(a.lastVisit)).slice(0, 8);
+  return suggestions.sort((a, b) => b.lastVisit.localeCompare(a.lastVisit)).slice(0, 20);
 }
 
 export interface FollowUpReminder {
@@ -1255,6 +1255,34 @@ export function getPurchaseSummaryByMonth(year: number, month: number): { totalP
   const totalPurchased = bills.reduce((s, b) => s + b.grandTotal, 0);
   const totalPending = bills.reduce((s, b) => s + (b.pendingAmount || 0), 0);
   return { totalPurchased, totalPaid: totalPurchased - totalPending, totalPending, billCount: bills.length };
+}
+
+// All-time purchase totals across every bill ever recorded.
+export function getTotalPurchaseSummary(): { totalPurchased: number; totalPaid: number; totalPending: number; billCount: number } {
+  const bills = getPurchaseBills();
+  const totalPurchased = bills.reduce((s, b) => s + b.grandTotal, 0);
+  const totalPending = bills.reduce((s, b) => s + (b.pendingAmount || 0), 0);
+  return { totalPurchased, totalPaid: totalPurchased - totalPending, totalPending, billCount: bills.length };
+}
+
+// Edits a purchase bill's details (pharmacy, bill no., date, amount, pending, notes).
+export function updatePurchaseBill(id: number, data: {
+  supplierName: string; billNo: string; billDate: string; grandTotal: number; pendingAmount: number; notes?: string;
+}): PurchaseBill | null {
+  const bills = getPurchaseBills();
+  const idx = bills.findIndex(b => b.id === id);
+  if (idx === -1) return null;
+  bills[idx] = {
+    ...bills[idx],
+    supplierName: data.supplierName,
+    billNo: data.billNo,
+    billDate: data.billDate,
+    grandTotal: data.grandTotal,
+    pendingAmount: Math.max(0, Math.min(data.pendingAmount, data.grandTotal)),
+    notes: data.notes,
+  };
+  savePurchaseBills(bills);
+  return bills[idx];
 }
 
 // Cash-basis: total actually PAID to pharmacies during a given calendar month, regardless of the bill's own month.
