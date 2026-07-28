@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
-  getMedicines, addMedicine, updateMedicine, deleteMedicine, getStockStatus, getStockAlertCounts, getStockValuation,
-  getPurchaseBills, addSimplePurchaseBill, deletePurchaseBill, getPharmacyPurchaseSummary, getPurchaseBillPaymentStatus,
-  markPurchaseBillPaid, getPurchaseSummaryByMonth,
+  getMedicines, addMedicine, updateMedicine, deleteMedicine,
+  getPurchaseBills, addSimplePurchaseBill, updatePurchaseBill, deletePurchaseBill, getPharmacyPurchaseSummary, getPurchaseBillPaymentStatus,
+  markPurchaseBillPaid, getTotalPurchaseSummary,
   getExpiryList, addMedicineBatch, deleteMedicineBatch,
   getPharmacies, addPharmacy, updatePharmacy, deletePharmacy, syncPharmaciesFromPurchases,
   importPharmaBillsCsv,
@@ -12,7 +12,7 @@ import {
 } from "@/lib/store";
 import {
   Package, Plus, Edit2, Trash2, IndianRupee, AlertTriangle, CalendarClock,
-  Building2, ShoppingCart, TrendingUp, Search, CheckCircle2, Upload, RefreshCw, Calendar,
+  Building2, ShoppingCart, Search, CheckCircle2, Upload, RefreshCw,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
@@ -22,14 +22,19 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 
 type Tab = "medicines" | "purchase" | "expiry" | "pharmacies";
-const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 const medicineSchema = z.object({
   name: z.string().min(1, "Required"),
-  packSize: z.coerce.number().min(1, "Must be at least 1"),
-  mrp: z.coerce.number().min(0, "Required"),
-  reorderLevel: z.coerce.number().min(0, "Required"),
-  currentStock: z.coerce.number().min(0, "Required"),
+  cost: z.coerce.number().min(0, "Required"),
+});
+
+const billSchema = z.object({
+  supplierName: z.string().min(1, "Required"),
+  billNo: z.string().optional(),
+  billDate: z.string().min(1, "Required"),
+  grandTotal: z.coerce.number().min(0.01, "Required"),
+  pendingAmount: z.coerce.number().min(0).optional(),
+  notes: z.string().optional(),
 });
 
 const pharmacySchema = z.object({
@@ -67,32 +72,29 @@ export default function Inventory() {
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
 
-  const stockValuation = getStockValuation();
-  const alertCounts = getStockAlertCounts();
   const expiringSoonCount = expiryList.filter(e => e.status === "expiring-soon" || e.status === "expired").length;
 
-  // ── Medicine dialog ──
+  // ── Medicine dialog — just name + purchasing cost ──
   const [medDialogOpen, setMedDialogOpen] = useState(false);
   const [editingMedId, setEditingMedId] = useState<number | null>(null);
   const medForm = useForm({
     resolver: zodResolver(medicineSchema),
-    defaultValues: { name: "", packSize: 10, mrp: 0, reorderLevel: 10, currentStock: 0 },
+    defaultValues: { name: "", cost: 0 },
   });
 
   const openNewMedicine = () => {
     setEditingMedId(null);
-    medForm.reset({ name: "", packSize: 10, mrp: 0, reorderLevel: 10, currentStock: 0 });
+    medForm.reset({ name: "", cost: 0 });
     setMedDialogOpen(true);
   };
   const openEditMedicine = (m: MedicineItem) => {
     setEditingMedId(m.id);
-    medForm.reset({ name: m.name, packSize: m.packSize, mrp: m.mrp, reorderLevel: m.reorderLevel, currentStock: m.currentStock });
+    medForm.reset({ name: m.name, cost: m.landingCost });
     setMedDialogOpen(true);
   };
   const onSubmitMedicine = (data: z.infer<typeof medicineSchema>) => {
-    const mrpPerTablet = data.packSize > 1 ? data.mrp / data.packSize : data.mrp;
     if (editingMedId) {
-      updateMedicine(editingMedId, { ...data, mrpPerTablet });
+      updateMedicine(editingMedId, { name: data.name, landingCost: data.cost, mrp: data.cost, mrpPerTablet: data.cost });
       toast({ title: "Updated", description: "Medicine updated." });
     } else {
       const existing = getMedicines().find(m => m.name.toLowerCase() === data.name.trim().toLowerCase());
@@ -100,7 +102,10 @@ export default function Inventory() {
         toast({ variant: "destructive", title: "Already exists", description: "A medicine with this name is already in the list." });
         return;
       }
-      addMedicine({ ...data, mrpPerTablet, landingCost: 0 });
+      addMedicine({
+        name: data.name, landingCost: data.cost, mrp: data.cost, mrpPerTablet: data.cost,
+        packSize: 1, reorderLevel: 0, currentStock: 0,
+      });
       toast({ title: "Added", description: "Medicine added to inventory." });
     }
     setMedDialogOpen(false);
@@ -190,6 +195,32 @@ export default function Inventory() {
     refresh();
   };
 
+  // ── Edit bill dialog ──
+  const [billDialogOpen, setBillDialogOpen] = useState(false);
+  const [editingBillId, setEditingBillId] = useState<number | null>(null);
+  const billForm = useForm({
+    resolver: zodResolver(billSchema),
+    defaultValues: { supplierName: "", billNo: "", billDate: "", grandTotal: 0, pendingAmount: 0, notes: "" },
+  });
+  const openEditBill = (b: PurchaseBill) => {
+    billForm.reset({
+      supplierName: b.supplierName, billNo: b.billNo || "", billDate: b.billDate,
+      grandTotal: b.grandTotal, pendingAmount: b.pendingAmount || 0, notes: b.notes || "",
+    });
+    setEditingBillId(b.id);
+    setBillDialogOpen(true);
+  };
+  const onSubmitBillEdit = (data: z.infer<typeof billSchema>) => {
+    if (editingBillId == null) return;
+    updatePurchaseBill(editingBillId, {
+      supplierName: data.supplierName, billNo: data.billNo || "", billDate: data.billDate,
+      grandTotal: data.grandTotal, pendingAmount: data.pendingAmount || 0, notes: data.notes || undefined,
+    });
+    toast({ title: "Bill updated" });
+    setBillDialogOpen(false);
+    refresh();
+  };
+
   const [pharmacyFilter, setPharmacyFilter] = useState("all");
   const [billSearch, setBillSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "partial" | "pending">("all");
@@ -204,10 +235,7 @@ export default function Inventory() {
     return true;
   });
 
-  // Monthly purchase summary
-  const [summaryMonth, setSummaryMonth] = useState(new Date().getMonth() + 1);
-  const [summaryYear, setSummaryYear] = useState(new Date().getFullYear());
-  const monthlyPurchaseSummary = getPurchaseSummaryByMonth(summaryYear, summaryMonth);
+  const totalPurchaseSummary = getTotalPurchaseSummary();
 
   // CSV import
   const csvImportRef = useRef<HTMLInputElement>(null);
@@ -272,9 +300,9 @@ export default function Inventory() {
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: "Stock Value (Cost)", value: formatCurrency(stockValuation.atCost), icon: IndianRupee, color: "bg-teal-100 text-teal-600" },
-            { label: "Potential Profit", value: formatCurrency(stockValuation.potentialProfit), icon: TrendingUp, color: "bg-emerald-100 text-emerald-600" },
-            { label: "Low / Out of Stock", value: alertCounts.low + alertCounts.out, icon: AlertTriangle, color: "bg-amber-100 text-amber-600" },
+            { label: "Total Medicines", value: medicines.length, icon: Package, color: "bg-teal-100 text-teal-600" },
+            { label: "Total Purchased", value: formatCurrency(totalPurchaseSummary.totalPurchased), icon: IndianRupee, color: "bg-slate-100 text-slate-600" },
+            { label: "Pending to Pay", value: formatCurrency(totalPurchaseSummary.totalPending), icon: AlertTriangle, color: "bg-amber-100 text-amber-600" },
             { label: "Expiring / Expired", value: expiringSoonCount, icon: CalendarClock, color: "bg-red-100 text-red-600" },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="medical-card p-4 flex items-center gap-3">
@@ -320,39 +348,24 @@ export default function Inventory() {
                 <thead className="bg-white border-b border-slate-200/60">
                   <tr>
                     <th className="px-4 py-3 font-semibold text-slate-500">Name</th>
-                    <th className="px-4 py-3 font-semibold text-slate-500 text-right">Stock (tab)</th>
-                    <th className="px-4 py-3 font-semibold text-slate-500 text-right">Pack size</th>
-                    <th className="px-4 py-3 font-semibold text-slate-500 text-right">Reorder at</th>
-                    <th className="px-4 py-3 font-semibold text-slate-500 text-right">MRP/tab</th>
-                    <th className="px-4 py-3 font-semibold text-slate-500">Status</th>
+                    <th className="px-4 py-3 font-semibold text-slate-500 text-right">Purchasing Cost</th>
                     <th className="px-4 py-3 font-semibold text-slate-500 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {medicines.length > 0 ? medicines.map(m => {
-                    const status = getStockStatus(m);
-                    return (
-                      <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-4 py-3 font-medium text-slate-800">{m.name}</td>
-                        <td className="px-4 py-3 text-right text-slate-700">{m.currentStock}</td>
-                        <td className="px-4 py-3 text-right text-slate-500">{m.packSize}</td>
-                        <td className="px-4 py-3 text-right text-slate-500">{m.reorderLevel}</td>
-                        <td className="px-4 py-3 text-right text-slate-700">₹{m.mrpPerTablet?.toFixed(2)}</td>
-                        <td className="px-4 py-3">
-                          {status === "out" && <span className="text-xs font-bold px-2 py-1 rounded-md bg-red-100 text-red-700">Out of stock</span>}
-                          {status === "low" && <span className="text-xs font-bold px-2 py-1 rounded-md bg-amber-100 text-amber-700">Low stock</span>}
-                          {status === "ok" && <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700">OK</span>}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => openEditMedicine(m)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDeleteMedicine(m.id)} className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }) : (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">No medicines yet. Add one, set its stock &amp; reorder level manually.</td></tr>
+                  {medicines.length > 0 ? medicines.map(m => (
+                    <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-800">{m.name}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(m.landingCost)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEditMedicine(m)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleDeleteMedicine(m.id)} className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={3} className="px-6 py-12 text-center text-slate-500">No medicines yet. Add a name and purchasing cost to get started.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -372,35 +385,22 @@ export default function Inventory() {
               </button>
             </div>
 
-            {/* Monthly purchase summary */}
+            {/* All-time purchase summary */}
             <div className="medical-card p-4">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Monthly purchase summary</p>
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-slate-400" />
-                  <select value={summaryMonth} onChange={e => setSummaryMonth(Number(e.target.value))}
-                    className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-medium bg-white">
-                    {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-                  </select>
-                  <select value={summaryYear} onChange={e => setSummaryYear(Number(e.target.value))}
-                    className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-medium bg-white">
-                    {[summaryYear - 1, summaryYear, summaryYear + 1].map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-              </div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Total purchase summary (all time)</p>
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 rounded-xl bg-slate-50">
                   <p className="text-[11px] font-semibold text-slate-500 uppercase">Total Purchased</p>
-                  <p className="text-lg font-display font-bold text-slate-900">{formatCurrency(monthlyPurchaseSummary.totalPurchased)}</p>
-                  <p className="text-[11px] text-slate-400">{monthlyPurchaseSummary.billCount} bill(s)</p>
+                  <p className="text-lg font-display font-bold text-slate-900">{formatCurrency(totalPurchaseSummary.totalPurchased)}</p>
+                  <p className="text-[11px] text-slate-400">{totalPurchaseSummary.billCount} bill(s)</p>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-50">
                   <p className="text-[11px] font-semibold text-emerald-700 uppercase">Paid</p>
-                  <p className="text-lg font-display font-bold text-emerald-800">{formatCurrency(monthlyPurchaseSummary.totalPaid)}</p>
+                  <p className="text-lg font-display font-bold text-emerald-800">{formatCurrency(totalPurchaseSummary.totalPaid)}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-amber-50">
                   <p className="text-[11px] font-semibold text-amber-700 uppercase">Pending</p>
-                  <p className="text-lg font-display font-bold text-amber-800">{formatCurrency(monthlyPurchaseSummary.totalPending)}</p>
+                  <p className="text-lg font-display font-bold text-amber-800">{formatCurrency(totalPurchaseSummary.totalPending)}</p>
                 </div>
               </div>
             </div>
@@ -536,6 +536,7 @@ export default function Inventory() {
                               {status !== "paid" && (
                                 <button onClick={() => handleMarkPaid(b.id)} title="Mark as paid" className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><CheckCircle2 className="w-4 h-4" /></button>
                               )}
+                              <button onClick={() => openEditBill(b)} title="Edit bill" className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
                               <button onClick={() => handleDeleteBill(b.id)} className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                             </div>
                           </td>
@@ -691,37 +692,65 @@ export default function Inventory() {
         )}
       </div>
 
+      {/* Edit Bill dialog */}
+      <Dialog open={billDialogOpen} onOpenChange={setBillDialogOpen}>
+        <DialogContent className="max-w-md bg-white rounded-2xl p-6">
+          <DialogHeader><DialogTitle className="font-display text-xl">Edit Purchase Bill</DialogTitle></DialogHeader>
+          <form onSubmit={billForm.handleSubmit(onSubmitBillEdit)} className="space-y-4 mt-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Pharmacy / Supplier</label>
+              <input {...billForm.register("supplierName")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+              {billForm.formState.errors.supplierName && <p className="text-destructive text-xs mt-1">{billForm.formState.errors.supplierName.message}</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Bill No.</label>
+                <input {...billForm.register("billNo")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Bill Date</label>
+                <input type="date" {...billForm.register("billDate")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                {billForm.formState.errors.billDate && <p className="text-destructive text-xs mt-1">{billForm.formState.errors.billDate.message}</p>}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Total amount (₹)</label>
+                <input type="number" {...billForm.register("grandTotal")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                {billForm.formState.errors.grandTotal && <p className="text-destructive text-xs mt-1">{billForm.formState.errors.grandTotal.message}</p>}
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Pending (₹)</label>
+                <input type="number" {...billForm.register("pendingAmount")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Notes (optional)</label>
+              <input {...billForm.register("notes")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <button type="button" onClick={() => setBillDialogOpen(false)} className="px-5 py-2.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">Cancel</button>
+              <button type="submit" className="px-5 py-2.5 rounded-xl font-medium bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all">Save</button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Medicine dialog */}
       <Dialog open={medDialogOpen} onOpenChange={setMedDialogOpen}>
         <DialogContent className="max-w-md bg-white rounded-2xl p-6">
           <DialogHeader><DialogTitle className="font-display text-xl">{editingMedId ? "Edit" : "New"} Medicine</DialogTitle></DialogHeader>
           <form onSubmit={medForm.handleSubmit(onSubmitMedicine)} className="space-y-4 mt-4">
             <div>
-              <label className="text-xs font-semibold text-slate-500 mb-1 block">Name</label>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Medicine name</label>
               <input {...medForm.register("name")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="e.g. Merci Tab" />
               {medForm.formState.errors.name && <p className="text-destructive text-xs mt-1">{medForm.formState.errors.name.message}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">Pack size (tab/pack)</label>
-                <input type="number" {...medForm.register("packSize")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">MRP per pack (₹)</label>
-                <input type="number" {...medForm.register("mrp")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-              </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Purchasing cost (₹)</label>
+              <input type="number" {...medForm.register("cost")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0" />
+              {medForm.formState.errors.cost && <p className="text-destructive text-xs mt-1">{medForm.formState.errors.cost.message}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">Reorder level (tablets)</label>
-                <input type="number" {...medForm.register("reorderLevel")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 mb-1 block">Current stock (tablets)</label>
-                <input type="number" {...medForm.register("currentStock")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
-              </div>
-            </div>
-            <p className="text-xs text-slate-400">Stock &amp; expiry are fully manual now — update "Current stock" here any time, and add batches on the Expiry Tracker tab.</p>
             <div className="flex justify-end gap-3 pt-4">
               <button type="button" onClick={() => setMedDialogOpen(false)} className="px-5 py-2.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">Cancel</button>
               <button type="submit" className="px-5 py-2.5 rounded-xl font-medium bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all">Save</button>
