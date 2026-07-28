@@ -1585,11 +1585,30 @@ export default function Home() {
   const feesValue = form.watch("fees");
 
   // ── IV Fluid → WhatsApp staff instruction ──
-  const STAFF_NUMBERS = [
+  const DEFAULT_STAFF = [
     { number: "9016504419", name: "Gautam" },
     { number: "9313448871", name: "Ravi" },
     { number: "8849269997", name: "Kunal" },
   ];
+  const [staffList, setStaffList] = useState<{ number: string; name: string }[]>(() => {
+    try {
+      const stored = localStorage.getItem("cp_iv_staff_list");
+      return stored ? JSON.parse(stored) : DEFAULT_STAFF;
+    } catch { return DEFAULT_STAFF; }
+  });
+  const saveStaffList = (list: { number: string; name: string }[]) => {
+    setStaffList(list);
+    localStorage.setItem("cp_iv_staff_list", JSON.stringify(list));
+  };
+  const [showStaffEditModal, setShowStaffEditModal] = useState(false);
+  const [staffEditRows, setStaffEditRows] = useState<{ number: string; name: string }[]>([]);
+  const openStaffEditModal = () => { setStaffEditRows(staffList.map(s => ({ ...s }))); setShowStaffEditModal(true); };
+  const saveStaffEdits = () => {
+    const cleaned = staffEditRows.filter(s => s.name.trim() && s.number.trim());
+    saveStaffList(cleaned);
+    setShowStaffEditModal(false);
+  };
+
   const [ivCode, setIvCode] = useState("");
   const [ivTreatment, setIvTreatment] = useState("");
   const [ivNotes, setIvNotes] = useState("");
@@ -2160,6 +2179,54 @@ export default function Home() {
           </button>
         </div>
       )}
+
+      <AnimatePresence>
+        {showStaffEditModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={() => setShowStaffEditModal(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0, y: 16 }} animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+              <div style={{ background: "linear-gradient(135deg, #25D366, #128C7E)" }} className="px-6 py-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center"><MessageSquare className="w-6 h-6 text-white" /></div>
+                  <div><p className="text-white font-bold text-lg leading-tight">Staff WhatsApp Numbers</p><p className="text-emerald-100 text-xs">Edit names & numbers for IV instructions</p></div>
+                  <button onClick={() => setShowStaffEditModal(false)} className="ml-auto p-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-colors"><X className="w-4 h-4" /></button>
+                </div>
+              </div>
+              <div className="px-6 py-5 space-y-3 max-h-[60vh] overflow-y-auto">
+                {staffEditRows.map((row, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input value={row.name} onChange={e => setStaffEditRows(rows => rows.map((r, i) => i === idx ? { ...r, name: e.target.value } : r))}
+                      placeholder="Name" className="flex-1 px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 outline-none text-sm" />
+                    <input value={row.number} onChange={e => setStaffEditRows(rows => rows.map((r, i) => i === idx ? { ...r, number: e.target.value.replace(/\D/g, "") } : r))}
+                      placeholder="10-digit mobile" maxLength={10} className="w-36 px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 outline-none text-sm" />
+                    <button type="button" onClick={() => setStaffEditRows(rows => rows.filter((_, i) => i !== idx))}
+                      className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setStaffEditRows(rows => [...rows, { name: "", number: "" }])}
+                  className="w-full py-2.5 rounded-xl border border-dashed border-slate-300 text-slate-500 hover:border-emerald-400 hover:text-emerald-600 transition-all text-sm font-semibold flex items-center justify-center gap-1.5">
+                  <Plus className="w-4 h-4" /> Add staff member
+                </button>
+              </div>
+              <div className="px-6 pb-6 flex gap-3">
+                <button type="button" onClick={() => setShowStaffEditModal(false)}
+                  className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-600 font-semibold text-sm hover:bg-slate-200 transition-all">
+                  Cancel
+                </button>
+                <button type="button" onClick={saveStaffEdits}
+                  className="flex-1 py-3 rounded-2xl text-white font-bold text-sm shadow-lg transition-all hover:opacity-90"
+                  style={{ background: "linear-gradient(135deg, #25D366, #128C7E)" }}>
+                  Save
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* ── MAIN FORM ── */}
@@ -2848,7 +2915,7 @@ export default function Home() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mr-1">Send to:</span>
                   {/* Individual send buttons */}
-                  {STAFF_NUMBERS.map(staff => (
+                  {staffList.map(staff => (
                     <button
                       key={staff.number}
                       type="button"
@@ -2864,24 +2931,31 @@ export default function Home() {
                     </button>
                   ))}
 
-                  {/* Send to Both (Ravi + Gautam) */}
-                  <button
-                    type="button"
-                    disabled={!ivMessage.trim()}
-                    onClick={() => {
-                      const ravi   = STAFF_NUMBERS.find(s => s.name === "Ravi")!;
-                      const gautam = STAFF_NUMBERS.find(s => s.name === "Gautam")!;
-                      window.open(`https://wa.me/91${ravi.number}?text=${encodeURIComponent(ivMessage.trim())}`, "_blank");
-                      setTimeout(() => {
-                        window.open(`https://wa.me/91${gautam.number}?text=${encodeURIComponent(ivMessage.trim())}`, "_blank");
-                      }, 600);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white shadow-lg transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{ background: "linear-gradient(135deg, #25D366, #128C7E)" }}
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    Ravi + Gautam
-                    <span className="text-[10px] text-green-200 font-semibold bg-green-900/30 px-1.5 py-0.5 rounded-md">Both</span>
+                  {/* Send to everyone in the list, one WhatsApp tab per person */}
+                  {staffList.length > 1 && (
+                    <button
+                      type="button"
+                      disabled={!ivMessage.trim()}
+                      onClick={() => {
+                        staffList.forEach((staff, i) => {
+                          setTimeout(() => {
+                            window.open(`https://wa.me/91${staff.number}?text=${encodeURIComponent(ivMessage.trim())}`, "_blank");
+                          }, i * 600);
+                        });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white shadow-lg transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ background: "linear-gradient(135deg, #25D366, #128C7E)" }}
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      Send to All
+                      <span className="text-[10px] text-green-200 font-semibold bg-green-900/30 px-1.5 py-0.5 rounded-md">{staffList.length}</span>
+                    </button>
+                  )}
+
+                  <button type="button" onClick={openStaffEditModal}
+                    title="Edit staff names & numbers"
+                    className="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-emerald-600 hover:border-emerald-300 transition-all ml-auto">
+                    <Pencil className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
