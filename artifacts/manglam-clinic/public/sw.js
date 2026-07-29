@@ -1,4 +1,5 @@
-const CACHE_NAME = "manglam-clinic-v1";
+// Bump this on every meaningful change so the activate handler purges old caches cleanly.
+const CACHE_NAME = "manglam-clinic-v2";
 const ASSETS_TO_CACHE = ["/", "/index.html"];
 
 self.addEventListener("install", (event) => {
@@ -19,6 +20,10 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Network-first: always try to fetch the latest version first. Only fall back to the
+// cached copy if the network request fails (e.g. genuinely offline). This is the opposite
+// of the old cache-first behavior, which served a stale version even when a fresh one was
+// one request away — and explains why a plain refresh never picked up updates.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
@@ -26,17 +31,14 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const networkFetch = fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || networkFetch;
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
