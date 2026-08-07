@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Layout } from "@/components/Layout";
 import {
-  addPatient, updatePatient, lookupByMobile, lookupByName, findComplaintCode, findAdviceCode,
+  addPatient, updatePatient, deletePatient, lookupByMobile, lookupByName, findComplaintCode, findAdviceCode,
   getNextPatientNo, getNextCaseNo, lookupByComplaint, lookupByAddress,
   searchPatientSuggestions,
   type Patient, type PatientSuggestion,
@@ -68,7 +68,9 @@ function saveClinicSettings(s: ClinicSettings) {
 
 // ── Loose Medicine Sale helpers ───────────────────────────────────────────────
 const LOOSE_SALE_KEY = "manglam_loose_sales";
-interface LooseSaleEntry { id: string; product: string; amount: number; date: string; time: string; }
+// patientId links the sale to the register row it created, so deleting the sale
+// can remove that row too and collections never drift.
+interface LooseSaleEntry { id: string; product: string; amount: number; date: string; time: string; patientId?: number; }
 function getLooseSales(date: string): LooseSaleEntry[] {
   try { return (JSON.parse(localStorage.getItem(LOOSE_SALE_KEY) || "[]") as LooseSaleEntry[]).filter(e => e.date === date); }
   catch { return []; }
@@ -1515,14 +1517,14 @@ export default function Home() {
       time: format(new Date(), "hh:mm a"),
     };
     pushUndo(`Undo loose sale: ${product} ₹${amount}`);
-    addLooseSale(entry);
-    refreshLooseSales();
 
     // ── Auto-save as a patient record in Daily Register ──
     // Uses a fixed mobile "0000000000" as the loose-sale patient identifier.
     // Each sale is saved as a separate visit so history is preserved per item.
+    // This row IS the collection entry — the Daily Register counts it once from
+    // stats.totalFees and must never add the loose-panel amount on top of it.
     const loosePatientMobile = "0000000000";
-    addPatient({
+    const savedRow = addPatient({
       name: `Loose Med: ${product}`,
       mobile: loosePatientMobile,
       patientNo: 0,
@@ -1539,6 +1541,9 @@ export default function Home() {
       visitDate: today,
     });
 
+    addLooseSale({ ...entry, patientId: savedRow?.id });
+    refreshLooseSales();
+
     setLooseProduct("");
     setLooseAmount("");
   };
@@ -1547,6 +1552,11 @@ export default function Home() {
     const entry = looseSales.find(e => e.id === id);
     pushUndo(`Undo delete loose sale: ${entry?.product ?? "item"}`);
     removeLooseSale(id);
+    // Also remove the register row this sale created, otherwise its amount
+    // stays in the day's collection forever.
+    if (entry?.patientId != null) {
+      try { deletePatient(entry.patientId); } catch { /* row already gone */ }
+    }
     refreshLooseSales();
   };
 
