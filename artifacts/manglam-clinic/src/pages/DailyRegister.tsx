@@ -17,10 +17,70 @@ import {
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
 const LOOSE_SALE_KEY = "manglam_loose_sales";
-interface LooseSaleEntry { id: string; product: string; amount: number; date: string; time: string; }
+const LOOSE_PATIENT_MOBILE = "0000000000";
+const LOOSE_NAME_PREFIX = "Loose Med: ";
+interface LooseSaleEntry { id: string; product: string; amount: number; date: string; time: string; patientId?: number; }
 function getLooseSalesForDate(date: string): LooseSaleEntry[] {
   try { return (JSON.parse(localStorage.getItem(LOOSE_SALE_KEY) || "[]") as LooseSaleEntry[]).filter(e => e.date === date); }
   catch { return []; }
+}
+
+// A loose sale is written to TWO places: the loose-sales key above, AND a
+// patient row in the register (so it shows in the day's list). That patient
+// row is already inside stats.totalFees — so adding looseDayTotal on top of
+// totalFees counted the same rupee twice. The helpers below reconcile the two
+// sides so each sale is counted exactly once.
+function isLooseRow(p: Patient): boolean {
+  return p.mobile === LOOSE_PATIENT_MOBILE || (p.name || "").startsWith(LOOSE_NAME_PREFIX);
+}
+function looseProductOf(p: Patient): string {
+  return (p.name || "").replace(LOOSE_NAME_PREFIX, "").trim();
+}
+
+interface LooseReconciliation {
+  saleTotal: number;        // total of loose-panel entries for the day
+  matchedTotal: number;     // portion already present as register rows
+  unregisteredTotal: number;// loose sales with NO register row (older entries)
+  orphanRows: Patient[];    // register rows with no backing loose-sale entry
+  orphanTotal: number;
+}
+interface LooseAuditRow {
+  date: string;
+  saleCount: number;
+  saleTotal: number;
+  registerTotal: number;   // fees of loose rows sitting in the register
+  oldCollection: number;   // what the buggy build showed
+  newCollection: number;   // what the fixed build shows
+  orphanIds: number[];     // loose rows with no backing loose-sale entry
+  orphanTotal: number;
+}
+
+function reconcileLoose(sales: LooseSaleEntry[], patients: Patient[]): LooseReconciliation {
+  const rows = (patients || []).filter(isLooseRow);
+  const used = new Array(rows.length).fill(false);
+  let unregisteredTotal = 0;
+  let matchedTotal = 0;
+
+  for (const s of sales) {
+    // 1) exact match on the linked patient id (written by newer versions)
+    let idx = rows.findIndex((r, i) => !used[i] && s.patientId != null && r.id === s.patientId);
+    // 2) fall back to product name + amount
+    if (idx === -1) idx = rows.findIndex((r, i) => !used[i] && (r.fees || 0) === s.amount && looseProductOf(r) === (s.product || "").trim());
+    // 3) last resort: amount only, within loose rows
+    if (idx === -1) idx = rows.findIndex((r, i) => !used[i] && (r.fees || 0) === s.amount);
+
+    if (idx === -1) unregisteredTotal += s.amount;
+    else { used[idx] = true; matchedTotal += s.amount; }
+  }
+
+  const orphanRows = rows.filter((_, i) => !used[i]);
+  return {
+    saleTotal: sales.reduce((s, e) => s + e.amount, 0),
+    matchedTotal,
+    unregisteredTotal,
+    orphanRows,
+    orphanTotal: orphanRows.reduce((s, p) => s + (p.fees || 0), 0),
+  };
 }
 // ── Follow-up reminder helpers ────────────────────────────────────────────────
 
@@ -403,6 +463,9 @@ export default function DailyRegister() {
   const [duplicateScope, setDuplicateScope] = useState<"day" | "all">("day");
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicatePatientGroup[]>([]);
   const [selectedDuplicateIds, setSelectedDuplicateIds] = useState<Set<number>>(new Set());
+  const [showLooseAuditModal, setShowLooseAuditModal] = useState(false);
+  const [looseAuditRows, setLooseAuditRows] = useState<LooseAuditRow[]>([]);
+  const [selectedOrphanIds, setSelectedOrphanIds] = useState<Set<number>>(new Set());
   const [allDates, setAllDates] = useState<{ date: string; count: number; totalFees: number }[]>([]);
   const [printPatient, setPrintPatient] = useState<Patient | null>(null);
   const [cardPatient, setCardPatient] = useState<Patient | null>(null);
@@ -569,6 +632,13 @@ export default function DailyRegister() {
   // Loose sales for selected date
   const [looseSalesForDay, setLooseSalesForDay] = useState<LooseSaleEntry[]>(() => getLooseSalesForDate(format(new Date(), "yyyy-MM-dd")));
   const looseDayTotal = looseSalesForDay.reduce((s, e) => s + e.amount, 0);
+
+  // ── Single source of truth for the day's collection ──
+  // stats.totalFees ALREADY contains every loose sale that was auto-saved as a
+  // register row. Only loose sales without a register row get added on top
+  // (that covers entries made before auto-save existed).
+  const looseRecon = reconcileLoose(looseSalesForDay, stats?.patients || []);
+  const collectionTotal = (stats?.totalFees || 0) + looseRecon.unregisteredTotal;
 
   const refresh = useCallback(() => {
     setStats(getDailyStats(selectedDate));
@@ -803,6 +873,53 @@ export default function DailyRegister() {
     setSelectedDuplicateIds(preselected);
   };
 
+  // ── Loose-sale audit across ALL past dates ──
+  // Recomputes every day's collection with the corrected formula and reports
+  // how much each day was previously inflated by the double-count.
+  const runLooseAudit = () => {
+    const rows: LooseAuditRow[] = [];
+    for (const { date } of getAllDates()) {
+      const sales = getLooseSalesForDate(date);
+      const dayStats = getDailyStats(date);
+      const patients = dayStats?.patients || [];
+      if (sales.length === 0 && !patients.some(isLooseRow)) continue;
+
+      const rec = reconcileLoose(sales, patients);
+      const base = dayStats?.totalFees || 0;
+      rows.push({
+        date,
+        saleCount: sales.length,
+        saleTotal: rec.saleTotal,
+        registerTotal: rec.matchedTotal + rec.orphanTotal,
+        oldCollection: base + rec.saleTotal,          // buggy formula
+        newCollection: base + rec.unregisteredTotal,  // corrected formula
+        orphanIds: rec.orphanRows.map(p => p.id),
+        orphanTotal: rec.orphanTotal,
+      });
+    }
+    rows.sort((a, b) => b.date.localeCompare(a.date));
+    setLooseAuditRows(rows);
+    setSelectedOrphanIds(new Set());
+    setShowLooseAuditModal(true);
+  };
+
+  const toggleOrphanSelection = (id: number) => {
+    setSelectedOrphanIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleDeleteSelectedOrphans = () => {
+    if (selectedOrphanIds.size === 0) return;
+    pushUndo(`Undo removal of ${selectedOrphanIds.size} orphan loose row(s)`);
+    const removed = deletePatientsByIds(Array.from(selectedOrphanIds));
+    toast({ title: "Orphan loose rows removed", description: `${removed} register row(s) deleted. Collection totals recalculated.` });
+    refresh();
+    runLooseAudit();
+  };
+
   const openDuplicatesModal = () => {
     setDuplicateScope("day");
     scanForDuplicates("day");
@@ -833,9 +950,9 @@ export default function DailyRegister() {
     const cashFees = (stats?.patients || []).filter(p => p.paymentMode !== "online").reduce((s, p) => s + (p.fees || 0), 0);
     const onlineFees = (stats?.patients || []).filter(p => p.paymentMode === "online").reduce((s, p) => s + (p.fees || 0), 0);
     const dateStr = format(new Date(selectedDate + "T00:00:00"), "dd/MM/yyyy");
-    const grandTotal = (stats?.totalFees || 0) + looseDayTotal;
+    const grandTotal = collectionTotal;
     const looseLine = looseDayTotal > 0
-      ? `\n🛒 *Loose Medicine Sales:* ₹${looseDayTotal.toLocaleString("en-IN")} (${looseSalesForDay.length} items)`
+      ? `\n🛒 *Loose Medicine Sales:* ₹${looseDayTotal.toLocaleString("en-IN")} (${looseSalesForDay.length} items, included above)`
       : "";
     const paymentLine = (cashFees > 0 || onlineFees > 0)
       ? `\n\n💵 *Cash:* ₹${cashFees.toLocaleString("en-IN")}   📱 *Online:* ₹${onlineFees.toLocaleString("en-IN")}`
@@ -971,6 +1088,10 @@ Manglam Hospital, Morbi`;
                 className="px-3 py-2 rounded-xl font-semibold bg-amber-500 text-white shadow-sm hover:bg-amber-600 text-sm flex items-center gap-1.5">
                 <Copy className="w-4 h-4" /> Find Duplicates
               </button>
+              <button onClick={runLooseAudit}
+                className="px-3 py-2 rounded-xl font-semibold bg-violet-600 text-white shadow-sm hover:bg-violet-700 text-sm flex items-center gap-1.5">
+                <ShoppingBag className="w-4 h-4" /> Loose Sale Audit
+              </button>
             </div>
           </div>
         </div>
@@ -988,7 +1109,7 @@ Manglam Hospital, Morbi`;
                   { label: "Total", value: stats?.totalPatients || 0, icon: Users, color: "bg-blue-100 text-primary" },
                   { label: "General", value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, icon: FileText, color: "bg-slate-100 text-slate-600" },
                   { label: "Ayurvedic", value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, icon: Leaf, color: "bg-emerald-100 text-emerald-600" },
-                  { label: "Collection", value: formatCurrency((stats?.totalFees || 0) + looseDayTotal), icon: IndianRupee, color: "bg-emerald-100 text-emerald-600", sub: looseDayTotal > 0 ? `+₹${looseDayTotal} loose` : undefined },
+                  { label: "Collection", value: formatCurrency(collectionTotal), icon: IndianRupee, color: "bg-emerald-100 text-emerald-600", sub: looseDayTotal > 0 ? `incl. ₹${looseDayTotal.toLocaleString("en-IN")} loose` : undefined },
                 ].map(({ label, value, icon: Icon, color, sub }: any) => (
                   <div key={label} className="medical-card p-4 flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
@@ -1621,6 +1742,117 @@ Manglam Hospital, Morbi`;
               <button type="button" onClick={saveDoctorSplit} className="px-4 py-2 rounded-xl font-medium bg-primary text-white shadow-md hover:bg-primary/90">Save</button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Loose Sale Audit Dialog ── */}
+      <Dialog open={showLooseAuditModal} onOpenChange={setShowLooseAuditModal}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="font-display text-xl flex items-center gap-2"><ShoppingBag className="w-5 h-5 text-violet-500" /> Loose Sale Audit</DialogTitle></DialogHeader>
+
+          {(() => {
+            const inflated = looseAuditRows.filter(r => r.oldCollection !== r.newCollection);
+            const totalInflation = inflated.reduce((s, r) => s + (r.oldCollection - r.newCollection), 0);
+            const allOrphans = looseAuditRows.flatMap(r => r.orphanIds);
+            return (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-violet-50 border border-violet-200 space-y-1.5">
+                  <p className="text-sm text-violet-900">
+                    Scanned <strong>{looseAuditRows.length}</strong> day(s) with loose medicine activity.
+                  </p>
+                  <p className="text-sm text-violet-900">
+                    <strong>{inflated.length}</strong> day(s) were previously over-reported by a combined{" "}
+                    <strong>{formatCurrency(totalInflation)}</strong>.
+                  </p>
+                  <p className="text-xs text-violet-700">
+                    Collections are recalculated at display time, so every date below already shows the corrected figure.
+                    No stored record was altered by this scan.
+                  </p>
+                </div>
+
+                {looseAuditRows.length === 0 ? (
+                  <div className="text-center py-10 text-slate-500">
+                    <ShoppingBag className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">No loose medicine sales found in any date.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50">
+                        <tr className="text-left text-xs uppercase tracking-wider text-slate-500">
+                          <th className="px-4 py-2.5">Date</th>
+                          <th className="px-4 py-2.5 text-right">Loose sales</th>
+                          <th className="px-4 py-2.5 text-right">Was showing</th>
+                          <th className="px-4 py-2.5 text-right">Correct</th>
+                          <th className="px-4 py-2.5 text-right">Difference</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {looseAuditRows.map(r => {
+                          const diff = r.oldCollection - r.newCollection;
+                          return (
+                            <tr key={r.date} className={diff !== 0 ? "bg-amber-50/50" : ""}>
+                              <td className="px-4 py-2.5 font-medium text-slate-800">
+                                {format(new Date(r.date + "T00:00:00"), "dd/MM/yyyy")}
+                              </td>
+                              <td className="px-4 py-2.5 text-right text-slate-600">
+                                {formatCurrency(r.saleTotal)} <span className="text-xs text-slate-400">({r.saleCount})</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-right text-red-600 line-through">{formatCurrency(r.oldCollection)}</td>
+                              <td className="px-4 py-2.5 text-right font-bold text-emerald-700">{formatCurrency(r.newCollection)}</td>
+                              <td className="px-4 py-2.5 text-right font-semibold text-amber-700">
+                                {diff === 0 ? "—" : `−${formatCurrency(diff)}`}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {allOrphans.length > 0 && (
+                  <div className="p-4 rounded-xl bg-red-50 border border-red-200 space-y-3">
+                    <p className="text-sm text-red-900 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>
+                        Found <strong>{allOrphans.length}</strong> loose-medicine register row(s) with no matching entry in the
+                        loose sales panel — usually left behind when a sale was deleted from the panel only. These still
+                        add {formatCurrency(looseAuditRows.reduce((s, r) => s + r.orphanTotal, 0))} to collections.
+                      </span>
+                    </p>
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                      {looseAuditRows.filter(r => r.orphanIds.length > 0).map(r => (
+                        <div key={r.date} className="text-xs">
+                          <p className="font-semibold text-red-800 mb-1">{format(new Date(r.date + "T00:00:00"), "dd/MM/yyyy")}</p>
+                          {r.orphanIds.map(id => (
+                            <label key={id} className="flex items-center gap-2 pl-3 py-1 cursor-pointer text-slate-700">
+                              <input type="checkbox" checked={selectedOrphanIds.has(id)} onChange={() => toggleOrphanSelection(id)}
+                                className="w-4 h-4 rounded border-slate-300" />
+                              Register row #{id}
+                            </label>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <button onClick={() => setSelectedOrphanIds(new Set(allOrphans))}
+                        className="text-xs font-semibold text-red-700 underline">Select all</button>
+                      <button onClick={handleDeleteSelectedOrphans} disabled={selectedOrphanIds.size === 0}
+                        className="px-4 py-2 rounded-xl font-semibold bg-red-600 text-white text-sm disabled:opacity-40 flex items-center gap-1.5">
+                        <Trash2 className="w-4 h-4" /> Delete Selected ({selectedOrphanIds.size})
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button onClick={() => setShowLooseAuditModal(false)}
+                    className="px-4 py-2 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700">Close</button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
