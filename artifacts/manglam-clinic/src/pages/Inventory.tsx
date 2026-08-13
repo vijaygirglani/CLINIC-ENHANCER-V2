@@ -6,6 +6,8 @@ import {
   getPurchaseBills, addSimplePurchaseBill, updatePurchaseBill, deletePurchaseBill, getPharmacyPurchaseSummary, getPurchaseBillPaymentStatus,
   markPurchaseBillPaid, getTotalPurchaseSummary,
   getExpiryList, addMedicineBatch, deleteMedicineBatch,
+  getStockAudits, buildStockAuditDraft, saveStockAudit, applyStockAudit, deleteStockAudit, getStockAuditTrend,
+  type StockAudit, type StockAuditLine,
   getPharmacies, addPharmacy, updatePharmacy, deletePharmacy, syncPharmaciesFromPurchases,
   importPharmaBillsCsv,
   type MedicineItem, type PurchaseBill, type Pharmacy, type ExpiryItem,
@@ -13,6 +15,7 @@ import {
 import {
   Package, Plus, Edit2, Trash2, IndianRupee, AlertTriangle, CalendarClock,
   Building2, ShoppingCart, Search, CheckCircle2, Upload, RefreshCw,
+  Boxes, ClipboardCheck, TrendingUp, TrendingDown, Save, X,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
@@ -21,12 +24,13 @@ import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 
-type Tab = "medicines" | "purchase" | "expiry" | "pharmacies";
+type Tab = "medicines" | "purchase" | "expiry" | "pharmacies" | "audit";
 
 const medicineSchema = z.object({
   name: z.string().min(1, "Required"),
   supplierName: z.string().optional(),
   cost: z.coerce.number().min(0, "Required"),
+  qty: z.coerce.number().min(0, "Required"),
 });
 
 const billSchema = z.object({
@@ -75,28 +79,40 @@ export default function Inventory() {
 
   const expiringSoonCount = expiryList.filter(e => e.status === "expiring-soon" || e.status === "expired").length;
 
-  // ── Medicine dialog — name + pharmacy purchased from + purchasing cost ──
+  // ── Live stock valuation (qty × purchasing cost) ──
+  const totalStockQty = medicines.reduce((s, m) => s + (m.currentStock || 0), 0);
+  const totalStockValue = medicines.reduce((s, m) => s + (m.currentStock || 0) * m.landingCost, 0);
+
+  // ── Medicine dialog — name + pharmacy + purchasing cost + quantity ──
   const [medDialogOpen, setMedDialogOpen] = useState(false);
   const [editingMedId, setEditingMedId] = useState<number | null>(null);
   const medForm = useForm({
     resolver: zodResolver(medicineSchema),
-    defaultValues: { name: "", supplierName: "", cost: 0 },
+    defaultValues: { name: "", supplierName: "", cost: 0, qty: 0 },
   });
+
+  // Live stock-value preview inside the dialog
+  const watchedCost = medForm.watch("cost");
+  const watchedQty = medForm.watch("qty");
+  const previewValue = (Number(watchedCost) || 0) * (Number(watchedQty) || 0);
 
   const openNewMedicine = () => {
     setEditingMedId(null);
-    medForm.reset({ name: "", supplierName: "", cost: 0 });
+    medForm.reset({ name: "", supplierName: "", cost: 0, qty: 0 });
     setMedDialogOpen(true);
   };
   const openEditMedicine = (m: MedicineItem) => {
     setEditingMedId(m.id);
-    medForm.reset({ name: m.name, supplierName: m.supplierName || "", cost: m.landingCost });
+    medForm.reset({ name: m.name, supplierName: m.supplierName || "", cost: m.landingCost, qty: m.currentStock || 0 });
     setMedDialogOpen(true);
   };
   const onSubmitMedicine = (data: z.infer<typeof medicineSchema>) => {
     const supplierName = (data.supplierName || "").trim();
     if (editingMedId) {
-      updateMedicine(editingMedId, { name: data.name, supplierName, landingCost: data.cost, mrp: data.cost, mrpPerTablet: data.cost });
+      updateMedicine(editingMedId, {
+        name: data.name, supplierName, landingCost: data.cost,
+        mrp: data.cost, mrpPerTablet: data.cost, currentStock: data.qty,
+      });
       toast({ title: "Updated", description: "Medicine updated." });
     } else {
       // Same medicine bought from two different pharmacies is a legitimate
@@ -117,7 +133,7 @@ export default function Inventory() {
       }
       addMedicine({
         name: data.name, supplierName, landingCost: data.cost, mrp: data.cost, mrpPerTablet: data.cost,
-        packSize: 1, reorderLevel: 0, currentStock: 0,
+        packSize: 1, reorderLevel: 0, currentStock: data.qty,
       });
       toast({ title: "Added", description: "Medicine added to inventory." });
     }
@@ -129,6 +145,77 @@ export default function Inventory() {
     deleteMedicine(id);
     toast({ title: "Deleted", description: "Medicine removed." });
     refresh();
+  };
+
+  // ── Stock Audit ──
+  // A "draft" is an in-progress physical count. Nothing is stored until saved,
+  // and live stock is only touched when the user explicitly applies an audit.
+  const [audits, setAudits] = useState<{ audit: StockAudit; changeSinceLast: number | null }[]>([]);
+  const [auditDraft, setAuditDraft] = useState<StockAuditLine[] | null>(null);
+  const [auditDate, setAuditDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [auditNotes, setAuditNotes] = useState("");
+  const [auditSearch, setAuditSearch] = useState("");
+  const [viewingAudit, setViewingAudit] = useState<StockAudit | null>(null);
+
+  const refreshAudits = useCallback(() => setAudits(getStockAuditTrend()), []);
+  useEffect(() => { refreshAudits(); }, [refreshAudits]);
+
+  const startAudit = () => {
+    const draft = buildStockAuditDraft();
+    if (draft.length === 0) {
+      toast({ variant: "destructive", title: "No medicines", description: "Add medicines before running a stock audit." });
+      return;
+    }
+    setAuditDraft(draft);
+    setAuditDate(format(new Date(), "yyyy-MM-dd"));
+    setAuditNotes("");
+    setAuditSearch("");
+  };
+
+  const setCountedQty = (medicineId: number, value: string) => {
+    setAuditDraft(prev => prev && prev.map(l =>
+      l.medicineId === medicineId ? { ...l, countedQty: value === "" ? 0 : Number(value) } : l
+    ));
+  };
+
+  const draftTotals = (() => {
+    if (!auditDraft) return { systemValue: 0, countedValue: 0, diffValue: 0, changedLines: 0 };
+    let systemValue = 0, countedValue = 0, changedLines = 0;
+    for (const l of auditDraft) {
+      systemValue += l.systemQty * l.unitCost;
+      countedValue += l.countedQty * l.unitCost;
+      if (l.countedQty !== l.systemQty) changedLines++;
+    }
+    return { systemValue, countedValue, diffValue: countedValue - systemValue, changedLines };
+  })();
+
+  const handleSaveAudit = (applyNow: boolean) => {
+    if (!auditDraft) return;
+    const saved = saveStockAudit({ auditDate, notes: auditNotes.trim() || undefined, lines: auditDraft });
+    if (applyNow) {
+      const res = applyStockAudit(saved.id);
+      toast({ title: "Audit saved & applied", description: res.message });
+    } else {
+      toast({ title: "Audit saved", description: "Recorded without changing live stock." });
+    }
+    setAuditDraft(null);
+    refresh();
+    refreshAudits();
+  };
+
+  const handleApplyExisting = (a: StockAudit) => {
+    if (!confirm(`Apply the counted quantities from ${format(new Date(a.auditDate + "T00:00:00"), "dd/MM/yyyy")} to live stock? This overwrites current quantities.`)) return;
+    const res = applyStockAudit(a.id);
+    toast({ variant: res.success ? undefined : "destructive", title: res.success ? "Stock updated" : "Not applied", description: res.message });
+    refresh();
+    refreshAudits();
+  };
+
+  const handleDeleteAudit = (id: number) => {
+    if (!confirm("Delete this audit record? Stock quantities will not change.")) return;
+    deleteStockAudit(id);
+    toast({ title: "Deleted", description: "Audit record removed." });
+    refreshAudits();
   };
 
   // ── Pharmacy dialog ──
@@ -311,9 +398,10 @@ export default function Inventory() {
         </div>
 
         {/* Stat cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           {[
             { label: "Total Medicines", value: medicines.length, icon: Package, color: "bg-teal-100 text-teal-600" },
+            { label: "Stock Value", value: formatCurrency(totalStockValue), icon: Boxes, color: "bg-emerald-100 text-emerald-600" },
             { label: "Total Purchased", value: formatCurrency(totalPurchaseSummary.totalPurchased), icon: IndianRupee, color: "bg-slate-100 text-slate-600" },
             { label: "Pending to Pay", value: formatCurrency(totalPurchaseSummary.totalPending), icon: AlertTriangle, color: "bg-amber-100 text-amber-600" },
             { label: "Expiring / Expired", value: expiringSoonCount, icon: CalendarClock, color: "bg-red-100 text-red-600" },
@@ -337,6 +425,7 @@ export default function Inventory() {
             { key: "purchase", label: "Purchase Entry", icon: ShoppingCart },
             { key: "expiry", label: "Expiry Tracker", icon: CalendarClock },
             { key: "pharmacies", label: "Pharmacies", icon: Building2 },
+            { key: "audit", label: "Stock Audit", icon: ClipboardCheck },
           ] as { key: Tab; label: string; icon: typeof Package }[]).map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setTab(key)}
               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 ${
@@ -363,6 +452,8 @@ export default function Inventory() {
                     <th className="px-4 py-3 font-semibold text-slate-500">Name</th>
                     <th className="px-4 py-3 font-semibold text-slate-500">Pharmacy</th>
                     <th className="px-4 py-3 font-semibold text-slate-500 text-right">Purchasing Cost</th>
+                    <th className="px-4 py-3 font-semibold text-slate-500 text-right">Qty</th>
+                    <th className="px-4 py-3 font-semibold text-slate-500 text-right">Stock Value</th>
                     <th className="px-4 py-3 font-semibold text-slate-500 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -376,6 +467,12 @@ export default function Inventory() {
                           : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(m.landingCost)}</td>
+                      <td className={`px-4 py-3 text-right font-medium ${(m.currentStock || 0) <= 0 ? "text-red-500" : "text-slate-700"}`}>
+                        {m.currentStock || 0}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-emerald-700">
+                        {formatCurrency((m.currentStock || 0) * m.landingCost)}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button onClick={() => openEditMedicine(m)} className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
@@ -384,9 +481,19 @@ export default function Inventory() {
                       </td>
                     </tr>
                   )) : (
-                    <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-500">No medicines yet. Add a name, pharmacy and purchasing cost to get started.</td></tr>
+                    <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">No medicines yet. Add a name, pharmacy, cost and quantity to get started.</td></tr>
                   )}
                 </tbody>
+                {medicines.length > 0 && (
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 font-bold text-slate-700">Total stock value</td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-700">{totalStockQty}</td>
+                      <td className="px-4 py-3 text-right font-bold text-emerald-700 text-base">{formatCurrency(totalStockValue)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
             <p className="text-xs text-slate-400 px-4 py-3 border-t border-slate-100">Stock here is managed manually — it's no longer linked to Purchase Entry. Use "Expiry Tracker" to log batch/expiry info for a medicine.</p>
@@ -709,7 +816,265 @@ export default function Inventory() {
             </div>
           </div>
         )}
+
+        {/* ── STOCK AUDIT TAB ── */}
+        {tab === "audit" && (
+          <div className="space-y-6">
+            {auditDraft === null ? (
+              <>
+                {/* Current valuation + start button */}
+                <div className="medical-card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Stock value right now</p>
+                    <p className="text-3xl font-display font-bold text-emerald-700">{formatCurrency(totalStockValue)}</p>
+                    <p className="text-sm text-slate-500 mt-1">{totalStockQty} units across {medicines.length} medicines</p>
+                  </div>
+                  <button onClick={startAudit} className="px-5 py-3 rounded-xl font-semibold bg-primary text-white shadow-lg shadow-primary/25 hover:shadow-xl transition-all flex items-center gap-2">
+                    <ClipboardCheck className="w-4 h-4" /> Start New Count
+                  </button>
+                </div>
+
+                {/* Audit history */}
+                <div className="medical-card overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                    <span className="text-sm font-semibold text-slate-700">Audit history</span>
+                    <span className="text-sm text-slate-400 ml-2">{audits.length} record(s)</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-white border-b border-slate-200/60">
+                        <tr>
+                          <th className="px-4 py-3 font-semibold text-slate-500">Date</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">Expected</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">Counted</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">Variance</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">vs Last Count</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500">Status</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {audits.length > 0 ? audits.map(({ audit: a, changeSinceLast }) => (
+                          <tr key={a.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="px-4 py-3 font-medium text-slate-800">
+                              {format(new Date(a.auditDate + "T00:00:00"), "dd/MM/yyyy")}
+                              {a.notes && <p className="text-xs text-slate-400 font-normal mt-0.5">{a.notes}</p>}
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(a.systemValue)}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(a.countedValue)}</td>
+                            <td className={`px-4 py-3 text-right font-semibold ${a.diffValue < 0 ? "text-red-600" : a.diffValue > 0 ? "text-emerald-700" : "text-slate-400"}`}>
+                              {a.diffValue === 0 ? "—" : `${a.diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(a.diffValue))}`}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {changeSinceLast === null ? <span className="text-slate-300">—</span> : (
+                                <span className={`inline-flex items-center gap-1 font-medium ${changeSinceLast < 0 ? "text-red-600" : changeSinceLast > 0 ? "text-emerald-700" : "text-slate-400"}`}>
+                                  {changeSinceLast !== 0 && (changeSinceLast > 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />)}
+                                  {changeSinceLast === 0 ? "No change" : formatCurrency(Math.abs(changeSinceLast))}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {a.applied
+                                ? <span className="px-2 py-1 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Applied</span>
+                                : <span className="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">Recorded only</span>}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button onClick={() => setViewingAudit(a)} title="View details" className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"><Search className="w-4 h-4" /></button>
+                                {!a.applied && (
+                                  <button onClick={() => handleApplyExisting(a)} title="Apply to live stock" className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><CheckCircle2 className="w-4 h-4" /></button>
+                                )}
+                                <button onClick={() => handleDeleteAudit(a.id)} title="Delete record" className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        )) : (
+                          <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">No stock counts yet. Start one to record today's physical stock.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-slate-400 px-4 py-3 border-t border-slate-100">
+                    "Expected" is what the app believed was on hand. "Counted" is what you physically found. A negative variance means stock is missing.
+                  </p>
+                </div>
+              </>
+            ) : (
+              /* ── Counting sheet ── */
+              <div className="space-y-4">
+                <div className="medical-card p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-display text-lg text-slate-900">New stock count</h3>
+                    <button onClick={() => setAuditDraft(null)} className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><X className="w-4 h-4" /></button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Count date</label>
+                      <input type="date" value={auditDate} onChange={e => setAuditDate(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Notes (optional)</label>
+                      <input value={auditNotes} onChange={e => setAuditNotes(e.target.value)} placeholder="e.g. Monthly count, done with staff"
+                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                    </div>
+                  </div>
+
+                  {/* Running totals */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                      <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Expected</p>
+                      <p className="text-lg font-bold text-slate-700">{formatCurrency(draftTotals.systemValue)}</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                      <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Counted</p>
+                      <p className="text-lg font-bold text-emerald-800">{formatCurrency(draftTotals.countedValue)}</p>
+                    </div>
+                    <div className={`p-3 rounded-xl border ${draftTotals.diffValue < 0 ? "bg-red-50 border-red-200" : draftTotals.diffValue > 0 ? "bg-blue-50 border-blue-200" : "bg-slate-50 border-slate-200"}`}>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Variance</p>
+                      <p className={`text-lg font-bold ${draftTotals.diffValue < 0 ? "text-red-700" : draftTotals.diffValue > 0 ? "text-blue-700" : "text-slate-500"}`}>
+                        {draftTotals.diffValue === 0 ? "—" : `${draftTotals.diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(draftTotals.diffValue))}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="Filter medicines…"
+                      className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none text-sm" />
+                  </div>
+                </div>
+
+                <div className="medical-card overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-white border-b border-slate-200/60">
+                        <tr>
+                          <th className="px-4 py-3 font-semibold text-slate-500">Medicine</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">Cost</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">Expected Qty</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">Counted Qty</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">Diff</th>
+                          <th className="px-4 py-3 font-semibold text-slate-500 text-right">Value Diff</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {auditDraft
+                          .filter(l => !auditSearch.trim() || l.medicineName.toLowerCase().includes(auditSearch.toLowerCase()))
+                          .map(l => {
+                            const diffQty = l.countedQty - l.systemQty;
+                            const diffValue = diffQty * l.unitCost;
+                            return (
+                              <tr key={l.medicineId} className={diffQty !== 0 ? "bg-amber-50/40" : "hover:bg-slate-50/80"}>
+                                <td className="px-4 py-2.5 font-medium text-slate-800">
+                                  {l.medicineName}
+                                  {l.supplierName && <p className="text-xs text-slate-400 font-normal">{l.supplierName}</p>}
+                                </td>
+                                <td className="px-4 py-2.5 text-right text-slate-600">{formatCurrency(l.unitCost)}</td>
+                                <td className="px-4 py-2.5 text-right text-slate-600">{l.systemQty}</td>
+                                <td className="px-4 py-2.5 text-right">
+                                  <input type="number" value={l.countedQty}
+                                    onChange={e => setCountedQty(l.medicineId, e.target.value)}
+                                    onFocus={e => e.target.select()}
+                                    className="w-24 px-3 py-1.5 rounded-lg border border-slate-200 text-right focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                                </td>
+                                <td className={`px-4 py-2.5 text-right font-semibold ${diffQty < 0 ? "text-red-600" : diffQty > 0 ? "text-blue-600" : "text-slate-300"}`}>
+                                  {diffQty === 0 ? "—" : (diffQty > 0 ? `+${diffQty}` : diffQty)}
+                                </td>
+                                <td className={`px-4 py-2.5 text-right font-semibold ${diffValue < 0 ? "text-red-600" : diffValue > 0 ? "text-blue-600" : "text-slate-300"}`}>
+                                  {diffValue === 0 ? "—" : `${diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(diffValue))}`}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="medical-card p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <p className="text-sm text-slate-500">
+                    {draftTotals.changedLines === 0
+                      ? "No differences found — everything matches."
+                      : `${draftTotals.changedLines} medicine(s) differ from expected stock.`}
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setAuditDraft(null)} className="px-4 py-2.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">Cancel</button>
+                    <button onClick={() => handleSaveAudit(false)} className="px-4 py-2.5 rounded-xl font-medium bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 transition-colors flex items-center gap-1.5">
+                      <Save className="w-4 h-4" /> Save only
+                    </button>
+                    <button onClick={() => handleSaveAudit(true)} className="px-4 py-2.5 rounded-xl font-semibold bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4" /> Save &amp; update stock
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Audit detail dialog */}
+      <Dialog open={!!viewingAudit} onOpenChange={open => !open && setViewingAudit(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto bg-white rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5 text-primary" />
+              Stock count — {viewingAudit && format(new Date(viewingAudit.auditDate + "T00:00:00"), "dd/MM/yyyy")}
+            </DialogTitle>
+          </DialogHeader>
+          {viewingAudit && (
+            <div className="space-y-4 mt-4">
+              {viewingAudit.notes && <p className="text-sm text-slate-600 italic">{viewingAudit.notes}</p>}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Expected</p>
+                  <p className="text-lg font-bold text-slate-700">{formatCurrency(viewingAudit.systemValue)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                  <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Counted</p>
+                  <p className="text-lg font-bold text-emerald-800">{formatCurrency(viewingAudit.countedValue)}</p>
+                </div>
+                <div className={`p-3 rounded-xl border ${viewingAudit.diffValue < 0 ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-200"}`}>
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Variance</p>
+                  <p className={`text-lg font-bold ${viewingAudit.diffValue < 0 ? "text-red-700" : viewingAudit.diffValue > 0 ? "text-blue-700" : "text-slate-500"}`}>
+                    {viewingAudit.diffValue === 0 ? "—" : `${viewingAudit.diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(viewingAudit.diffValue))}`}
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-2.5 font-semibold text-slate-500">Medicine</th>
+                      <th className="px-4 py-2.5 font-semibold text-slate-500 text-right">Cost</th>
+                      <th className="px-4 py-2.5 font-semibold text-slate-500 text-right">Expected</th>
+                      <th className="px-4 py-2.5 font-semibold text-slate-500 text-right">Counted</th>
+                      <th className="px-4 py-2.5 font-semibold text-slate-500 text-right">Value Diff</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {viewingAudit.lines.filter(l => l.diffQty !== 0).length === 0 ? (
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Everything matched on this count.</td></tr>
+                    ) : viewingAudit.lines.filter(l => l.diffQty !== 0).map(l => (
+                      <tr key={l.medicineId}>
+                        <td className="px-4 py-2.5 font-medium text-slate-800">{l.medicineName}</td>
+                        <td className="px-4 py-2.5 text-right text-slate-600">{formatCurrency(l.unitCost)}</td>
+                        <td className="px-4 py-2.5 text-right text-slate-600">{l.systemQty}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{l.countedQty}</td>
+                        <td className={`px-4 py-2.5 text-right font-semibold ${l.diffValue < 0 ? "text-red-600" : "text-blue-600"}`}>
+                          {`${l.diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(l.diffValue))}`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-slate-400">Only medicines with a difference are listed. This count {viewingAudit.applied ? "has been applied to live stock." : "has not been applied — live stock is unchanged."}</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Bill dialog */}
       <Dialog open={billDialogOpen} onOpenChange={setBillDialogOpen}>
@@ -778,10 +1143,21 @@ export default function Inventory() {
               </datalist>
               <p className="text-[11px] text-slate-400 mt-1">Optional. Names here match the Pharmacies tab.</p>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-500 mb-1 block">Purchasing cost (₹)</label>
-              <input type="number" {...medForm.register("cost")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0" />
-              {medForm.formState.errors.cost && <p className="text-destructive text-xs mt-1">{medForm.formState.errors.cost.message}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Purchasing cost (₹)</label>
+                <input type="number" step="0.01" {...medForm.register("cost")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0" />
+                {medForm.formState.errors.cost && <p className="text-destructive text-xs mt-1">{medForm.formState.errors.cost.message}</p>}
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Quantity in stock</label>
+                <input type="number" {...medForm.register("qty")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="0" />
+                {medForm.formState.errors.qty && <p className="text-destructive text-xs mt-1">{medForm.formState.errors.qty.message}</p>}
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
+              <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Stock value</span>
+              <span className="text-lg font-bold text-emerald-800">{formatCurrency(previewValue)}</span>
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <button type="button" onClick={() => setMedDialogOpen(false)} className="px-5 py-2.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">Cancel</button>
