@@ -168,6 +168,7 @@ export interface MedicineBatch {
 export interface MedicineItem {
   id: number;
   name: string;           // "Merci Tab"
+  supplierName?: string;  // pharmacy this medicine is purchased from — matches Pharmacy.name
   mrp: number;            // MRP per pack (e.g. ₹79 for 10 tabs)
   mrpPerTablet: number;   // MRP per tablet (e.g. ₹7.90)
   packSize: number;       // tablets per pack (e.g. 10)
