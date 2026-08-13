@@ -25,6 +25,7 @@ type Tab = "medicines" | "purchase" | "expiry" | "pharmacies";
 
 const medicineSchema = z.object({
   name: z.string().min(1, "Required"),
+  supplierName: z.string().optional(),
   cost: z.coerce.number().min(0, "Required"),
 });
 
@@ -74,36 +75,48 @@ export default function Inventory() {
 
   const expiringSoonCount = expiryList.filter(e => e.status === "expiring-soon" || e.status === "expired").length;
 
-  // ── Medicine dialog — just name + purchasing cost ──
+  // ── Medicine dialog — name + pharmacy purchased from + purchasing cost ──
   const [medDialogOpen, setMedDialogOpen] = useState(false);
   const [editingMedId, setEditingMedId] = useState<number | null>(null);
   const medForm = useForm({
     resolver: zodResolver(medicineSchema),
-    defaultValues: { name: "", cost: 0 },
+    defaultValues: { name: "", supplierName: "", cost: 0 },
   });
 
   const openNewMedicine = () => {
     setEditingMedId(null);
-    medForm.reset({ name: "", cost: 0 });
+    medForm.reset({ name: "", supplierName: "", cost: 0 });
     setMedDialogOpen(true);
   };
   const openEditMedicine = (m: MedicineItem) => {
     setEditingMedId(m.id);
-    medForm.reset({ name: m.name, cost: m.landingCost });
+    medForm.reset({ name: m.name, supplierName: m.supplierName || "", cost: m.landingCost });
     setMedDialogOpen(true);
   };
   const onSubmitMedicine = (data: z.infer<typeof medicineSchema>) => {
+    const supplierName = (data.supplierName || "").trim();
     if (editingMedId) {
-      updateMedicine(editingMedId, { name: data.name, landingCost: data.cost, mrp: data.cost, mrpPerTablet: data.cost });
+      updateMedicine(editingMedId, { name: data.name, supplierName, landingCost: data.cost, mrp: data.cost, mrpPerTablet: data.cost });
       toast({ title: "Updated", description: "Medicine updated." });
     } else {
-      const existing = getMedicines().find(m => m.name.toLowerCase() === data.name.trim().toLowerCase());
+      // Same medicine bought from two different pharmacies is a legitimate
+      // separate row, so the duplicate check now considers the supplier too.
+      const existing = getMedicines().find(m =>
+        m.name.toLowerCase() === data.name.trim().toLowerCase() &&
+        (m.supplierName || "").trim().toLowerCase() === supplierName.toLowerCase()
+      );
       if (existing) {
-        toast({ variant: "destructive", title: "Already exists", description: "A medicine with this name is already in the list." });
+        toast({
+          variant: "destructive",
+          title: "Already exists",
+          description: supplierName
+            ? `${data.name} from ${supplierName} is already in the list.`
+            : "A medicine with this name is already in the list.",
+        });
         return;
       }
       addMedicine({
-        name: data.name, landingCost: data.cost, mrp: data.cost, mrpPerTablet: data.cost,
+        name: data.name, supplierName, landingCost: data.cost, mrp: data.cost, mrpPerTablet: data.cost,
         packSize: 1, reorderLevel: 0, currentStock: 0,
       });
       toast({ title: "Added", description: "Medicine added to inventory." });
@@ -348,6 +361,7 @@ export default function Inventory() {
                 <thead className="bg-white border-b border-slate-200/60">
                   <tr>
                     <th className="px-4 py-3 font-semibold text-slate-500">Name</th>
+                    <th className="px-4 py-3 font-semibold text-slate-500">Pharmacy</th>
                     <th className="px-4 py-3 font-semibold text-slate-500 text-right">Purchasing Cost</th>
                     <th className="px-4 py-3 font-semibold text-slate-500 text-right">Actions</th>
                   </tr>
@@ -356,6 +370,11 @@ export default function Inventory() {
                   {medicines.length > 0 ? medicines.map(m => (
                     <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-4 py-3 font-medium text-slate-800">{m.name}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {m.supplierName
+                          ? <span className="inline-flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5 text-slate-400" />{m.supplierName}</span>
+                          : <span className="text-slate-300">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(m.landingCost)}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -365,7 +384,7 @@ export default function Inventory() {
                       </td>
                     </tr>
                   )) : (
-                    <tr><td colSpan={3} className="px-6 py-12 text-center text-slate-500">No medicines yet. Add a name and purchasing cost to get started.</td></tr>
+                    <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-500">No medicines yet. Add a name, pharmacy and purchasing cost to get started.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -745,6 +764,19 @@ export default function Inventory() {
               <label className="text-xs font-semibold text-slate-500 mb-1 block">Medicine name</label>
               <input {...medForm.register("name")} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" placeholder="e.g. Merci Tab" />
               {medForm.formState.errors.name && <p className="text-destructive text-xs mt-1">{medForm.formState.errors.name.message}</p>}
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Pharmacy purchased from</label>
+              <input
+                {...medForm.register("supplierName")}
+                list="med-pharmacy-list"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+                placeholder="Pick from list or type a new name"
+              />
+              <datalist id="med-pharmacy-list">
+                {pharmacies.map(p => <option key={p.id} value={p.name} />)}
+              </datalist>
+              <p className="text-[11px] text-slate-400 mt-1">Optional. Names here match the Pharmacies tab.</p>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 mb-1 block">Purchasing cost (₹)</label>
