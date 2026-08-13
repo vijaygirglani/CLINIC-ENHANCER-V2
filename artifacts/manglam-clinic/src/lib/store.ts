@@ -283,6 +283,7 @@ const PURCHASE_BILLS_KEY  = "cp_purchase_bills";
 const MEDICINE_BILLS_KEY  = "cp_medicine_bills";
 const DOCTORS_KEY         = "cp_doctors";
 const STOCK_LEDGER_KEY    = "cp_stock_ledger";
+const STOCK_AUDITS_KEY    = "cp_stock_audits";
 
 // ═══════════════════════════════════════════════════════════════
 // ID COUNTER (shared across all entities)
@@ -949,6 +950,7 @@ export function exportBackup(): string {
     doctors: getDoctors(),
     pharmacies: getPharmacies(),
     expenses: getExpenses(),
+    stockAudits: getStockAudits(),
     idCounter: parseInt(localStorage.getItem(COUNTER_KEY) || "0"),
   };
   return JSON.stringify(data, null, 2);
@@ -967,6 +969,7 @@ export function importBackup(jsonStr: string): { success: boolean; message: stri
     if (data.doctors && Array.isArray(data.doctors)) localStorage.setItem(DOCTORS_KEY, JSON.stringify(data.doctors));
     if (data.pharmacies && Array.isArray(data.pharmacies)) localStorage.setItem(PHARMACIES_KEY, JSON.stringify(data.pharmacies));
     if (data.expenses && Array.isArray(data.expenses)) localStorage.setItem(EXPENSES_KEY, JSON.stringify(data.expenses));
+    if (data.stockAudits && Array.isArray(data.stockAudits)) localStorage.setItem(STOCK_AUDITS_KEY, JSON.stringify(data.stockAudits));
     if (data.idCounter) localStorage.setItem(COUNTER_KEY, String(data.idCounter));
     return { success: true, message: `Restored ${data.patients.length} patients, ${data.medicines?.length || 0} medicines, ${data.expenses?.length || 0} expenses.` };
   } catch { return { success: false, message: "Failed to parse backup file." }; }
@@ -1468,6 +1471,156 @@ export function getStockValuation(): { atCost: number; atMrp: number; potentialP
   const atCost = medicines.reduce((s, m) => s + m.currentStock * getLandingCostPerTablet(m), 0);
   const atMrp = medicines.reduce((s, m) => s + m.currentStock * getMrpPerTablet(m), 0);
   return { atCost: Math.round(atCost), atMrp: Math.round(atMrp), potentialProfit: Math.round(atMrp - atCost) };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STOCK AUDIT (periodic physical count & valuation)
+// ═══════════════════════════════════════════════════════════════
+
+export interface StockAuditLine {
+  medicineId: number;
+  medicineName: string;
+  supplierName?: string;
+  unitCost: number;      // purchasing cost per unit at the time of the audit
+  systemQty: number;     // what the app believed was on hand
+  countedQty: number;    // what was physically counted
+  diffQty: number;       // counted − system
+  systemValue: number;
+  countedValue: number;
+  diffValue: number;
+}
+
+export interface StockAudit {
+  id: number;
+  auditDate: string;     // "yyyy-MM-dd"
+  notes?: string;
+  lines: StockAuditLine[];
+  systemValue: number;   // total value the app expected
+  countedValue: number;  // total value actually counted
+  diffValue: number;     // countedValue − systemValue (negative = shortage)
+  applied: boolean;      // counted quantities written back into currentStock
+  appliedAt?: string;
+  createdAt: string;
+}
+
+export function getStockAudits(): StockAudit[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(STOCK_AUDITS_KEY) || "[]") as StockAudit[];
+    return list.sort((a, b) => b.auditDate.localeCompare(a.auditDate));
+  } catch { return []; }
+}
+
+function saveStockAudits(audits: StockAudit[]) {
+  localStorage.setItem(STOCK_AUDITS_KEY, JSON.stringify(audits));
+}
+
+// Snapshot of current stock, ready to be counted against.
+// countedQty starts equal to systemQty so an untouched line reads "no change".
+export function buildStockAuditDraft(): StockAuditLine[] {
+  return getMedicines().map(m => {
+    const unitCost = getLandingCostPerTablet(m);
+    const qty = m.currentStock || 0;
+    return {
+      medicineId: m.id,
+      medicineName: m.name,
+      supplierName: m.supplierName,
+      unitCost,
+      systemQty: qty,
+      countedQty: qty,
+      diffQty: 0,
+      systemValue: qty * unitCost,
+      countedValue: qty * unitCost,
+      diffValue: 0,
+    };
+  });
+}
+
+// Recomputes every derived figure so callers only have to supply countedQty.
+function recalcAuditLines(lines: StockAuditLine[]): StockAuditLine[] {
+  return lines.map(l => {
+    const systemValue = l.systemQty * l.unitCost;
+    const countedValue = l.countedQty * l.unitCost;
+    return {
+      ...l,
+      diffQty: l.countedQty - l.systemQty,
+      systemValue,
+      countedValue,
+      diffValue: countedValue - systemValue,
+    };
+  });
+}
+
+export function saveStockAudit(data: { auditDate: string; notes?: string; lines: StockAuditLine[] }): StockAudit {
+  const lines = recalcAuditLines(data.lines);
+  const systemValue = lines.reduce((s, l) => s + l.systemValue, 0);
+  const countedValue = lines.reduce((s, l) => s + l.countedValue, 0);
+  const audit: StockAudit = {
+    id: nextId(),
+    auditDate: data.auditDate,
+    notes: data.notes,
+    lines,
+    systemValue: Math.round(systemValue),
+    countedValue: Math.round(countedValue),
+    diffValue: Math.round(countedValue - systemValue),
+    applied: false,
+    createdAt: new Date().toISOString(),
+  };
+  const audits = getStockAudits();
+  audits.push(audit);
+  saveStockAudits(audits);
+  return audit;
+}
+
+// Writes the counted quantities into live stock and records an adjustment in
+// the stock ledger for every line that moved, so the change is traceable.
+export function applyStockAudit(id: number): { success: boolean; message: string; adjusted: number } {
+  const audits = getStockAudits();
+  const audit = audits.find(a => a.id === id);
+  if (!audit) return { success: false, message: "Audit not found.", adjusted: 0 };
+  if (audit.applied) return { success: false, message: "This audit has already been applied.", adjusted: 0 };
+
+  const medicines = getMedicines();
+  let adjusted = 0;
+
+  for (const line of audit.lines) {
+    if (line.diffQty === 0) continue;
+    const med = medicines.find(m => m.id === line.medicineId);
+    if (!med) continue;
+    med.currentStock = line.countedQty;
+    adjusted++;
+    addStockLedgerEntry({
+      medicineId: med.id,
+      medicineName: med.name,
+      type: "adjustment",
+      qty: line.diffQty,
+      balanceAfter: line.countedQty,
+      refId: audit.id,
+      refNo: `Stock audit ${audit.auditDate}`,
+      date: audit.auditDate,
+    });
+  }
+
+  saveMedicines(medicines);
+  audit.applied = true;
+  audit.appliedAt = new Date().toISOString();
+  saveStockAudits(audits);
+  return { success: true, message: `Stock updated for ${adjusted} medicine(s).`, adjusted };
+}
+
+export function deleteStockAudit(id: number): boolean {
+  const audits = getStockAudits();
+  const filtered = audits.filter(a => a.id !== id);
+  saveStockAudits(filtered);
+  return filtered.length !== audits.length;
+}
+
+// Period-over-period comparison for the audit history table.
+export function getStockAuditTrend(): { audit: StockAudit; changeSinceLast: number | null }[] {
+  const audits = getStockAudits(); // newest first
+  return audits.map((audit, i) => {
+    const older = audits[i + 1];
+    return { audit, changeSinceLast: older ? audit.countedValue - older.countedValue : null };
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
