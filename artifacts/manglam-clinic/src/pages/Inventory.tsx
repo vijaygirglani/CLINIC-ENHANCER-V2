@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
@@ -22,7 +22,19 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { formatCurrency } from "@/lib/utils";
+// ── Money display for inventory ──
+// Per-unit purchasing costs are routinely under ₹1 (e.g. ₹0.70 a tablet), and
+// the app-wide formatCurrency rounds to whole rupees — which turned 0.70 into
+// "₹1". This keeps up to 2 decimals, and only shows them when the amount
+// actually has paise, so whole-rupee figures stay clean.
+function formatMoney(value: number): string {
+  const n = Number(value) || 0;
+  const hasPaise = Math.abs(n - Math.round(n)) > 0.001;
+  return `₹${n.toLocaleString("en-IN", {
+    minimumFractionDigits: hasPaise ? 2 : 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 type Tab = "medicines" | "purchase" | "expiry" | "pharmacies" | "audit";
 
@@ -59,6 +71,126 @@ const EXPIRY_STATUS_STYLE: Record<ExpiryItem["status"], string> = {
 const EXPIRY_STATUS_LABEL: Record<ExpiryItem["status"], string> = {
   expired: "Expired", "expiring-soon": "≤30 days", expiring: "≤60 days", good: "Good",
 };
+
+// ── Keyboard-first pharmacy picker ──
+// Replaces the native <datalist>, which browsers won't let you drive with
+// Tab/Enter. Tab and ArrowDown move down the list, Shift+Tab and ArrowUp move
+// up, Enter picks the highlighted name, Esc closes. Tab is only intercepted
+// while the list is open with matches — once you pick or close it, Tab goes
+// back to moving between form fields as normal.
+function PharmacyCombobox({
+  value, onChange, options, placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const query = (value || "").trim().toLowerCase();
+  const matches = query
+    ? options.filter(o => o.toLowerCase().includes(query))
+    : options;
+
+  // Keep the highlighted row in view when moving with the keyboard.
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const el = listRef.current.children[highlight] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlight, open]);
+
+  // Clamp the highlight when the filtered list shrinks as you type.
+  useEffect(() => {
+    setHighlight(h => Math.min(h, Math.max(0, matches.length - 1)));
+  }, [matches.length]);
+
+  // Close when focus leaves the whole control (input or list).
+  useEffect(() => {
+    if (!open) return;
+    const onDocFocus = (e: FocusEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("focusin", onDocFocus);
+    document.addEventListener("mousedown", onDocFocus);
+    return () => {
+      document.removeEventListener("focusin", onDocFocus);
+      document.removeEventListener("mousedown", onDocFocus);
+    };
+  }, [open]);
+
+  const commit = (name: string) => {
+    onChange(name);
+    setOpen(false);
+    setHighlight(0);
+  };
+
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    // Let Tab do its normal job when there's nothing to pick from.
+    if (!open || matches.length === 0) {
+      if (e.key === "ArrowDown" && matches.length > 0) {
+        e.preventDefault();
+        setOpen(true);
+        setHighlight(0);
+      }
+      return;
+    }
+    if (e.key === "Tab" || e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight(h => (e.shiftKey && e.key === "Tab") ? (h - 1 + matches.length) % matches.length : (h + 1) % matches.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight(h => (h - 1 + matches.length) % matches.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();   // never submit the form from this field
+      commit(matches[highlight]);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); setHighlight(0); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        autoComplete="off"
+        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+        placeholder={placeholder}
+      />
+      {open && matches.length > 0 && (
+        <div ref={listRef} role="listbox"
+          className="absolute z-50 left-0 right-0 mt-1 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+          {matches.map((name, i) => (
+            <div key={name} role="option" aria-selected={i === highlight}
+              onMouseEnter={() => setHighlight(i)}
+              onMouseDown={e => { e.preventDefault(); commit(name); }}
+              className={`px-4 py-2.5 text-sm cursor-pointer flex items-center gap-2 ${
+                i === highlight ? "bg-primary/10 text-primary font-medium" : "text-slate-700 hover:bg-slate-50"
+              }`}>
+              <Building2 className="w-3.5 h-3.5 shrink-0 opacity-60" />
+              {name}
+            </div>
+          ))}
+        </div>
+      )}
+      {open && matches.length === 0 && query && (
+        <div className="absolute z-50 left-0 right-0 mt-1 rounded-xl border border-slate-200 bg-white shadow-xl px-4 py-2.5 text-sm text-slate-500">
+          No match — press Tab to move on and save "{value.trim()}" as a new pharmacy.
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Inventory() {
   const [tab, setTab] = useState<Tab>("medicines");
@@ -422,9 +554,9 @@ export default function Inventory() {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           {[
             { label: "Total Medicines", value: medicines.length, icon: Package, color: "bg-teal-100 text-teal-600" },
-            { label: "Stock Value", value: formatCurrency(totalStockValue), icon: Boxes, color: "bg-emerald-100 text-emerald-600" },
-            { label: "Total Purchased", value: formatCurrency(totalPurchaseSummary.totalPurchased), icon: IndianRupee, color: "bg-slate-100 text-slate-600" },
-            { label: "Pending to Pay", value: formatCurrency(totalPurchaseSummary.totalPending), icon: AlertTriangle, color: "bg-amber-100 text-amber-600" },
+            { label: "Stock Value", value: formatMoney(totalStockValue), icon: Boxes, color: "bg-emerald-100 text-emerald-600" },
+            { label: "Total Purchased", value: formatMoney(totalPurchaseSummary.totalPurchased), icon: IndianRupee, color: "bg-slate-100 text-slate-600" },
+            { label: "Pending to Pay", value: formatMoney(totalPurchaseSummary.totalPending), icon: AlertTriangle, color: "bg-amber-100 text-amber-600" },
             { label: "Expiring / Expired", value: expiringSoonCount, icon: CalendarClock, color: "bg-red-100 text-red-600" },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="medical-card p-4 flex items-center gap-3">
@@ -493,7 +625,7 @@ export default function Inventory() {
               {medPharmacyFilter && medPharmacyFilter !== "__none__" && (
                 <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-teal-50 border border-teal-200 text-sm">
                   <span className="text-teal-800 font-medium">Showing stock purchased from {medPharmacyFilter}</span>
-                  <span className="text-teal-900 font-bold">{formatCurrency(filteredStockValue)}</span>
+                  <span className="text-teal-900 font-bold">{formatMoney(filteredStockValue)}</span>
                 </div>
               )}
             </div>
@@ -518,12 +650,12 @@ export default function Inventory() {
                           ? <span className="inline-flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5 text-slate-400" />{m.supplierName}</span>
                           : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(m.landingCost)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{formatMoney(m.landingCost)}</td>
                       <td className={`px-4 py-3 text-right font-medium ${(m.currentStock || 0) <= 0 ? "text-red-500" : "text-slate-700"}`}>
                         {m.currentStock || 0}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-emerald-700">
-                        {formatCurrency((m.currentStock || 0) * m.landingCost)}
+                        {formatMoney((m.currentStock || 0) * m.landingCost)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -547,7 +679,7 @@ export default function Inventory() {
                         {filteredMedicines.length === medicines.length ? "Total stock value" : "Filtered stock value"}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-slate-700">{filteredStockQty}</td>
-                      <td className="px-4 py-3 text-right font-bold text-emerald-700 text-base">{formatCurrency(filteredStockValue)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-emerald-700 text-base">{formatMoney(filteredStockValue)}</td>
                       <td />
                     </tr>
                   </tfoot>
@@ -575,16 +707,16 @@ export default function Inventory() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 rounded-xl bg-slate-50">
                   <p className="text-[11px] font-semibold text-slate-500 uppercase">Total Purchased</p>
-                  <p className="text-lg font-display font-bold text-slate-900">{formatCurrency(totalPurchaseSummary.totalPurchased)}</p>
+                  <p className="text-lg font-display font-bold text-slate-900">{formatMoney(totalPurchaseSummary.totalPurchased)}</p>
                   <p className="text-[11px] text-slate-400">{totalPurchaseSummary.billCount} bill(s)</p>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-50">
                   <p className="text-[11px] font-semibold text-emerald-700 uppercase">Paid</p>
-                  <p className="text-lg font-display font-bold text-emerald-800">{formatCurrency(totalPurchaseSummary.totalPaid)}</p>
+                  <p className="text-lg font-display font-bold text-emerald-800">{formatMoney(totalPurchaseSummary.totalPaid)}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-amber-50">
                   <p className="text-[11px] font-semibold text-amber-700 uppercase">Pending</p>
-                  <p className="text-lg font-display font-bold text-amber-800">{formatCurrency(totalPurchaseSummary.totalPending)}</p>
+                  <p className="text-lg font-display font-bold text-amber-800">{formatMoney(totalPurchaseSummary.totalPending)}</p>
                 </div>
               </div>
             </div>
@@ -598,9 +730,9 @@ export default function Inventory() {
                     <button key={s.pharmacyName} onClick={() => setPharmacyFilter(s.pharmacyName)}
                       className={`text-left p-3 rounded-xl border transition-all ${pharmacyFilter === s.pharmacyName ? "border-primary bg-primary/5" : "border-slate-200 hover:bg-slate-50"}`}>
                       <p className="font-semibold text-slate-800 text-sm truncate">{s.pharmacyName}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{s.billCount} bill{s.billCount > 1 ? "s" : ""} · {formatCurrency(s.totalPurchased)}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{s.billCount} bill{s.billCount > 1 ? "s" : ""} · {formatMoney(s.totalPurchased)}</p>
                       {s.totalPending > 0 && (
-                        <p className="text-xs font-bold text-amber-700 mt-1">Pending: {formatCurrency(s.totalPending)}</p>
+                        <p className="text-xs font-bold text-amber-700 mt-1">Pending: {formatMoney(s.totalPending)}</p>
                       )}
                     </button>
                   ))}
@@ -705,13 +837,13 @@ export default function Inventory() {
                           <td className="px-4 py-3 font-medium text-slate-800">{b.supplierName}</td>
                           <td className="px-4 py-3 text-slate-500">{b.billNo || "-"}</td>
                           <td className="px-4 py-3 text-slate-500 max-w-[180px] truncate">{b.notes || "-"}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(b.grandTotal)}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatMoney(b.grandTotal)}</td>
                           <td className="px-4 py-3">
                             {status === "paid" ? (
                               <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700">Paid</span>
                             ) : (
                               <span className="text-xs font-bold px-2 py-1 rounded-md bg-amber-100 text-amber-700">
-                                {status === "partial" ? "Partially paid" : "Pending"} · {formatCurrency(b.pendingAmount || 0)}
+                                {status === "partial" ? "Partially paid" : "Pending"} · {formatMoney(b.pendingAmount || 0)}
                               </span>
                             )}
                           </td>
@@ -884,7 +1016,7 @@ export default function Inventory() {
                 <div className="medical-card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Stock value right now</p>
-                    <p className="text-3xl font-display font-bold text-emerald-700">{formatCurrency(totalStockValue)}</p>
+                    <p className="text-3xl font-display font-bold text-emerald-700">{formatMoney(totalStockValue)}</p>
                     <p className="text-sm text-slate-500 mt-1">{totalStockQty} units across {medicines.length} medicines</p>
                   </div>
                   <button onClick={startAudit} className="px-5 py-3 rounded-xl font-semibold bg-primary text-white shadow-lg shadow-primary/25 hover:shadow-xl transition-all flex items-center gap-2">
@@ -918,16 +1050,16 @@ export default function Inventory() {
                               {format(new Date(a.auditDate + "T00:00:00"), "dd/MM/yyyy")}
                               {a.notes && <p className="text-xs text-slate-400 font-normal mt-0.5">{a.notes}</p>}
                             </td>
-                            <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(a.systemValue)}</td>
-                            <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(a.countedValue)}</td>
+                            <td className="px-4 py-3 text-right text-slate-600">{formatMoney(a.systemValue)}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatMoney(a.countedValue)}</td>
                             <td className={`px-4 py-3 text-right font-semibold ${a.diffValue < 0 ? "text-red-600" : a.diffValue > 0 ? "text-emerald-700" : "text-slate-400"}`}>
-                              {a.diffValue === 0 ? "—" : `${a.diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(a.diffValue))}`}
+                              {a.diffValue === 0 ? "—" : `${a.diffValue > 0 ? "+" : "−"}${formatMoney(Math.abs(a.diffValue))}`}
                             </td>
                             <td className="px-4 py-3 text-right">
                               {changeSinceLast === null ? <span className="text-slate-300">—</span> : (
                                 <span className={`inline-flex items-center gap-1 font-medium ${changeSinceLast < 0 ? "text-red-600" : changeSinceLast > 0 ? "text-emerald-700" : "text-slate-400"}`}>
                                   {changeSinceLast !== 0 && (changeSinceLast > 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />)}
-                                  {changeSinceLast === 0 ? "No change" : formatCurrency(Math.abs(changeSinceLast))}
+                                  {changeSinceLast === 0 ? "No change" : formatMoney(Math.abs(changeSinceLast))}
                                 </span>
                               )}
                             </td>
@@ -982,16 +1114,16 @@ export default function Inventory() {
                   <div className="grid grid-cols-3 gap-3">
                     <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                       <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Expected</p>
-                      <p className="text-lg font-bold text-slate-700">{formatCurrency(draftTotals.systemValue)}</p>
+                      <p className="text-lg font-bold text-slate-700">{formatMoney(draftTotals.systemValue)}</p>
                     </div>
                     <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
                       <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Counted</p>
-                      <p className="text-lg font-bold text-emerald-800">{formatCurrency(draftTotals.countedValue)}</p>
+                      <p className="text-lg font-bold text-emerald-800">{formatMoney(draftTotals.countedValue)}</p>
                     </div>
                     <div className={`p-3 rounded-xl border ${draftTotals.diffValue < 0 ? "bg-red-50 border-red-200" : draftTotals.diffValue > 0 ? "bg-blue-50 border-blue-200" : "bg-slate-50 border-slate-200"}`}>
                       <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Variance</p>
                       <p className={`text-lg font-bold ${draftTotals.diffValue < 0 ? "text-red-700" : draftTotals.diffValue > 0 ? "text-blue-700" : "text-slate-500"}`}>
-                        {draftTotals.diffValue === 0 ? "—" : `${draftTotals.diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(draftTotals.diffValue))}`}
+                        {draftTotals.diffValue === 0 ? "—" : `${draftTotals.diffValue > 0 ? "+" : "−"}${formatMoney(Math.abs(draftTotals.diffValue))}`}
                       </p>
                     </div>
                   </div>
@@ -1028,7 +1160,7 @@ export default function Inventory() {
                                   {l.medicineName}
                                   {l.supplierName && <p className="text-xs text-slate-400 font-normal">{l.supplierName}</p>}
                                 </td>
-                                <td className="px-4 py-2.5 text-right text-slate-600">{formatCurrency(l.unitCost)}</td>
+                                <td className="px-4 py-2.5 text-right text-slate-600">{formatMoney(l.unitCost)}</td>
                                 <td className="px-4 py-2.5 text-right text-slate-600">{l.systemQty}</td>
                                 <td className="px-4 py-2.5 text-right">
                                   <input type="number" value={l.countedQty}
@@ -1040,7 +1172,7 @@ export default function Inventory() {
                                   {diffQty === 0 ? "—" : (diffQty > 0 ? `+${diffQty}` : diffQty)}
                                 </td>
                                 <td className={`px-4 py-2.5 text-right font-semibold ${diffValue < 0 ? "text-red-600" : diffValue > 0 ? "text-blue-600" : "text-slate-300"}`}>
-                                  {diffValue === 0 ? "—" : `${diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(diffValue))}`}
+                                  {diffValue === 0 ? "—" : `${diffValue > 0 ? "+" : "−"}${formatMoney(Math.abs(diffValue))}`}
                                 </td>
                               </tr>
                             );
@@ -1087,16 +1219,16 @@ export default function Inventory() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                   <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Expected</p>
-                  <p className="text-lg font-bold text-slate-700">{formatCurrency(viewingAudit.systemValue)}</p>
+                  <p className="text-lg font-bold text-slate-700">{formatMoney(viewingAudit.systemValue)}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
                   <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Counted</p>
-                  <p className="text-lg font-bold text-emerald-800">{formatCurrency(viewingAudit.countedValue)}</p>
+                  <p className="text-lg font-bold text-emerald-800">{formatMoney(viewingAudit.countedValue)}</p>
                 </div>
                 <div className={`p-3 rounded-xl border ${viewingAudit.diffValue < 0 ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-200"}`}>
                   <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Variance</p>
                   <p className={`text-lg font-bold ${viewingAudit.diffValue < 0 ? "text-red-700" : viewingAudit.diffValue > 0 ? "text-blue-700" : "text-slate-500"}`}>
-                    {viewingAudit.diffValue === 0 ? "—" : `${viewingAudit.diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(viewingAudit.diffValue))}`}
+                    {viewingAudit.diffValue === 0 ? "—" : `${viewingAudit.diffValue > 0 ? "+" : "−"}${formatMoney(Math.abs(viewingAudit.diffValue))}`}
                   </p>
                 </div>
               </div>
@@ -1117,11 +1249,11 @@ export default function Inventory() {
                     ) : viewingAudit.lines.filter(l => l.diffQty !== 0).map(l => (
                       <tr key={l.medicineId}>
                         <td className="px-4 py-2.5 font-medium text-slate-800">{l.medicineName}</td>
-                        <td className="px-4 py-2.5 text-right text-slate-600">{formatCurrency(l.unitCost)}</td>
+                        <td className="px-4 py-2.5 text-right text-slate-600">{formatMoney(l.unitCost)}</td>
                         <td className="px-4 py-2.5 text-right text-slate-600">{l.systemQty}</td>
                         <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{l.countedQty}</td>
                         <td className={`px-4 py-2.5 text-right font-semibold ${l.diffValue < 0 ? "text-red-600" : "text-blue-600"}`}>
-                          {`${l.diffValue > 0 ? "+" : "−"}${formatCurrency(Math.abs(l.diffValue))}`}
+                          {`${l.diffValue > 0 ? "+" : "−"}${formatMoney(Math.abs(l.diffValue))}`}
                         </td>
                       </tr>
                     ))}
@@ -1190,16 +1322,13 @@ export default function Inventory() {
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 mb-1 block">Pharmacy purchased from</label>
-              <input
-                {...medForm.register("supplierName")}
-                list="med-pharmacy-list"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
-                placeholder="Pick from list or type a new name"
+              <PharmacyCombobox
+                value={medForm.watch("supplierName") || ""}
+                onChange={v => medForm.setValue("supplierName", v, { shouldDirty: true })}
+                options={medicinePharmacyOptions}
+                placeholder="Type to filter, Tab to scroll, Enter to pick"
               />
-              <datalist id="med-pharmacy-list">
-                {pharmacies.map(p => <option key={p.id} value={p.name} />)}
-              </datalist>
-              <p className="text-[11px] text-slate-400 mt-1">Optional. Names here match the Pharmacies tab.</p>
+              <p className="text-[11px] text-slate-400 mt-1">Optional. Tab scrolls the list, Enter selects, Esc closes. Type a new name to add one.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1215,7 +1344,7 @@ export default function Inventory() {
             </div>
             <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
               <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Stock value</span>
-              <span className="text-lg font-bold text-emerald-800">{formatCurrency(previewValue)}</span>
+              <span className="text-lg font-bold text-emerald-800">{formatMoney(previewValue)}</span>
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <button type="button" onClick={() => setMedDialogOpen(false)} className="px-5 py-2.5 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">Cancel</button>
