@@ -5,6 +5,7 @@ import * as z from "zod";
 import { Layout } from "@/components/Layout";
 import {
   addPatient, updatePatient, deletePatient, lookupByMobile, lookupByName, findComplaintCode, findAdviceCode,
+  StorageFullError, getStorageUsage,
   getNextPatientNo, getNextCaseNo, lookupByComplaint, lookupByAddress,
   searchPatientSuggestions,
   type Patient, type PatientSuggestion,
@@ -16,7 +17,7 @@ import {
 import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
 import {
   Loader2, User, Phone, MapPin, Activity, Save, RefreshCw,
-  FileText, Printer, Paperclip, X, Leaf, Weight, Calendar,
+  FileText, Printer, X, Leaf, Weight, Calendar,
   Zap, Search, SlidersHorizontal, Sheet, Link, ClipboardPaste,
   Hourglass, CheckCircle2, WalletCards, MessageSquare, ChevronDown, Stethoscope,
   ShoppingBag, PackagePlus, Trash2, IndianRupee, Keyboard, Clock,
@@ -96,13 +97,26 @@ function useUndoManager(toast: ReturnType<typeof useToast>["toast"], onAfterUndo
   useEffect(() => { onAfterUndoRef.current = onAfterUndo; }, [onAfterUndo]);
 
   const pushUndo = useCallback((label: string) => {
-    const snapshot: Record<string, string> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) snapshot[key] = localStorage.getItem(key) ?? "";
+    // This used to copy every localStorage key into memory and keep 20 such
+    // snapshots. With base64 attachments in the store that is hundreds of MB,
+    // and because pushUndo runs BEFORE the save, an out-of-memory here killed
+    // the save itself. Attachment-bearing keys are skipped and the stack is
+    // shallower; undo still covers the registers, which is what it is for.
+    try {
+      const snapshot: Record<string, string> = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        const val = localStorage.getItem(key) ?? "";
+        if (val.length > 2_000_000) continue;   // skip oversized blobs
+        snapshot[key] = val;
+      }
+      stackRef.current.push({ label, snapshot });
+      if (stackRef.current.length > 5) stackRef.current.shift();
+    } catch {
+      // Undo is a convenience — never let it block the save it precedes.
+      stackRef.current = [];
     }
-    stackRef.current.push({ label, snapshot });
-    if (stackRef.current.length > 20) stackRef.current.shift();
   }, []);
 
   useEffect(() => {
@@ -1458,7 +1472,6 @@ export default function Home() {
   const [patientHistory, setPatientHistory] = useState<Patient[]>([]);
   const [historyName, setHistoryName] = useState("");
   const [historyMobile, setHistoryMobile] = useState("");
-  const [attachments, setAttachments] = useState<string[]>([]);
   const [keyFindings, setKeyFindings] = useState<string>("");
   const [seenByJenit, setSeenByJenitState] = useState(() => localStorage.getItem("cp_seen_by_jenit_default") === "1");
   const setSeenByJenit = (value: boolean | ((v: boolean) => boolean)) => {
@@ -1468,7 +1481,6 @@ export default function Home() {
       return next;
     });
   };
-  const [viewingAttachments, setViewingAttachments] = useState<{ files: string[]; patientName: string; date: string } | null>(null);
   const [lastSaved, setLastSaved] = useState<Patient | null>(null);
   const [showCard, setShowCard] = useState(false);
   const [patientTags, setPatientTags] = useState<PatientTag[]>([]);
@@ -1477,7 +1489,6 @@ export default function Home() {
   const [filterMode, setFilterMode] = useState<FilterMode>("history");
   const [filterQuery, setFilterQuery] = useState("");
   const [filterResults, setFilterResults] = useState<Patient[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [nameSuggestions, setNameSuggestions] = useState<PatientSuggestion[]>([]);
   const [showNameDropdown, setShowNameDropdown] = useState(false);
   const [pendingFees, setPendingFees] = useState<PendingEntry[]>(() => getPendingFees());
@@ -1857,21 +1868,28 @@ export default function Home() {
     setTimeout(() => setPaSent(false), 3000);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    Array.from(e.target.files || []).forEach(file => {
-      if (!file.type.startsWith("image/") && file.type !== "application/pdf") return;
-      if (file.size > 10 * 1024 * 1024) {
-        toast({ variant: "destructive", title: "File too large", description: `${file.name} exceeds 10MB limit.` });
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = ev => setAttachments(prev => [...prev, ev.target?.result as string]);
-      reader.readAsDataURL(file);
-    });
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  // Attachment upload removed — see the note in the form below.
+  // getStorageUsage() is still used by the storage guard in savePatient.
 
   const savePatient = (data: PatientFormValues, registerType: "general" | "ayurvedic") => {
+    try {
+      savePatientInner(data, registerType);
+    } catch (err) {
+      // Previously any throw in here died silently: no toast, no save, and the
+      // form just sat there. Now the real reason is shown.
+      const msg = err instanceof StorageFullError
+        ? err.message
+        : (err instanceof Error ? err.message : "Unknown error while saving.");
+      console.error("Patient save failed:", err);
+      toast({
+        variant: "destructive",
+        title: "Could not save patient",
+        description: msg,
+      });
+    }
+  };
+
+  const savePatientInner = (data: PatientFormValues, registerType: "general" | "ayurvedic") => {
     const visitDate = data.visitDate || todayStr;
     pushUndo(`Undo save for ${data.name}`);
 
@@ -1887,10 +1905,9 @@ export default function Home() {
         reports: data.reports || "", fees: Number(data.fees || 0),
         paymentMode: data.paymentMode || "cash",
         registerType, visitDate,
-        // Preserve existing attachments + merge any newly added ones
-        attachments: [
-          ...(attachments.length > 0 ? attachments : []),
-        ],
+        // Attachments are no longer stored; editing an old record clears its
+        // images so the store shrinks as you work through patients.
+        attachments: [],
       });
       saved = updatedPatient ?? ({ ...data, id: editingPatientId, visitDate, registerType, patientNo: "" } as any);
       setEditingPatientId(null);
@@ -1909,7 +1926,7 @@ export default function Home() {
         treatment: data.treatment || "", adviceCode: data.adviceCode || "", advice: data.advice || "",
         reports: data.reports || "", fees: Number(data.fees || 0),
         paymentMode: data.paymentMode || "cash",
-        attachments, registerType, visitDate,
+        attachments: [], registerType, visitDate,
       });
       // Save keyFindings separately keyed by mobile
       if (keyFindings.trim()) {
@@ -1969,7 +1986,6 @@ export default function Home() {
     form.reset({ ...emptyDefaults, visitDate });
     if (mobileRef.current) mobileRef.current.value = "";
     if (nameRef.current) nameRef.current.value = "";
-    setAttachments([]);
     setKeyFindings("");
     setIvCode("");
     setIvTreatment("");
@@ -2015,8 +2031,7 @@ export default function Home() {
         form.reset({ ...emptyDefaults, visitDate });
         if (mobileRef.current) mobileRef.current.value = "";
         if (nameRef.current) nameRef.current.value = "";
-        setAttachments([]);
-        setPatientHistory([]);
+            setPatientHistory([]);
         setHistoryName("");
         setHistoryMobile("");
         setSelectedPADisease(null);
@@ -2073,10 +2088,6 @@ export default function Home() {
       });
       if (mobileRef.current) mobileRef.current.value = p.mobile || "";
       if (nameRef.current) nameRef.current.value = p.name || "";
-      // Load existing attachments so they're preserved and visible
-      if (p.attachments && p.attachments.length > 0) {
-        setAttachments(p.attachments);
-      }
       // Load key findings
       try {
         const kf = JSON.parse(localStorage.getItem("cp_key_findings") || "{}");
@@ -2106,64 +2117,6 @@ export default function Home() {
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
       {showGlobalSearch && <GlobalSearchModal onClose={() => setShowGlobalSearch(false)} />}
       {showClinicSettings && <ClinicSettingsModal onClose={() => setShowClinicSettings(false)} />}
-
-      {/* ── Report Attachment Viewer Modal ── */}
-      <AnimatePresence>
-        {viewingAttachments && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex flex-col bg-black/90 backdrop-blur-sm"
-            onClick={() => setViewingAttachments(null)}>
-            <motion.div
-              initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              onClick={e => e.stopPropagation()}
-              className="flex flex-col h-full max-w-3xl w-full mx-auto">
-              {/* Header */}
-              <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-700 shrink-0">
-                <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-                  <Paperclip className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-white text-sm truncate">{viewingAttachments.patientName}</p>
-                  <p className="text-xs text-slate-400">{viewingAttachments.date} · {viewingAttachments.files.length} report{viewingAttachments.files.length > 1 ? "s" : ""}</p>
-                </div>
-                <button onClick={() => setViewingAttachments(null)}
-                  className="w-8 h-8 rounded-xl bg-slate-700 hover:bg-slate-600 flex items-center justify-center transition-colors">
-                  <X className="w-4 h-4 text-white" />
-                </button>
-              </div>
-              {/* Files */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {viewingAttachments.files.map((src, i) => {
-                  const isPdf = src.startsWith("data:application/pdf");
-                  return (
-                    <div key={i} className="rounded-2xl overflow-hidden border border-slate-700 bg-slate-800">
-                      <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-700/60 border-b border-slate-600">
-                        {isPdf ? <FileText className="w-4 h-4 text-rose-400 shrink-0" /> : <Paperclip className="w-4 h-4 text-blue-400 shrink-0" />}
-                        <span className="text-xs font-semibold text-slate-200 flex-1">
-                          {isPdf ? `Report PDF ${i + 1}` : `Report Image ${i + 1}`}
-                        </span>
-                        <a href={src}
-                          download={isPdf ? `report_${viewingAttachments.patientName}_${i + 1}.pdf` : `report_${viewingAttachments.patientName}_${i + 1}.jpg`}
-                          onClick={e => e.stopPropagation()}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-200 text-xs font-semibold transition-colors">
-                          ↓ Save
-                        </a>
-                      </div>
-                      {isPdf ? (
-                        <iframe src={src} className="w-full bg-white" style={{ height: "70vh", border: "none" }} title={`Report PDF ${i + 1}`} />
-                      ) : (
-                        <img src={src} className="w-full object-contain bg-slate-900" style={{ maxHeight: "70vh" }} alt={`Report ${i + 1}`} />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* ── EDIT MODE BANNER ── */}
       {editingPatientId !== null && (
@@ -2770,63 +2723,11 @@ export default function Home() {
                       className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all resize-none text-slate-800" placeholder="Blood test, X-ray..." />
                   </div>
                 </div>
-                {/* Attachments — PDF & Image Reports */}
+                {/* Report attachments removed — images were stored as base64 inside each
+                    patient record and filled the browser's ~5 MB localStorage cap, which
+                    is what stopped patients saving. Abnormal values are captured as text
+                    in Key Findings below, which costs a few bytes instead of megabytes. */}
                 <div className="space-y-3">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
-                    <Paperclip className="w-4 h-4 text-slate-400" /> Attach Reports
-                    <span className="text-[10px] font-normal text-slate-400 normal-case">PDF or Image — stored offline</span>
-                  </label>
-
-                  {/* Drop zone */}
-                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 flex flex-col items-center gap-2 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all"
-                    onClick={() => fileInputRef.current?.click()}>
-                    <div className="flex items-center gap-3">
-                      <FileText className="w-6 h-6 text-rose-400" />
-                      <Paperclip className="w-5 h-5 text-slate-300" />
-                    </div>
-                    <p className="text-sm text-slate-400 text-center">Click to upload <span className="font-semibold text-slate-500">PDF reports</span> or images</p>
-                    <p className="text-[10px] text-slate-300">Max 10MB per file · Stored on your device</p>
-                  </div>
-                  <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileUpload} />
-
-                  {/* Attachment previews */}
-                  {attachments.length > 0 && (
-                    <div className="space-y-2">
-                      {attachments.map((src, i) => {
-                        const isPdf = src.startsWith("data:application/pdf");
-                        return (
-                          <div key={i} className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
-                            {/* Header bar */}
-                            <div className="flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-100">
-                              {isPdf
-                                ? <FileText className="w-4 h-4 text-rose-500 shrink-0" />
-                                : <Paperclip className="w-4 h-4 text-blue-500 shrink-0" />}
-                              <span className="text-xs font-semibold text-slate-600 flex-1">
-                                {isPdf ? `Report PDF ${i + 1}` : `Report Image ${i + 1}`}
-                              </span>
-                              <button type="button"
-                                onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
-                                className="w-6 h-6 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors">
-                                <X className="w-3 h-3 text-red-500" />
-                              </button>
-                            </div>
-                            {/* Viewer */}
-                            {isPdf ? (
-                              <iframe
-                                src={src}
-                                className="w-full"
-                                style={{ height: "420px", border: "none" }}
-                                title={`Report PDF ${i + 1}`}
-                              />
-                            ) : (
-                              <img src={src} className="w-full max-h-64 object-contain p-2" alt={`Report ${i + 1}`} />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
                   {/* Key Findings */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
@@ -3123,17 +3024,6 @@ export default function Home() {
                                   );
                                 } catch { return null; }
                               })()}
-                              {/* Attachments — clickable view button */}
-                              {visit.attachments && visit.attachments.length > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setViewingAttachments({ files: visit.attachments!, patientName: visit.name, date: visit.visitDate })}
-                                  className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition-colors w-full justify-center">
-                                  <Paperclip className="w-3.5 h-3.5" />
-                                  View {visit.attachments.length} Report{visit.attachments.length > 1 ? "s" : ""}
-                                  <span className="ml-auto text-indigo-400">→</span>
-                                </button>
-                              )}
                               {/* Seen By Dr. Jenit tag */}
                               {(() => {
                                 try {
