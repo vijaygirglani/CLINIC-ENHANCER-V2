@@ -110,7 +110,9 @@ export function savePatientTags(mobile: string, tags: PatientTag[]) {
 // ── Patient Interface ─────────────────────────────────────────────────────────
 export interface Patient {
   id: number;
-  patientNo?: string;
+  // Stored as a zero-padded string ("01") by getNextPatientNo, but legacy
+  // records and the migration path write a plain number, so both are valid.
+  patientNo?: string | number;
   name: string;
   age: number;
   ageMonths?: number;
@@ -124,6 +126,10 @@ export interface Patient {
   advice?: string;
   reports?: string;
   fees: number;
+  // Every save path writes this and the register reads it, but it was missing
+  // from the interface — which made TypeScript reject the object literal passed
+  // to addPatient and broke saving in General, Ayurvedic and Loose Med alike.
+  paymentMode?: "cash" | "online";
   attachments?: string[];
   registerType?: "general" | "ayurvedic";
   doctorId?: 1 | 2;
@@ -1470,7 +1476,7 @@ export function getStockValuation(): { atCost: number; atMrp: number; potentialP
   const medicines = getMedicines();
   const atCost = medicines.reduce((s, m) => s + m.currentStock * getLandingCostPerTablet(m), 0);
   const atMrp = medicines.reduce((s, m) => s + m.currentStock * getMrpPerTablet(m), 0);
-  return { atCost: Math.round(atCost), atMrp: Math.round(atMrp), potentialProfit: Math.round(atMrp - atCost) };
+  return { atCost: round2(atCost), atMrp: round2(atMrp), potentialProfit: round2(atMrp - atCost) };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1503,6 +1509,13 @@ export interface StockAudit {
   createdAt: string;
 }
 
+// Money rounds to 2 decimals, never to whole rupees — per-unit medicine costs
+// are often paise-level (e.g. ₹0.70 a tablet) and whole-rupee rounding would
+// distort both the unit cost and every total derived from it.
+function round2(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
 export function getStockAudits(): StockAudit[] {
   try {
     const list = JSON.parse(localStorage.getItem(STOCK_AUDITS_KEY) || "[]") as StockAudit[];
@@ -1528,8 +1541,8 @@ export function buildStockAuditDraft(): StockAuditLine[] {
       systemQty: qty,
       countedQty: qty,
       diffQty: 0,
-      systemValue: qty * unitCost,
-      countedValue: qty * unitCost,
+      systemValue: round2(qty * unitCost),
+      countedValue: round2(qty * unitCost),
       diffValue: 0,
     };
   });
@@ -1538,14 +1551,14 @@ export function buildStockAuditDraft(): StockAuditLine[] {
 // Recomputes every derived figure so callers only have to supply countedQty.
 function recalcAuditLines(lines: StockAuditLine[]): StockAuditLine[] {
   return lines.map(l => {
-    const systemValue = l.systemQty * l.unitCost;
-    const countedValue = l.countedQty * l.unitCost;
+    const systemValue = round2(l.systemQty * l.unitCost);
+    const countedValue = round2(l.countedQty * l.unitCost);
     return {
       ...l,
       diffQty: l.countedQty - l.systemQty,
       systemValue,
       countedValue,
-      diffValue: countedValue - systemValue,
+      diffValue: round2(countedValue - systemValue),
     };
   });
 }
@@ -1559,9 +1572,9 @@ export function saveStockAudit(data: { auditDate: string; notes?: string; lines:
     auditDate: data.auditDate,
     notes: data.notes,
     lines,
-    systemValue: Math.round(systemValue),
-    countedValue: Math.round(countedValue),
-    diffValue: Math.round(countedValue - systemValue),
+    systemValue: round2(systemValue),
+    countedValue: round2(countedValue),
+    diffValue: round2(countedValue - systemValue),
     applied: false,
     createdAt: new Date().toISOString(),
   };
