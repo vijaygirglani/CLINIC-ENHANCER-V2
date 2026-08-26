@@ -329,13 +329,140 @@ export function getNextCaseNo(visitDate: string): string {
 // PATIENTS (all functions copied from old app)
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// STORAGE SAFETY
+// ═══════════════════════════════════════════════════════════════
+// localStorage is capped at roughly 5 MB per browser origin. When it fills up,
+// setItem throws QuotaExceededError. Every write in this file used to call
+// setItem bare, so a full store meant an unhandled exception: the save aborted
+// silently, no toast appeared, and the record was lost. This surfaces the
+// failure instead of swallowing it.
+
+export class StorageFullError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StorageFullError";
+  }
+}
+
+function isQuotaError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return (
+    e.name === "QuotaExceededError" ||
+    e.name === "NS_ERROR_DOM_QUOTA_REACHED" ||   // Firefox
+    (e as any).code === 22 || (e as any).code === 1014
+  );
+}
+
+// Writes, and on a quota failure throws a StorageFullError the UI can explain.
+export function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    if (isQuotaError(e)) {
+      const usage = getStorageUsage();
+      throw new StorageFullError(
+        `Browser storage is full (${usage.usedMB} MB used). ` +
+        `Attachments are the usual cause — they are stored inside the record. ` +
+        `Export a backup, then delete old attachments to free space.`
+      );
+    }
+    throw e;
+  }
+}
+
+export function getStorageUsage(): { usedBytes: number; usedMB: string; biggestKeys: { key: string; mb: string }[] } {
+  let total = 0;
+  const sizes: { key: string; bytes: number }[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k) continue;
+    const bytes = ((localStorage.getItem(k) || "").length + k.length) * 2; // UTF-16
+    total += bytes;
+    sizes.push({ key: k, bytes });
+  }
+  sizes.sort((a, b) => b.bytes - a.bytes);
+  return {
+    usedBytes: total,
+    usedMB: (total / (1024 * 1024)).toFixed(2),
+    biggestKeys: sizes.slice(0, 5).map(s => ({ key: s.key, mb: (s.bytes / (1024 * 1024)).toFixed(2) })),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ONE-TIME ATTACHMENT PURGE
+// ═══════════════════════════════════════════════════════════════
+// Report attachments used to be stored as base64 inside each patient record.
+// A handful of photos filled the browser's ~5 MB localStorage cap, and every
+// save then failed with QuotaExceededError. The feature is gone, but existing
+// records still carry the images, so the store stays full until they're out.
+// This runs once, automatically, the first time the new build loads — no
+// console script, no user action.
+//
+// It removes ONLY the attachment blobs. Every clinical field — name, mobile,
+// age, fees, complaint, treatment, advice, payment mode, visit date — is
+// untouched, and no record is ever dropped. If anything looks wrong it aborts
+// without writing.
+
+const ATTACHMENT_PURGE_FLAG = "cp_attachments_purged_v1";
+
+export function purgeAttachmentsOnce(): { ran: boolean; cleaned: number; freedMB: string } {
+  const done = { ran: false, cleaned: 0, freedMB: "0.00" };
+  try {
+    if (localStorage.getItem(ATTACHMENT_PURGE_FLAG) === "1") return done;
+
+    const raw = localStorage.getItem(PATIENTS_KEY);
+    if (!raw) { localStorage.setItem(ATTACHMENT_PURGE_FLAG, "1"); return done; }
+
+    const patients = JSON.parse(raw);
+    if (!Array.isArray(patients)) return done;   // leave it alone, don't flag
+
+    const before = raw.length * 2;
+    let cleaned = 0;
+    const next = patients.map((p: any) => {
+      if (Array.isArray(p?.attachments) && p.attachments.length > 0) {
+        cleaned++;
+        const { attachments, ...rest } = p;
+        return { ...rest, attachments: [], attachmentsRemoved: attachments.length };
+      }
+      return p;
+    });
+
+    // Safety: never write if the record count moved.
+    if (next.length !== patients.length) {
+      console.error("[purge] record count changed — aborted, nothing written");
+      return done;
+    }
+
+    if (cleaned === 0) {
+      localStorage.setItem(ATTACHMENT_PURGE_FLAG, "1");
+      return done;
+    }
+
+    const serialized = JSON.stringify(next);
+    localStorage.setItem(PATIENTS_KEY, serialized);
+    localStorage.setItem(ATTACHMENT_PURGE_FLAG, "1");
+
+    const freed = (before - serialized.length * 2) / (1024 * 1024);
+    console.info(`[purge] cleared images from ${cleaned} record(s), freed ${freed.toFixed(2)} MB`);
+    return { ran: true, cleaned, freedMB: freed.toFixed(2) };
+  } catch (e) {
+    // Never let this block app startup.
+    console.error("[purge] skipped:", e);
+    return done;
+  }
+}
+
+// Runs as soon as the store module is imported, before any save can happen.
+try { purgeAttachmentsOnce(); } catch { /* non-fatal */ }
+
 export function getPatients(): Patient[] {
   try { return JSON.parse(localStorage.getItem(PATIENTS_KEY) || "[]"); }
   catch { return []; }
 }
 
 function savePatients(patients: Patient[]) {
-  localStorage.setItem(PATIENTS_KEY, JSON.stringify(patients));
+  safeSetItem(PATIENTS_KEY, JSON.stringify(patients));
 }
 
 // ── One-time migration: earlier versions of this app (and a stale cloud-sync bug) wrote
