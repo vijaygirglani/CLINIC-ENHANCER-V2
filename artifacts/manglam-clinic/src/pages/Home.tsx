@@ -1527,7 +1527,7 @@ export default function Home() {
     const savedRow = addPatient({
       name: `Loose Med: ${product}`,
       mobile: loosePatientMobile,
-      patientNo: 0,
+      patientNo: getNextPatientNo(today),
       age: 0, ageMonths: 0,
       weight: "", address: "",
       complaintCode: "", complaint: "Loose Medicine Sale",
