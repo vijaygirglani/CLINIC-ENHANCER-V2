@@ -2243,7 +2243,9 @@ export default function Home() {
               </div>
             )}
 
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* autoComplete="off" on the form as well: Chrome honours the form-level
+                setting in some versions where it ignores the per-input one. */}
+            <form onSubmit={form.handleSubmit(onSubmit)} autoComplete="off" className="space-y-6">
               {/* Visit Date */}
               <div className="bg-gradient-to-br from-blue-50/60 to-slate-50/40 p-6 rounded-2xl border border-blue-100 border-l-4 border-l-blue-400 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2266,6 +2268,9 @@ export default function Home() {
                       <div className="relative flex-1">
                         <input
                           {...mobileRest}
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
                           ref={(el) => {
                             mobileRHFRef(el);
                             (mobileRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
@@ -2310,6 +2315,13 @@ export default function Home() {
                       <div className="flex gap-2">
                         <input
                           {...nameRest}
+                          // Chrome was stacking its own autofill list (the small
+                          // grey column with an X on each row) on top of the app's
+                          // patient suggestions. These three attributes suppress
+                          // the browser list and leave only our dropdown.
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
                           ref={(el) => {
                             nameRHFRef(el);
                             (nameRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
