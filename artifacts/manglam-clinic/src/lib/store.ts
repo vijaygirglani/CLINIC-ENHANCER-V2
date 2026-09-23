@@ -1090,9 +1090,32 @@ export function exportBackup(): string {
 }
 
 export function importBackup(jsonStr: string): { success: boolean; message: string } {
+  // A single catch-all "Failed to parse backup file" hid the real problem for
+  // days: the file on disk was 0 bytes. These checks name what is actually
+  // wrong so an empty backup is never mistaken for a corrupt one.
+  if (jsonStr == null || jsonStr.trim() === "") {
+    return {
+      success: false,
+      message: "This backup file is empty (0 bytes). The file never finished writing — use an older backup from the Year/Month folder.",
+    };
+  }
+
+  let data: any;
   try {
-    const data = JSON.parse(jsonStr);
-    if (!data.patients || !Array.isArray(data.patients)) return { success: false, message: "Invalid backup file format." };
+    data = JSON.parse(jsonStr);
+  } catch (e) {
+    const preview = jsonStr.slice(0, 60).replace(/\s+/g, " ");
+    return {
+      success: false,
+      message: `Backup file is not valid JSON (starts with: "${preview}"). It may have been edited or only partly written.`,
+    };
+  }
+
+  try {
+    if (!data || typeof data !== "object") return { success: false, message: "Backup file does not contain clinic data." };
+    if (!data.patients || !Array.isArray(data.patients)) {
+      return { success: false, message: "Invalid backup file format — no patient list found inside." };
+    }
     savePatients(data.patients);
     if (data.complaintCodes && Array.isArray(data.complaintCodes)) saveCodes(data.complaintCodes);
     if (data.adviceCodes && Array.isArray(data.adviceCodes)) saveAdviceCodes(data.adviceCodes);
@@ -1105,7 +1128,12 @@ export function importBackup(jsonStr: string): { success: boolean; message: stri
     if (data.stockAudits && Array.isArray(data.stockAudits)) localStorage.setItem(STOCK_AUDITS_KEY, JSON.stringify(data.stockAudits));
     if (data.idCounter) localStorage.setItem(COUNTER_KEY, String(data.idCounter));
     return { success: true, message: `Restored ${data.patients.length} patients, ${data.medicines?.length || 0} medicines, ${data.expenses?.length || 0} expenses.` };
-  } catch { return { success: false, message: "Failed to parse backup file." }; }
+  } catch (e) {
+    const msg = e instanceof StorageFullError
+      ? e.message
+      : `Could not write the restored data: ${e instanceof Error ? e.message : String(e)}`;
+    return { success: false, message: msg };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
