@@ -532,20 +532,60 @@ export default function DailyRegister() {
     const monthName = format(date, "MMMM"); // e.g. "June"
     const dayLabel = format(date, "dd-MMM-yyyy"); // e.g. "23-Jun-2026"
     const fileName = `Manglam_Backup_${dayLabel}.json`;
+
+    // ── Build and validate the payload BEFORE touching any file ──
+    // createWritable() truncates the target file to 0 bytes the moment it is
+    // called. The old code opened the file first, so if anything failed after
+    // that — the tab closing mid-write, an error inside exportBackup — the
+    // previous good backup was already destroyed and all that remained was an
+    // empty file. Nothing is opened now until valid JSON is in hand.
     const json = exportBackup();
+    if (!json || json.trim().length < 2) {
+      throw new Error("Backup was empty — nothing written, previous backup left intact.");
+    }
+    let patientCount = 0;
+    try {
+      const parsed = JSON.parse(json);
+      if (!Array.isArray(parsed.patients)) throw new Error("no patient list");
+      patientCount = parsed.patients.length;
+    } catch {
+      throw new Error("Backup data was malformed — nothing written, previous backup left intact.");
+    }
 
     // Navigate / create: MANGLAM CLINIC DAILY BACKUP / 2026 / June /
     const yearDir = await handle.getDirectoryHandle(year, { create: true });
     const monthDir = await yearDir.getDirectoryHandle(monthName, { create: true });
+
+    // Write to a temp file first, then copy across. If the write is
+    // interrupted, the damage is limited to the .tmp file and today's real
+    // backup is still whatever was there before.
+    const tmpName = `${fileName}.tmp`;
+    const tmpHandle = await monthDir.getFileHandle(tmpName, { create: true });
+    const tmpWritable = await (tmpHandle as any).createWritable();
+    await tmpWritable.write(json);
+    await tmpWritable.close();
+
+    // Verify what actually landed on disk before promoting it.
+    const written = await tmpHandle.getFile();
+    if (written.size < json.length * 0.5) {
+      throw new Error(`Backup wrote only ${written.size} bytes of ${json.length} — kept the previous backup instead.`);
+    }
+
     const fileHandle = await monthDir.getFileHandle(fileName, { create: true });
     const writable = await (fileHandle as any).createWritable();
-    await writable.write(json);
+    await writable.write(await written.text());
     await writable.close();
+    try { await monthDir.removeEntry(tmpName); } catch { /* tidy-up only */ }
 
     const key = format(date, "yyyy-MM-dd");
     localStorage.setItem("manglam_last_auto_backup", key);
     setLastAutoBackup(key);
-    if (!silent) toast({ title: "✅ Backup Saved", description: `Saved to ${year}/${monthName}/${fileName}` });
+    if (!silent) {
+      toast({
+        title: "✅ Backup Saved",
+        description: `${patientCount} patients · ${(written.size / 1024).toFixed(0)} KB → ${year}/${monthName}/${fileName}`,
+      });
+    }
   };
 
   // ── Select backup folder ──────────────────────────────────────────────────
@@ -608,7 +648,16 @@ export default function DailyRegister() {
         dirHandleRef.current = handle;
         await writeBackupToFolder(handle, new Date(), true);
         toast({ title: "🔄 Auto Backup Done", description: `Today's backup saved automatically.` });
-      } catch { /* silent fail */ }
+      } catch (err: any) {
+        // This used to fail silently, so a backup could be broken for weeks
+        // without anyone knowing until a restore was actually needed.
+        console.error("[auto-backup] failed:", err);
+        toast({
+          variant: "destructive",
+          title: "Auto Backup Failed",
+          description: String(err?.message || err) + " — use Daily Backup to retry.",
+        });
+      }
     };
     runAutoBackup();
     // Also run every hour in case the app stays open overnight
@@ -736,15 +785,33 @@ export default function DailyRegister() {
 
   const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
+    if (importRef.current) importRef.current.value = "";
+
+    // Check the file before asking the scary "replace ALL data" question —
+    // there is no point confirming a wipe for a file that holds nothing.
+    if (file.size === 0) {
+      toast({
+        variant: "destructive",
+        title: "Backup File Is Empty",
+        description: `"${file.name}" is 0 bytes — it never finished writing. Open the backup folder and pick an earlier date from the Year/Month folder.`,
+      });
+      return;
+    }
+
     const reader = new FileReader();
+    reader.onerror = () => toast({
+      variant: "destructive",
+      title: "Could Not Read File",
+      description: "Windows would not let the file be read. Copy it to your Desktop and try again.",
+    });
     reader.onload = ev => {
-      if (!confirm("This will replace ALL data with the backup. Are you sure?")) return;
-      const result = importBackup(ev.target?.result as string);
+      const text = ev.target?.result as string;
+      if (!confirm(`Replace ALL current data with "${file.name}" (${(file.size / 1024).toFixed(0)} KB)?\n\nThis cannot be undone.`)) return;
+      const result = importBackup(text);
       if (result.success) { toast({ title: "Restore Successful", description: result.message }); refresh(); }
       else toast({ variant: "destructive", title: "Restore Failed", description: result.message });
     };
     reader.readAsText(file);
-    if (importRef.current) importRef.current.value = "";
   };
 
   const handleClearAllData = () => {
