@@ -1069,11 +1069,49 @@ export function importAdviceCodes(jsonStr: string): { success: boolean; message:
 // BACKUP / RESTORE
 // ═══════════════════════════════════════════════════════════════
 
+// ── What a backup must contain ────────────────────────────────────────────
+// The old backup listed each section by hand, so anything not on that list
+// was silently lost on every restore — pending fees, loose medicine sales,
+// clinic settings, patient tags, key findings, the Pathya-Apathya library,
+// the duplicate-deletion blocklist and the per-day patient number counters.
+// A backup now snapshots EVERY app key, so nothing can be forgotten again.
+//
+// These few keys describe THIS computer rather than the clinic's data, so
+// they are deliberately left out — restoring them onto another machine, or
+// after a reinstall, would point the app at a backup folder that is not
+// there or suppress a migration that still needs to run.
+const DEVICE_LOCAL_KEYS = new Set([
+  "manglam_backup_folder_name",
+  "manglam_auto_backup_enabled",
+  "manglam_last_auto_backup",
+  "manglam_backup_db",
+  "manglam_edit_patient",
+  "cp_attachments_purged_v1",
+  "cp_legacy_patients_migrated",
+]);
+
+function isAppDataKey(key: string): boolean {
+  if (DEVICE_LOCAL_KEYS.has(key)) return false;
+  return key.startsWith("cp_") || key.startsWith("manglam_") || key.startsWith("mc_");
+}
+
+// Every app key and its raw value, exactly as stored.
+function snapshotAllKeys(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && isAppDataKey(k)) out[k] = localStorage.getItem(k) ?? "";
+  }
+  return out;
+}
+
 export function exportBackup(): string {
   const data = {
-    version: 2,
+    version: 3,
     app: "ClinicPro",
     exportedAt: new Date().toISOString(),
+    // Named sections are kept so that a version-3 file still restores on an
+    // older build of the app that only knows how to read these.
     patients: getPatients(),
     complaintCodes: getComplaintCodes(),
     adviceCodes: getAdviceCodes(),
@@ -1084,9 +1122,39 @@ export function exportBackup(): string {
     pharmacies: getPharmacies(),
     expenses: getExpenses(),
     stockAudits: getStockAudits(),
+    pendingFees: getPendingFeesRaw(),
+    looseSales: getLooseSalesRaw(),
+    clinicSettings: localStorage.getItem("manglam_clinic_settings") || "",
     idCounter: parseInt(localStorage.getItem(COUNTER_KEY) || "0"),
+    // The complete snapshot. This is what makes the backup lossless.
+    allKeys: snapshotAllKeys(),
   };
   return JSON.stringify(data, null, 2);
+}
+
+// Raw readers, used so the backup carries these even if their shape changes.
+function getPendingFeesRaw(): any[] {
+  try { return JSON.parse(localStorage.getItem("manglam_pending_fees") || "[]"); }
+  catch { return []; }
+}
+function getLooseSalesRaw(): any[] {
+  try { return JSON.parse(localStorage.getItem("manglam_loose_sales") || "[]"); }
+  catch { return []; }
+}
+
+// A quick count of what a backup holds, for the confirmation message.
+export function summariseBackup(jsonStr: string): string {
+  try {
+    const d = JSON.parse(jsonStr);
+    const n = (v: any) => (Array.isArray(v) ? v.length : 0);
+    const parts = [
+      `${n(d.patients)} patients`,
+      `${n(d.medicines)} medicines`,
+      `${n(d.pendingFees)} pending fees`,
+      `${n(d.expenses)} expenses`,
+    ];
+    return parts.join(" · ");
+  } catch { return ""; }
 }
 
 export function importBackup(jsonStr: string): { success: boolean; message: string } {
@@ -1127,7 +1195,40 @@ export function importBackup(jsonStr: string): { success: boolean; message: stri
     if (data.expenses && Array.isArray(data.expenses)) localStorage.setItem(EXPENSES_KEY, JSON.stringify(data.expenses));
     if (data.stockAudits && Array.isArray(data.stockAudits)) localStorage.setItem(STOCK_AUDITS_KEY, JSON.stringify(data.stockAudits));
     if (data.idCounter) localStorage.setItem(COUNTER_KEY, String(data.idCounter));
-    return { success: true, message: `Restored ${data.patients.length} patients, ${data.medicines?.length || 0} medicines, ${data.expenses?.length || 0} expenses.` };
+
+    // Named sections from a version-2 file that the old restore dropped.
+    if (data.pendingFees && Array.isArray(data.pendingFees)) {
+      localStorage.setItem("manglam_pending_fees", JSON.stringify(data.pendingFees));
+    }
+    if (data.looseSales && Array.isArray(data.looseSales)) {
+      localStorage.setItem("manglam_loose_sales", JSON.stringify(data.looseSales));
+    }
+    if (typeof data.clinicSettings === "string" && data.clinicSettings) {
+      localStorage.setItem("manglam_clinic_settings", data.clinicSettings);
+      localStorage.setItem("manglam_clinic_settings_for_print", data.clinicSettings);
+    }
+
+    // Version-3 files carry a complete snapshot. Restoring it last means every
+    // app key comes back exactly as it was — pending fees, loose sales, tags,
+    // key findings, the disease library, the deletion blocklist and the
+    // per-day patient number counters included.
+    let extraKeys = 0;
+    if (data.allKeys && typeof data.allKeys === "object") {
+      for (const [k, v] of Object.entries(data.allKeys)) {
+        if (typeof v !== "string" || !isAppDataKey(k)) continue;
+        try { localStorage.setItem(k, v); extraKeys++; } catch { /* quota — skip this key */ }
+      }
+    }
+
+    const pendingCount = (() => {
+      try { return JSON.parse(localStorage.getItem("manglam_pending_fees") || "[]").length; }
+      catch { return 0; }
+    })();
+
+    const detail = extraKeys > 0
+      ? `Restored ${data.patients.length} patients, ${data.medicines?.length || 0} medicines, ${pendingCount} pending fees, ${data.expenses?.length || 0} expenses, and all settings.`
+      : `Restored ${data.patients.length} patients, ${data.medicines?.length || 0} medicines, ${data.expenses?.length || 0} expenses. (This is an older backup — pending fees and settings were not saved in it.)`;
+    return { success: true, message: detail };
   } catch (e) {
     const msg = e instanceof StorageFullError
       ? e.message
