@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
   getDailyStats, updatePatient, deletePatient, deletePatientsByIds, getAllDates,
-  exportBackup, importBackup, addPatient, getMonthlyStats, findAdviceCode,
+  exportBackup, importBackup, summariseBackup, addPatient, getMonthlyStats, findAdviceCode,
   getDoctors, updateDoctorSplit, findDuplicatePatients,
   type Patient, type DailyStats, type DuplicatePatientGroup,
 } from "@/lib/store";
@@ -583,7 +583,7 @@ export default function DailyRegister() {
     if (!silent) {
       toast({
         title: "✅ Backup Saved",
-        description: `${patientCount} patients · ${(written.size / 1024).toFixed(0)} KB → ${year}/${monthName}/${fileName}`,
+        description: `${summariseBackup(json)} · ${(written.size / 1024).toFixed(0)} KB → ${year}/${monthName}/${fileName}`,
       });
     }
   };
