@@ -13,7 +13,6 @@ import { motion } from "framer-motion";
 
 const NAV = [
   { to: "/",                  label: "Patient Registration", icon: UserPlus },
-  { to: "/queue",             label: "Token Queue",          icon: Users },
   { to: "/daily-register",    label: "Daily Register",       icon: BookOpen },
   { to: "/ayurvedic-register",label: "Ayurvedic Register",   icon: Leaf },
   { to: "/complaint-codes",   label: "Complaint Codes",      icon: Code2 },
@@ -22,6 +21,9 @@ const NAV = [
   { to: "/pathya-apathya",    label: "Pathya-Apathya",       icon: BookMarked },
   { to: "/inventory",         label: "Inventory",            icon: Package },
   { to: "/expenses",          label: "Expenses",             icon: Wallet },
+  // Last, as asked — the queue is driven from the strip on the registration
+  // page and the pill in this header, so it rarely needs opening directly.
+  { to: "/queue",             label: "Token Queue",          icon: Users },
 ];
 
 /**
