@@ -53,6 +53,8 @@ export interface ClinicExtras {
   dailyTarget: number;
   /** minutes of no input before the idle screen appears. 0 turns it off. */
   idleMinutes: number;
+  /** check the staff's Google Sheet every minute and hand out tokens */
+  queueAutoSync?: boolean;
 }
 
 const EXTRAS_KEY = "cp_clinic_extras";
@@ -60,6 +62,7 @@ const EXTRAS_KEY = "cp_clinic_extras";
 export const DEFAULT_EXTRAS: ClinicExtras = {
   dailyTarget: 5000,
   idleMinutes: 5,
+  queueAutoSync: true,
 };
 
 export function getExtras(): ClinicExtras {

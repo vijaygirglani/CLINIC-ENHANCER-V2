@@ -37,6 +37,10 @@ export interface QueueEntry {
   doneAt?: string;
   /** set once the consultation is saved, so the token links to the record */
   patientId?: number;
+  /** where the token came from — the desk, or the staff's Google Sheet */
+  source?: "desk" | "sheet";
+  /** dedupe key for sheet rows, so a re-sync never issues a second token */
+  sourceKey?: string;
   /** bumped by recall() so a display screen can flash the same token again */
   announceCount?: number;
 }
@@ -215,6 +219,8 @@ export interface IssueTokenInput {
   age?: string;
   note?: string;
   registerType?: "general" | "ayurvedic";
+  source?: "desk" | "sheet";
+  sourceKey?: string;
 }
 
 /** Put a patient in the waiting list and hand them a token number. */
@@ -232,6 +238,8 @@ export function issueToken(input: IssueTokenInput): QueueEntry {
     status: "waiting",
     date,
     arrivedAt: new Date().toISOString(),
+    source: input.source || "desk",
+    sourceKey: input.sourceKey,
   };
   all.push(entry);
   writeAll(all);
