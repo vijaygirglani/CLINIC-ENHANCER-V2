@@ -17,7 +17,7 @@ import {
 import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
 import { QueueStrip } from "@/components/QueueStrip";
 import { completeCurrent, type QueueEntry } from "@/lib/queue";
-import { GrowthChart, looksLikeChild, hasGrowthData } from "@/components/GrowthChart";
+import { GrowthChart } from "@/components/GrowthChart";
 import { AllergyBanner } from "@/components/AllergyBanner";
 import { SaveTick } from "@/components/SaveTick";
 import { PrescriptionFly } from "@/components/PrescriptionFly";
@@ -3084,8 +3084,10 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* ── GROWTH CHART — only for children with two or more weights ── */}
-                      {looksLikeChild(patientHistory) && hasGrowthData(patientHistory) && (
+                      {/* ── WEIGHT / GROWTH ── anyone with a weight on record.
+                           The component decides what to draw: a chart from two
+                           weights, or a one-line hint from one. ── */}
+                      {patientHistory.length > 0 && (
                         <div className="px-4 pt-4 shrink-0">
                           <GrowthChart visits={patientHistory} name={historyName || patientHistory[0]?.name} />
                         </div>
