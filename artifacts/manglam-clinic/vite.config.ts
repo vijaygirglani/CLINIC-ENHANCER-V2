@@ -21,6 +21,16 @@ function offlinePrecachePlugin(): Plugin {
     closeBundle() {
       const outDir = path.resolve(import.meta.dirname, "dist/public");
 
+      // Rollup runs closeBundle even when the build FAILED. Without this
+      // guard the readdirSync below throws ENOENT, and that error replaces
+      // the real one — so a simple unresolved import gets reported as
+      // "no such file or directory, scandir dist/public", which tells you
+      // nothing. Bail out quietly instead and let the real error through.
+      if (!fs.existsSync(outDir)) {
+        this.warn("Skipping sw.js — the build produced no output. The real error is above.");
+        return;
+      }
+
       function walk(dir: string, base = ""): string[] {
         let results: string[] = [];
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
