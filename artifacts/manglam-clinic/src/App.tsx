@@ -4,8 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { migrateLegacyPatientsKey, repairMalformedPatients } from "@/lib/store";
+import { initTheme } from "@/lib/theme";
 
 import Home from "@/pages/Home";
+import Reception from "@/pages/Reception";
+import Display from "@/pages/Display";
 import DailyRegister from "@/pages/DailyRegister";
 import AyurvedicRegister from "@/pages/AyurvedicRegister";
 import ComplaintCodes from "@/pages/ComplaintCodes";
@@ -26,6 +29,9 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/queue" component={Reception} />
+      {/* No Layout — this one goes on a TV in the waiting room. */}
+      <Route path="/display" component={Display} />
       <Route path="/daily-register" component={DailyRegister} />
       <Route path="/ayurvedic-register" component={AyurvedicRegister} />
       <Route path="/complaint-codes" component={ComplaintCodes} />
@@ -41,6 +47,10 @@ function Router() {
 
 function App() {
   useEffect(() => { repairMalformedPatients(); migrateLegacyPatientsKey(); }, []);
+  // Theme init lives here rather than in main.tsx, so this set of files never
+  // has to replace main.tsx — which on your machine also starts the offline
+  // persistence layer. Nothing here runs unless a theme has been chosen.
+  useEffect(() => initTheme(), []);
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

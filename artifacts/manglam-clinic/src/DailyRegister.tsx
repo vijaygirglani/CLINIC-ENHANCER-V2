@@ -1,0 +1,2388 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { format } from "date-fns";
+import { Layout } from "@/components/Layout";
+import {
+  getDailyStats, updatePatient, deletePatient, deletePatientsByIds, getAllDates,
+  exportBackup, importBackup, addPatient, getMonthlyStats, findAdviceCode,
+  getDoctors, updateDoctorSplit, findDuplicatePatients,
+  type Patient, type DailyStats, type DuplicatePatientGroup,
+} from "@/lib/store";
+import {
+  Calendar, Download, Edit2, Trash2, Users, IndianRupee, FileText,
+  ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
+  TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
+  WalletCards, Loader2, MessageSquare, Search, ArrowRight, ShieldAlert, AlertTriangle, Paperclip,
+  Stethoscope, Percent, Copy, Sparkles,
+} from "lucide-react";
+
+// ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
+const LOOSE_SALE_KEY = "manglam_loose_sales";
+const LOOSE_PATIENT_MOBILE = "0000000000";
+const LOOSE_NAME_PREFIX = "Loose Med: ";
+interface LooseSaleEntry { id: string; product: string; amount: number; date: string; time: string; patientId?: number; }
+function getLooseSalesForDate(date: string): LooseSaleEntry[] {
+  try { return (JSON.parse(localStorage.getItem(LOOSE_SALE_KEY) || "[]") as LooseSaleEntry[]).filter(e => e.date === date); }
+  catch { return []; }
+}
+
+// A loose sale is written to TWO places: the loose-sales key above, AND a
+// patient row in the register (so it shows in the day's list). That patient
+// row is already inside stats.totalFees — so adding looseDayTotal on top of
+// totalFees counted the same rupee twice. The helpers below reconcile the two
+// sides so each sale is counted exactly once.
+function isLooseRow(p: Patient): boolean {
+  return p.mobile === LOOSE_PATIENT_MOBILE || (p.name || "").startsWith(LOOSE_NAME_PREFIX);
+}
+function looseProductOf(p: Patient): string {
+  return (p.name || "").replace(LOOSE_NAME_PREFIX, "").trim();
+}
+
+interface LooseReconciliation {
+  saleTotal: number;        // total of loose-panel entries for the day
+  matchedTotal: number;     // portion already present as register rows
+  unregisteredTotal: number;// loose sales with NO register row (older entries)
+  orphanRows: Patient[];    // register rows with no backing loose-sale entry
+  orphanTotal: number;
+}
+interface LooseAuditRow {
+  date: string;
+  saleCount: number;
+  saleTotal: number;
+  registerTotal: number;   // fees of loose rows sitting in the register
+  oldCollection: number;   // what the buggy build showed
+  newCollection: number;   // what the fixed build shows
+  orphanIds: number[];     // loose rows with no backing loose-sale entry
+  orphanTotal: number;
+}
+
+function reconcileLoose(sales: LooseSaleEntry[], patients: Patient[]): LooseReconciliation {
+  const rows = (patients || []).filter(isLooseRow);
+  const used = new Array(rows.length).fill(false);
+  let unregisteredTotal = 0;
+  let matchedTotal = 0;
+
+  for (const s of sales) {
+    // 1) exact match on the linked patient id (written by newer versions)
+    let idx = rows.findIndex((r, i) => !used[i] && s.patientId != null && r.id === s.patientId);
+    // 2) fall back to product name + amount
+    if (idx === -1) idx = rows.findIndex((r, i) => !used[i] && (r.fees || 0) === s.amount && looseProductOf(r) === (s.product || "").trim());
+    // 3) last resort: amount only, within loose rows
+    if (idx === -1) idx = rows.findIndex((r, i) => !used[i] && (r.fees || 0) === s.amount);
+
+    if (idx === -1) unregisteredTotal += s.amount;
+    else { used[idx] = true; matchedTotal += s.amount; }
+  }
+
+  const orphanRows = rows.filter((_, i) => !used[i]);
+  return {
+    saleTotal: sales.reduce((s, e) => s + e.amount, 0),
+    matchedTotal,
+    unregisteredTotal,
+    orphanRows,
+    orphanTotal: orphanRows.reduce((s, p) => s + (p.fees || 0), 0),
+  };
+}
+// ── Follow-up reminder helpers ────────────────────────────────────────────────
+
+import { exportToExcel, parseExcelFile } from "@/lib/export";
+import { motion, AnimatePresence } from "framer-motion";
+import { AnimatedNumber, motionOff } from "@/components/AnimatedNumber";
+import { MonthReportCard } from "@/components/MonthReportCard";
+import { CollectionRing } from "@/components/CollectionRing";
+import { DayTimeline } from "@/components/DayTimeline";
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   BACKUP COMPLETENESS
+   ─────────────────────────────────────────────────────────────────────────────
+
+   store.ts's exportBackup writes a set of NAMED sections (patients, medicines,
+   expenses…). Newer versions of it also write `allKeys`, a sweep of every app
+   key, which is what makes a backup lossless.
+
+   These two helpers make the backup lossless whichever version of store.ts you
+   are running: before writing, `withAllKeys` adds the sweep if it is missing;
+   after restoring, `restoreExtraKeys` puts back anything the store's own
+   importBackup did not know about — the token queue, allergies, the recovered
+   total, clinic settings, pending fees, the Pathya library.
+
+   Both are additive. Neither deletes anything.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/** Keys that belong to THIS machine and must never travel in a backup. */
+const DEVICE_ONLY_KEYS = new Set([
+  "manglam_backup_folder_name",
+  "manglam_auto_backup_enabled",
+  "manglam_last_auto_backup",
+  "manglam_backup_db",
+  "manglam_edit_patient",
+  "cp_attachments_purged_v1",
+  "cp_legacy_patients_migrated",
+  "cp_theme",
+  "cp_lite_mode",
+]);
+
+function isAppDataKey(key: string): boolean {
+  if (DEVICE_ONLY_KEYS.has(key)) return false;
+  return key.startsWith("cp_") || key.startsWith("manglam_") || key.startsWith("mc_") || key.startsWith("pa_");
+}
+
+function snapshotAppKeys(): Record<string, string> {
+  const out: Record<string, string> = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !isAppDataKey(k)) continue;
+      const v = localStorage.getItem(k);
+      if (v !== null) out[k] = v;
+    }
+  } catch {
+    /* storage unreadable — the named sections still make it into the file */
+  }
+  return out;
+}
+
+/** Add the full key sweep to a backup that does not already carry one. */
+function withAllKeys(jsonStr: string): string {
+  try {
+    const data = JSON.parse(jsonStr);
+    if (data && typeof data === "object" && !data.allKeys) {
+      data.allKeys = snapshotAppKeys();
+      return JSON.stringify(data, null, 2);
+    }
+  } catch {
+    /* not parseable — hand back untouched and let the caller's checks fire */
+  }
+  return jsonStr;
+}
+
+/** Put back any key the store's own importBackup did not restore. */
+function restoreExtraKeys(jsonStr: string): number {
+  let restored = 0;
+  try {
+    const data = JSON.parse(jsonStr);
+    const all = data?.allKeys;
+    if (!all || typeof all !== "object") return 0;
+    for (const [k, v] of Object.entries(all)) {
+      if (!isAppDataKey(k) || typeof v !== "string") continue;
+      if (localStorage.getItem(k) === v) continue;   // already restored
+      localStorage.setItem(k, v);
+      restored++;
+    }
+  } catch {
+    /* nothing extra to restore */
+  }
+  return restored;
+}
+
+/**
+ * Describe what actually went into a backup file, by reading the file itself.
+ *
+ * Deliberately independent of store.ts: it inspects the JSON that was just
+ * produced rather than asking the store what it exported. So an empty or
+ * half-written backup is obvious at a glance — "0 patients" in the toast is
+ * the warning you want before you drive home trusting that file.
+ */
+function describeBackup(jsonStr: string): string {
+  try {
+    const d = JSON.parse(jsonStr);
+    const parts: string[] = [];
+    const count = (v: any) => (Array.isArray(v) ? v.length : 0);
+
+    // Named sections, in the order that matters if you are checking by eye.
+    const sections: [string, any, string][] = [
+      ["patient", d.patients, "patients"],
+      ["medicine", d.medicines, "medicines"],
+      ["pending fee", d.pendingFees, "pending fees"],
+      ["loose sale", d.looseSales, "loose sales"],
+      ["expense", d.expenses, "expenses"],
+      ["stock audit", d.stockAudits, "stock audits"],
+    ];
+    for (const [singular, value] of sections) {
+      const n = count(value);
+      if (n > 0) parts.push(`${n} ${singular}${n === 1 ? "" : singular === "pending fee" ? "s" : "s"}`);
+    }
+
+    // allKeys is the lossless sweep in the newer backup format — if it is
+    // there, say so, because it is what guarantees nothing was dropped.
+    if (d.allKeys && typeof d.allKeys === "object") {
+      parts.push(`${Object.keys(d.allKeys).length} keys (full snapshot)`);
+    }
+
+    if (parts.length === 0) {
+      return "⚠ Backup looks empty — check it before relying on it.";
+    }
+    return parts.join(" · ");
+  } catch {
+    return `${Math.round(jsonStr.length / 1024)} KB written.`;
+  }
+}
+import { formatCurrency } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
+import * as z from "zod";
+
+// ── Undo Manager Hook ─────────────────────────────────────────────────────────
+function useUndoManager(toast: ReturnType<typeof useToast>["toast"], onAfterUndo?: () => void) {
+  const stackRef = useRef<Array<{ label: string; snapshot: Record<string, string> }>>([]);
+  const onAfterUndoRef = useRef(onAfterUndo);
+  useEffect(() => { onAfterUndoRef.current = onAfterUndo; }, [onAfterUndo]);
+
+  // Call this BEFORE making a destructive change — saves full localStorage state
+  const pushUndo = useCallback((label: string) => {
+    const snapshot: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) snapshot[key] = localStorage.getItem(key) ?? "";
+    }
+    stackRef.current.push({ label, snapshot });
+    if (stackRef.current.length > 20) stackRef.current.shift();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        const entry = stackRef.current.pop();
+        if (entry) {
+          // Restore every key that existed before, remove any that didn't
+          const keysNow = new Set<string>();
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i); if (k) keysNow.add(k);
+          }
+          keysNow.forEach(k => { if (!(k in entry.snapshot)) localStorage.removeItem(k); });
+          Object.entries(entry.snapshot).forEach(([k, v]) => localStorage.setItem(k, v));
+          onAfterUndoRef.current?.();
+          toast({ title: "↩ Undone", description: entry.label });
+        } else {
+          toast({ title: "Nothing to undo", description: "No recent actions to undo." });
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toast]);
+
+  return { pushUndo };
+}
+
+const editSchema = z.object({
+  name: z.string().min(1),
+  age: z.coerce.number().optional(),
+  ageMonths: z.coerce.number().optional(),
+  weight: z.string().optional(),
+  address: z.string().optional(),
+  mobile: z.string(),
+  patientNo: z.string().optional(),
+  complaintCode: z.string().optional(),
+  complaint: z.string().optional(),
+  treatment: z.string().optional(),
+  adviceCode: z.string().optional(),
+  advice: z.string().optional(),
+  reports: z.string().optional(),
+  fees: z.coerce.number().optional(),
+});
+
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+// ── Patient Card (copied from Home.tsx) ──────────────────────────────────────
+type CardLang = "en" | "hi" | "gu";
+const CARD_LABELS: Record<CardLang, {
+  clinicName: string; doctor: string; tagline: string;
+  patientCard: string; caseNo: string;
+  patientName: string; address: string; clinicPhone: string;
+  footer: string; footerSub: string;
+  tapToCall: string; tapForLocation: string;
+}> = {
+  en: { clinicName: "Manglam Clinic", doctor: "Dr. Vijay Girglani  |  B.A.M.S.", tagline: "AYURVEDIC & GENERAL PRACTICE", patientCard: "✦  PATIENT CARD  ✦", caseNo: "CASE NO.", patientName: "PATIENT NAME", address: "ADDRESS", clinicPhone: "CLINIC PHONE", footer: "MANGLAM HOSPITAL  •  MORBI, GUJARAT", footerSub: "Show this card on your next visit", tapToCall: "👆 Tap here to write your case or call us", tapForLocation: "👆 Tap here for clinic location" },
+  hi: { clinicName: "मंगलम क्लिनिक", doctor: "डॉ. विजय गिरगलानी  |  बी.ए.एम.एस.", tagline: "आयुर्वेदिक एवं सामान्य चिकित्सा", patientCard: "✦  रोगी कार्ड  ✦", caseNo: "केस नं.", patientName: "रोगी का नाम", address: "पता", clinicPhone: "क्लिनिक फोन", footer: "मंगलम हॉस्पिटल  •  मोरबी, गुजरात", footerSub: "अगली मुलाकात पर यह कार्ड दिखाएं", tapToCall: "👆 केस लिखने या कॉल करने के लिए यहाँ दबाएं", tapForLocation: "👆 क्लिनिक का पता देखने के लिए यहाँ दबाएं" },
+  gu: { clinicName: "મંગલમ ક્લિનિક", doctor: "ડૉ. વિજય ગિરગ્લાણી  |  બી.એ.એમ.એસ.", tagline: "આયુર્વેદિક અને સામાન્ય પ્રેક્ટિસ", patientCard: "✦  દર્દી કાર્ડ  ✦", caseNo: "કેસ નં.", patientName: "દર્દીનું નામ", address: "સરનામું", clinicPhone: "ક્લિનિક ફોન", footer: "મંગલમ હૉસ્પિટલ  •  મોરબી, ગુજરાત", footerSub: "આગલી મુલાકાત વખતે આ કાર્ડ બતાવો", tapToCall: "👆 કેસ લખવા અથવા કૉલ કરવા અહીં ટૅપ કરો", tapForLocation: "👆 ક્લિનિકનું સ્થળ જોવા અહીં ટૅપ કરો" },
+};
+
+function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasElement {
+  const L = CARD_LABELS[lang];
+  const scale = 3;
+  const W = 360;
+  const AMBER_H=5,HDR_PT=24,LOGO_D=64,LOGO_MB=10,CNAME_H=22,CNAME_MB=3,DR_H=14,DR_MB=10,DIV_H=12,HDR_PB=16;
+  const PANEL_MX=16,PANEL_MB=16,STRIPE_H=3,PANEL_PX=16,PANEL_PT=16,PC_LABEL_H=18;
+  const CASE_PT=10,CASE_LABEL=12,CASE_NUM=28,CASE_PB=10,CASE_MB=16,ROW_H=40,PANEL_PB=16,FTR_PB=16,FTR_L1=14,FTR_L2=14;
+  const HINT_H=12;
+  const caseBoxH=CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
+  const panelInnerH=STRIPE_H+PANEL_PT+PC_LABEL_H+caseBoxH+CASE_MB+ROW_H+(ROW_H+HINT_H)*2+PANEL_PB;
+  const hdrH=HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
+  const ftrH=FTR_L1+FTR_L2+FTR_PB+4;
+  const H=AMBER_H+hdrH+panelInnerH+PANEL_MB+ftrH+AMBER_H;
+  const canvas=document.createElement("canvas");
+  canvas.width=W*scale; canvas.height=H*scale;
+  const ctx=canvas.getContext("2d")!;
+  ctx.scale(scale,scale);
+  const rr=(x:number,y:number,w:number,h:number,r:number)=>{ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();};
+  const amberGrad=ctx.createLinearGradient(0,0,W,0);amberGrad.addColorStop(0,"#c45e10");amberGrad.addColorStop(0.5,"#e07828");amberGrad.addColorStop(1,"#c45e10");
+  const bgGrad=ctx.createLinearGradient(0,0,0,H);bgGrad.addColorStop(0,"#1a3a0f");bgGrad.addColorStop(0.5,"#1f4a12");bgGrad.addColorStop(1,"#0f2208");
+  rr(0,0,W,H,24);ctx.fillStyle=bgGrad;ctx.fill();ctx.save();ctx.clip();
+  ctx.save();ctx.globalAlpha=0.05;ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(W-30,50,100,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(-20,H-50,110,0,Math.PI*2);ctx.fill();ctx.restore();
+  ctx.fillStyle=amberGrad;ctx.fillRect(0,0,W,AMBER_H);
+  let cy=AMBER_H+HDR_PT;
+  const logoX=W/2,logoY=cy+LOGO_D/2;
+  ctx.save();ctx.shadowColor="rgba(224,120,40,0.5)";ctx.shadowBlur=14;ctx.strokeStyle="rgba(224,120,40,0.4)";ctx.lineWidth=2;ctx.beginPath();ctx.arc(logoX,logoY,LOGO_D/2+3,0,Math.PI*2);ctx.stroke();ctx.restore();
+  const logoGrad=ctx.createRadialGradient(logoX-10,logoY-10,4,logoX,logoY,LOGO_D/2);logoGrad.addColorStop(0,"#e07828");logoGrad.addColorStop(1,"#b84f0a");ctx.fillStyle=logoGrad;ctx.beginPath();ctx.arc(logoX,logoY,LOGO_D/2,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#ffffff";ctx.font=`900 28px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("M",logoX,logoY+1);
+  cy+=LOGO_D+LOGO_MB;ctx.fillStyle="#ffffff";ctx.font=`bold 20px serif`;ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.fillText(L.clinicName,W/2,cy+CNAME_H-4);cy+=CNAME_H+CNAME_MB;
+  ctx.fillStyle="#d4a574";ctx.font=`italic 10.5px serif`;ctx.fillText(L.doctor,W/2,cy+DR_H-3);cy+=DR_H+DR_MB;
+  const lineY=cy+DIV_H/2;ctx.strokeStyle="rgba(212,165,116,0.3)";ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(20,lineY);ctx.lineTo(W/2-62,lineY);ctx.stroke();ctx.beginPath();ctx.moveTo(W/2+62,lineY);ctx.lineTo(W-20,lineY);ctx.stroke();ctx.fillStyle="rgba(212,165,116,0.8)";ctx.font=`600 7px sans-serif`;ctx.textBaseline="middle";ctx.fillText(L.tagline,W/2,lineY);cy+=DIV_H+HDR_PB;
+  const pX=PANEL_MX,pW=W-PANEL_MX*2,pY=cy;
+  ctx.save();ctx.shadowColor="rgba(0,0,0,0.35)";ctx.shadowBlur=18;ctx.shadowOffsetY=4;rr(pX,pY,pW,panelInnerH,16);ctx.fillStyle="#ffffff";ctx.fill();ctx.restore();
+  ctx.save();rr(pX,pY,pW,panelInnerH,16);ctx.clip();ctx.fillStyle=amberGrad;ctx.fillRect(pX,pY,pW,STRIPE_H);
+  let py=pY+STRIPE_H+PANEL_PT;
+  ctx.fillStyle="#7c3a0a";ctx.font=`700 7.5px sans-serif`;(ctx as any).letterSpacing="2px";ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.fillText(L.patientCard,W/2,py+10);(ctx as any).letterSpacing="0px";py+=PC_LABEL_H;
+  const cBX=pX+12,cBW=pW-24;rr(cBX,py,cBW,caseBoxH,10);ctx.fillStyle="#fdf0e6";ctx.fill();ctx.fillStyle="#b8825a";ctx.font=`700 6.5px sans-serif`;(ctx as any).letterSpacing="1.5px";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText(L.caseNo,cBX+14,py+CASE_PT+CASE_LABEL-2);(ctx as any).letterSpacing="0px";
+  const rawD=patient.mobile.replace(/\D/g,"");const caseNo=rawD.padStart(10,"0");ctx.fillStyle="#c45e10";ctx.font=`900 22px monospace`;ctx.textBaseline="alphabetic";ctx.fillText(caseNo,cBX+14,py+CASE_PT+CASE_LABEL+CASE_NUM-4);
+  const icX=cBX+cBW-46,icY=py+caseBoxH/2-14;ctx.fillStyle="rgba(196,94,16,0.1)";rr(icX,icY,28,28,7);ctx.fill();ctx.strokeStyle="#c45e10";ctx.lineWidth=1.5;rr(icX+4,icY+6,20,16,3);ctx.stroke();ctx.beginPath();ctx.moveTo(icX+4,icY+11);ctx.lineTo(icX+24,icY+11);ctx.stroke();py+=caseBoxH+CASE_MB;
+  const rowPX=pX+12,rowPXR=pX+pW-12;
+  const infoRow=(emoji:string,label:string,value:string,isLast:boolean,isLink=false,hint="")=>{const totalH=ROW_H+(hint?HINT_H:0);const rowMid=py+ROW_H/2;ctx.fillStyle="#fdf0e6";ctx.beginPath();ctx.arc(rowPX+11,rowMid,11,0,Math.PI*2);ctx.fill();ctx.font=`11px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(emoji,rowPX+11,rowMid);const textX=rowPX+22+8;ctx.fillStyle="#94a3b8";ctx.font=`700 7px sans-serif`;(ctx as any).letterSpacing="0.8px";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText(label,textX,rowMid-2);(ctx as any).letterSpacing="0px";ctx.fillStyle=isLink?"#c45e10":"#1e293b";ctx.font=`700 11px sans-serif`;ctx.textBaseline="alphabetic";let v=value;const maxW=rowPXR-textX-4;while(ctx.measureText(v).width>maxW&&v.length>2)v=v.slice(0,-1);if(v!==value)v=v.trimEnd()+"…";ctx.fillText(v,textX,rowMid+12);if(isLink){const vW=ctx.measureText(v).width;ctx.strokeStyle="rgba(196,94,16,0.5)";ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(textX,rowMid+14);ctx.lineTo(textX+vW,rowMid+14);ctx.stroke();}if(hint){ctx.fillStyle="#15803d";ctx.font=`600 7.5px sans-serif`;ctx.textBaseline="alphabetic";ctx.textAlign="left";ctx.fillText(hint,textX,py+ROW_H+HINT_H-2);}py+=totalH;if(!isLast){ctx.strokeStyle="#f1f5f9";ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(rowPX,py);ctx.lineTo(rowPXR,py);ctx.stroke();}};
+  infoRow("👤",L.patientName,patient.name.toUpperCase(),false);infoRow("📍",L.address,patient.address||"Pipaliya Char Rasta",false,true,L.tapForLocation);infoRow("📞",L.clinicPhone,"+91 96381 81875",true,true,L.tapToCall);
+  ctx.restore();
+  const fY=pY+panelInnerH+PANEL_MB;ctx.fillStyle="rgba(212,165,116,0.75)";ctx.font=`700 8px sans-serif`;(ctx as any).letterSpacing="1.5px";ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.fillText(L.footer,W/2,fY+FTR_L1);(ctx as any).letterSpacing="0px";ctx.fillStyle="rgba(255,255,255,0.35)";ctx.font=`9px sans-serif`;ctx.fillText(L.footerSub,W/2,fY+FTR_L1+FTR_L2+2);
+  ctx.fillStyle=amberGrad;ctx.fillRect(0,H-AMBER_H,W,AMBER_H);ctx.restore();
+  return canvas;
+}
+
+function PatientCardModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+  const rawDigits = patient.mobile.replace(/\D/g, "");
+  const caseNo = rawDigits.padStart(10, "0");
+  const CLINIC_MOBILE = "9638181875";
+  const CLINIC_ADDRESS = "Pipaliya Char Rasta";
+  const clinicPhone = CLINIC_MOBILE.replace(/(\d{5})(\d{5})/, "$1 $2");
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState("");
+  const [lang, setLang] = useState<CardLang>("en");
+  const [showLangPicker, setShowLangPicker] = useState(false);
+  const L = CARD_LABELS[lang];
+  const patientWaLabel = rawDigits.length >= 10 ? `Send to ${rawDigits.slice(-10)}` : "Send on WhatsApp";
+
+  // ── Load jsPDF dynamically (only once) ──
+  const getJsPDF = async () => {
+    if ((window as any).__jsPDF) return (window as any).__jsPDF;
+    await new Promise<void>((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.onload = () => res(); s.onerror = () => rej(new Error("jsPDF load failed"));
+      document.head.appendChild(s);
+    });
+    (window as any).__jsPDF = (window as any).jspdf.jsPDF;
+    return (window as any).__jsPDF;
+  };
+
+  const MAPS_URL = "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z/data=!4m16!1m9!3m8!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!2sMangalm+Hospital!8m2!3d22.9329183!4d70.6755299!9m1!1b1!16s%2Fg%2F11bcclqsjl!3m5!1s0x395a1d86adcf87dd:0x538508c1bbd0e512!8m2!3d22.9329183!4d70.6755299!16s%2Fg%2F11bcclqsjl?entry=ttu&g_ep=EgoyMDI2MDUzMS4wIKXMDSoASAFQAw%3D%3D";
+
+  const doShare = async (chosenLang: CardLang) => {
+    setShowLangPicker(false); setLang(chosenLang); setSharing(true); setShareError("");
+    try {
+      // 1. Draw card to canvas
+      const canvas = drawPatientCard(patient, chosenLang);
+      const W_px = canvas.width;
+      const H_px = canvas.height;
+
+      // 2. Canvas → JPEG
+      const imgData = canvas.toDataURL("image/jpeg", 0.88);
+
+      // 3. Build PDF — same aspect ratio, 90mm wide
+      const jsPDF = await getJsPDF();
+      const PDF_W = 90;
+      const PDF_H = Math.round((H_px / W_px) * PDF_W);
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [PDF_W, PDF_H], compress: true });
+      doc.addImage(imgData, "JPEG", 0, 0, PDF_W, PDF_H, undefined, "FAST");
+
+      // 4. Invisible tappable link annotations (same layout constants as drawPatientCard)
+      const AMBER_H=5, HDR_PT=24, LOGO_D=64, LOGO_MB=10, CNAME_H=22, CNAME_MB=3,
+            DR_H=14, DR_MB=10, DIV_H=12, HDR_PB=16, PANEL_MX=16, STRIPE_H=3,
+            PANEL_PT=16, PC_LABEL_H=18, CASE_PT=10, CASE_LABEL=12, CASE_NUM=28,
+            CASE_PB=10, CASE_MB=16, ROW_H=40, HINT_H=12;
+      const hdrH = HDR_PT+LOGO_D+LOGO_MB+CNAME_H+CNAME_MB+DR_H+DR_MB+DIV_H+HDR_PB;
+      const caseBoxH = CASE_PT+CASE_LABEL+CASE_NUM+CASE_PB;
+      const panelTop = AMBER_H + hdrH;
+      const row1Top  = panelTop + STRIPE_H + PANEL_PT + PC_LABEL_H + caseBoxH + CASE_MB; // Name row (no hint)
+      const row2Top  = row1Top + ROW_H;              // Address row
+      const row3Top  = row2Top + ROW_H + HINT_H;    // Phone row (after address row + its hint)
+      const W_log = 360;
+      const toMM = (px: number) => (px / W_log) * PDF_W;
+      const panelX = toMM(PANEL_MX);
+      const panelW = toMM(W_log - PANEL_MX * 2);
+
+      // 📍 Address — opens Google Maps
+      doc.link(panelX, toMM(row2Top), panelW, toMM(ROW_H + HINT_H), { url: MAPS_URL });
+      // 📞 Phone — opens dialler
+      doc.link(panelX, toMM(row3Top), panelW, toMM(ROW_H + HINT_H), { url: "tel:+919638181875" });
+
+      // 5. Output as Blob and download
+      const pdfBlob = doc.output("blob");
+      const waNumber = rawDigits.length === 10 ? `91${rawDigits}` : rawDigits.startsWith("91") && rawDigits.length === 12 ? rawDigits : rawDigits;
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const pdfFile = new File([pdfBlob], "manglam-patient-card.pdf", { type: "application/pdf" });
+
+      if (isMobile) {
+        if (
+          typeof navigator.share === "function" &&
+          typeof navigator.canShare === "function" &&
+          navigator.canShare({ files: [pdfFile] })
+        ) {
+          try {
+            await navigator.share({ files: [pdfFile], title: "Manglam Clinic — Patient Card" });
+            setSharing(false); return;
+          } catch (e: any) { if (e?.name === "AbortError") { setSharing(false); return; } }
+        }
+        // Fallback: download + open WhatsApp
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+      } else {
+        // Desktop: download PDF + open WhatsApp
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a"); a.href = url; a.download = "manglam-patient-card.pdf"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        window.open(`whatsapp://send?phone=${waNumber}`, "_blank");
+        setShareError("✅ PDF downloaded! Attach it in the WhatsApp chat — the phone & location links will be tappable.");
+      }
+    } catch (err: any) {
+      console.error("Card share error:", err);
+      setShareError("Could not generate card. Please try again.");
+    }
+    setSharing(false);
+  };
+
+  const LANGS: { id: CardLang; label: string; native: string; flag: string }[] = [
+    { id: "en", label: "English", native: "English", flag: "🇬🇧" },
+    { id: "hi", label: "Hindi", native: "हिन्दी", flag: "🇮🇳" },
+    { id: "gu", label: "Gujarati", native: "ગુજરાતી", flag: "🏵️" },
+  ];
+
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+        <motion.div initial={{ scale: 0.85, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.85, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25 }} onClick={e => e.stopPropagation()} className="w-full max-w-xs">
+          {/* Language tab strip */}
+          <div className="flex gap-1 mb-3 p-1 rounded-2xl" style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)" }}>
+            {LANGS.map(l => (
+              <button key={l.id} onClick={() => setLang(l.id)} className="flex-1 py-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-0.5"
+                style={{ background: lang === l.id ? "#ffffff" : "transparent", color: lang === l.id ? "#c45e10" : "rgba(255,255,255,0.7)", boxShadow: lang === l.id ? "0 2px 8px rgba(0,0,0,0.15)" : "none" }}>
+                <span style={{ fontSize: 16 }}>{l.flag}</span><span>{l.native}</span>
+              </button>
+            ))}
+          </div>
+          {/* Card preview */}
+          <div className="rounded-3xl overflow-hidden shadow-2xl" style={{ background: "linear-gradient(180deg, #1a3a0f 0%, #1f4a12 50%, #0f2208 100%)", position: "relative" }}>
+            <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
+            <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", bottom: 60, left: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.04)", pointerEvents: "none" }} />
+            <div className="flex flex-col items-center pt-6 pb-4 px-5" style={{ position: "relative", zIndex: 1 }}>
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg, #e07828, #b84f0a)", boxShadow: "0 0 0 3px rgba(224,120,40,0.3), 0 0 18px rgba(224,120,40,0.25)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+                <span style={{ color: "#fff", fontFamily: "serif", fontWeight: 900, fontSize: 26 }}>M</span>
+              </div>
+              <p style={{ color: "#ffffff", fontFamily: "serif", fontWeight: 700, fontSize: 18, letterSpacing: 0.5, marginBottom: 3 }}>{L.clinicName}</p>
+              <p style={{ color: "#d4a574", fontStyle: "italic", fontSize: 10, marginBottom: 10 }}>{L.doctor}</p>
+              <div className="flex items-center gap-2 w-full">
+                <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
+                <p style={{ color: "rgba(212,165,116,0.8)", fontSize: 7, letterSpacing: "1.5px", whiteSpace: "nowrap" }}>{L.tagline}</p>
+                <div style={{ flex: 1, height: 1, background: "rgba(212,165,116,0.3)" }} />
+              </div>
+            </div>
+            <div className="mx-4 mb-4 rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
+              <div style={{ height: 3, background: "linear-gradient(90deg, #c45e10, #e07828)" }} />
+              <div className="px-4 py-4" style={{ background: "#ffffff" }}>
+                <p style={{ textAlign: "center", fontSize: 8, fontWeight: 700, letterSpacing: "2px", color: "#7c3a0a", marginBottom: 10 }}>{L.patientCard}</p>
+                <div className="rounded-xl px-3 py-2.5 mb-4" style={{ background: "#fdf0e6" }}>
+                  <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1.5px", color: "#b8825a", marginBottom: 4 }}>{L.caseNo}</p>
+                  <p style={{ fontSize: 20, fontWeight: 900, fontFamily: "monospace", color: "#c45e10", letterSpacing: 1 }}>{caseNo}</p>
+                </div>
+                {[
+                  { icon: "👤", label: L.patientName, value: patient.name.toUpperCase(), href: null, hint: null },
+                  { icon: "📍", label: L.address, value: patient.address || CLINIC_ADDRESS, href: MAPS_URL, hint: L.tapForLocation },
+                  { icon: "📞", label: L.clinicPhone, value: `+91 ${clinicPhone}`, href: `tel:+91${CLINIC_MOBILE}`, hint: L.tapToCall },
+                ].map((row, i, arr) => (
+                  <div key={i}>
+                    <div className="flex items-center gap-2 py-2">
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#fdf0e6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>{row.icon}</div>
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontSize: 7, fontWeight: 700, letterSpacing: "1px", color: "#94a3b8", marginBottom: 1 }}>{row.label}</p>
+                        {row.href ? (
+                          <>
+                            <a
+                              href={row.href}
+                              target={row.href.startsWith("tel:") ? undefined : "_blank"}
+                              rel={row.href.startsWith("tel:") ? undefined : "noopener noreferrer"}
+                              style={{ fontSize: 11, fontWeight: 700, color: "#c45e10", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", textDecoration: "underline", textDecorationColor: "rgba(196,94,16,0.4)", textUnderlineOffset: 2 }}
+                            >{row.value}</a>
+                            {row.hint && <p style={{ fontSize: 7.5, fontWeight: 600, color: "#15803d", marginTop: 2, lineHeight: 1.3 }}>{row.hint}</p>}
+                          </>
+                        ) : (
+                          <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.value}</p>
+                        )}
+                      </div>
+                    </div>
+                    {i < arr.length - 1 && <div style={{ height: 1, background: "#f1f5f9" }} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="pb-4 px-4 flex flex-col items-center gap-0.5" style={{ position: "relative", zIndex: 1 }}>
+              <p style={{ fontSize: 8, fontWeight: 700, letterSpacing: "1.5px", color: "rgba(212,165,116,0.75)" }}>{L.footer}</p>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.35)" }}>{L.footerSub}</p>
+            </div>
+            <div style={{ height: 5, background: "linear-gradient(90deg, #c45e10, #e07828, #c45e10)" }} />
+          </div>
+          {shareError && (
+            <div className="mt-2 px-3 py-2 rounded-xl text-center text-xs font-medium"
+              style={{ background: shareError.startsWith("✅") ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)", color: shareError.startsWith("✅") ? "#15803d" : "#92400e", border: `1px solid ${shareError.startsWith("✅") ? "rgba(34,197,94,0.3)" : "rgba(251,191,36,0.3)"}` }}>
+              {shareError}
+            </div>
+          )}
+          <AnimatePresence>
+            {showLangPicker && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                className="mt-3 rounded-2xl overflow-hidden shadow-xl" style={{ background: "#fff", border: "1px solid rgba(196,94,16,0.2)" }}>
+                <p style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#7c3a0a", padding: "10px 16px 6px", letterSpacing: "1px" }}>CHOOSE LANGUAGE TO SHARE</p>
+                {LANGS.map(l => (
+                  <button key={l.id} onClick={() => doShare(l.id)} className="w-full flex items-center gap-3 px-5 py-3 hover:bg-orange-50 transition-colors" style={{ borderTop: "1px solid #f1f5f9" }}>
+                    <span style={{ fontSize: 20 }}>{l.flag}</span>
+                    <div className="text-left">
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{l.label}</p>
+                      <p style={{ fontSize: 11, color: "#94a3b8" }}>{l.native}</p>
+                    </div>
+                    <span style={{ marginLeft: "auto", fontSize: 13, color: "#c45e10" }}>→</span>
+                  </button>
+                ))}
+                <button onClick={() => setShowLangPicker(false)} className="w-full py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors" style={{ borderTop: "1px solid #f1f5f9" }}>Cancel</button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {!showLangPicker && (
+            <div className="mt-4 flex gap-3">
+              <button onClick={onClose} className="flex-1 py-3 rounded-2xl bg-white/90 backdrop-blur text-slate-600 font-semibold text-sm hover:bg-white transition-all shadow">Close</button>
+              <button onClick={() => setShowLangPicker(true)} disabled={sharing}
+                className="flex-[2] py-3 rounded-2xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#1ebe5a] transition-all shadow-lg shadow-green-500/30 disabled:opacity-70">
+                {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                {sharing ? "Capturing…" : patientWaLabel}
+              </button>
+            </div>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+export default function DailyRegister() {
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [stats, setStats] = useState<DailyStats | null>(null);
+  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [showMonthly, setShowMonthly] = useState(false);
+  const [showReportCard, setShowReportCard] = useState(false);
+  const [doctorSplitDialogOpen, setDoctorSplitDialogOpen] = useState(false);
+  const [d1NameInput, setD1NameInput] = useState("");
+  const [d1PctInput, setD1PctInput] = useState(80);
+  const [d2NameInput, setD2NameInput] = useState("");
+  const [d2PctInput, setD2PctInput] = useState(20);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+  const [duplicateScope, setDuplicateScope] = useState<"day" | "all">("day");
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicatePatientGroup[]>([]);
+  const [selectedDuplicateIds, setSelectedDuplicateIds] = useState<Set<number>>(new Set());
+  const [showLooseAuditModal, setShowLooseAuditModal] = useState(false);
+  const [looseAuditRows, setLooseAuditRows] = useState<LooseAuditRow[]>([]);
+  const [selectedOrphanIds, setSelectedOrphanIds] = useState<Set<number>>(new Set());
+  const [allDates, setAllDates] = useState<{ date: string; count: number; totalFees: number }[]>([]);
+  const [printPatient, setPrintPatient] = useState<Patient | null>(null);
+  const [cardPatient, setCardPatient] = useState<Patient | null>(null);
+  const [filterType, setFilterType] = useState<"all" | "general" | "ayurvedic">("all");
+  const [monthlyMonth, setMonthlyMonth] = useState(new Date().getMonth() + 1);
+  const [monthlyYear, setMonthlyYear] = useState(new Date().getFullYear());
+  const importRef = useRef<HTMLInputElement>(null);
+  const excelImportRef = useRef<HTMLInputElement>(null);
+  const [showWaReport, setShowWaReport] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState("");
+  const [viewingAttachments, setViewingAttachments] = useState<{ files: string[]; patientName: string; date: string } | null>(null);
+  const [waCustomNote, setWaCustomNote] = useState("");
+  const { toast } = useToast();
+
+  // ── Auto Daily Backup ─────────────────────────────────────────────────────
+  // Persists a FileSystemDirectoryHandle in IndexedDB so it survives page refresh
+  const [backupFolderName, setBackupFolderName] = useState<string>(() => {
+    try { return localStorage.getItem("manglam_backup_folder_name") || ""; } catch { return ""; }
+  });
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => {
+    try { return localStorage.getItem("manglam_auto_backup_enabled") === "true"; } catch { return false; }
+  });
+  const [lastAutoBackup, setLastAutoBackup] = useState<string>(() => {
+    try { return localStorage.getItem("manglam_last_auto_backup") || ""; } catch { return ""; }
+  });
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+
+  // ── IndexedDB helpers for persisting directory handle ────────────────────
+  const idbGetHandle = (): Promise<FileSystemDirectoryHandle | null> =>
+    new Promise(resolve => {
+      try {
+        const req = indexedDB.open("manglam_backup_db", 1);
+        req.onupgradeneeded = () => req.result.createObjectStore("handles");
+        req.onsuccess = () => {
+          const tx = req.result.transaction("handles", "readonly");
+          const get = tx.objectStore("handles").get("backupDir");
+          get.onsuccess = () => resolve(get.result ?? null);
+          get.onerror = () => resolve(null);
+        };
+        req.onerror = () => resolve(null);
+      } catch { resolve(null); }
+    });
+
+  const idbSetHandle = (handle: FileSystemDirectoryHandle): Promise<void> =>
+    new Promise(resolve => {
+      try {
+        const req = indexedDB.open("manglam_backup_db", 1);
+        req.onupgradeneeded = () => req.result.createObjectStore("handles");
+        req.onsuccess = () => {
+          const tx = req.result.transaction("handles", "readwrite");
+          tx.objectStore("handles").put(handle, "backupDir");
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+        };
+        req.onerror = () => resolve();
+      } catch { resolve(); }
+    });
+
+  // ── Core backup-to-folder function ───────────────────────────────────────
+  const writeBackupToFolder = async (handle: FileSystemDirectoryHandle, date: Date, silent = false) => {
+    const year = format(date, "yyyy");
+    const monthName = format(date, "MMMM"); // e.g. "June"
+    const dayLabel = format(date, "dd-MMM-yyyy"); // e.g. "23-Jun-2026"
+    const fileName = `Manglam_Backup_${dayLabel}.json`;
+
+    // ── Build and validate BEFORE touching any file on disk ───────────────
+    // createWritable() truncates the target the moment it opens. So if the
+    // export threw, or the tab closed mid-write, the old good backup was
+    // already gone and nothing replaced it — that is how a 0-byte backup
+    // file happens. Everything below is ordered so the existing file is only
+    // replaced once a complete, verified new one exists beside it.
+    const json = withAllKeys(exportBackup());
+    if (!json || json.length < 20) {
+      throw new Error("Backup came out empty — nothing was written, your previous backup is untouched.");
+    }
+    try {
+      JSON.parse(json);
+    } catch {
+      throw new Error("Backup data is corrupt — nothing was written, your previous backup is untouched.");
+    }
+
+    // Navigate / create: MANGLAM CLINIC DAILY BACKUP / 2026 / June /
+    const yearDir = await handle.getDirectoryHandle(year, { create: true });
+    const monthDir = await yearDir.getDirectoryHandle(monthName, { create: true });
+
+    // Write to a temporary file first.
+    const tmpName = `${fileName}.tmp`;
+    const tmpHandle = await monthDir.getFileHandle(tmpName, { create: true });
+    const writable = await (tmpHandle as any).createWritable();
+    await writable.write(json);
+    await writable.close();
+
+    // Verify what actually landed on disk before trusting it.
+    const written = await tmpHandle.getFile();
+    if (written.size < json.length * 0.5) {
+      throw new Error(`Backup write was incomplete (${written.size} bytes) — your previous backup is untouched.`);
+    }
+
+    // Promote: copy the verified bytes onto the real file, then drop the tmp.
+    const verified = await written.text();
+    const fileHandle = await monthDir.getFileHandle(fileName, { create: true });
+    const finalWritable = await (fileHandle as any).createWritable();
+    await finalWritable.write(verified);
+    await finalWritable.close();
+    try {
+      await (monthDir as any).removeEntry(tmpName);
+    } catch {
+      /* tmp left behind is harmless — the real backup is already in place */
+    }
+
+    const key = format(date, "yyyy-MM-dd");
+    localStorage.setItem("manglam_last_auto_backup", key);
+    setLastAutoBackup(key);
+    if (!silent) toast({ title: "✅ Backup Saved", description: `${year}/${monthName}/${fileName} — ${describeBackup(json)}` });
+  };
+
+  // ── Select backup folder ──────────────────────────────────────────────────
+  const handleSelectBackupFolder = async () => {
+    if (!(window as any).showDirectoryPicker) {
+      toast({ variant: "destructive", title: "Not Supported", description: "Please use Chrome or Edge browser for folder backup." });
+      return;
+    }
+    try {
+      const handle: FileSystemDirectoryHandle = await (window as any).showDirectoryPicker({ mode: "readwrite", startIn: "downloads" });
+      dirHandleRef.current = handle;
+      await idbSetHandle(handle);
+      localStorage.setItem("manglam_backup_folder_name", handle.name);
+      localStorage.setItem("manglam_auto_backup_enabled", "true");
+      setBackupFolderName(handle.name);
+      setAutoBackupEnabled(true);
+      toast({ title: "📁 Folder Selected", description: `Auto backup will save inside "${handle.name}"` });
+    } catch (err: any) {
+      if (err?.name !== "AbortError") toast({ variant: "destructive", title: "Folder Error", description: String(err?.message || err) });
+    }
+  };
+
+  // ── Manual daily backup to folder ────────────────────────────────────────
+  const handleFolderBackup = async () => {
+    setIsBackingUp(true);
+    try {
+      let handle = dirHandleRef.current;
+      if (!handle) handle = await idbGetHandle();
+      if (!handle) {
+        // No folder selected yet — prompt
+        await handleSelectBackupFolder();
+        handle = dirHandleRef.current;
+        if (!handle) { setIsBackingUp(false); return; }
+      }
+      // Verify permission
+      const perm = await (handle as any).requestPermission({ mode: "readwrite" });
+      if (perm !== "granted") {
+        toast({ variant: "destructive", title: "Permission Denied", description: "Please allow access to the backup folder." });
+        setIsBackingUp(false); return;
+      }
+      dirHandleRef.current = handle;
+      await writeBackupToFolder(handle, new Date());
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Backup Failed", description: String(err?.message || err) });
+    }
+    setIsBackingUp(false);
+  };
+
+  // ── Auto-backup on load: if today not yet backed up ──────────────────────
+  useEffect(() => {
+    const runAutoBackup = async () => {
+      const today = format(new Date(), "yyyy-MM-dd");
+      if (!autoBackupEnabled || lastAutoBackup === today) return;
+      try {
+        let handle = dirHandleRef.current;
+        if (!handle) handle = await idbGetHandle();
+        if (!handle) return;
+        const perm = await (handle as any).queryPermission({ mode: "readwrite" });
+        if (perm !== "granted") return;
+        dirHandleRef.current = handle;
+        await writeBackupToFolder(handle, new Date(), true);
+        toast({ title: "🔄 Auto Backup Done", description: `Today's backup saved automatically.` });
+      } catch (err: any) {
+        // This used to fail silently, which meant the auto-backup could be
+        // dead for weeks without anyone knowing. It now says so out loud.
+        console.error("Auto backup failed:", err);
+        toast({
+          variant: "destructive",
+          title: "Auto Backup Failed",
+          description: (err?.message || "Could not write today's backup.") + " Use Backup Now to save manually.",
+        });
+      }
+    };
+    runAutoBackup();
+    // Also run every hour in case the app stays open overnight
+    const interval = setInterval(runAutoBackup, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBackupEnabled]);
+
+  // ── Global Search ──────────────────────────────────────────────────────────
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<(Patient & { visitDate: string })[]>([]);
+  const [searchDetailPatient, setSearchDetailPatient] = useState<(Patient & { visitDate: string }) | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+
+  // refreshRef lets useUndoManager call refresh() without a circular dependency
+  const refreshRef = useRef<() => void>(() => {});
+  const { pushUndo } = useUndoManager(toast, () => refreshRef.current());
+
+  // Loose sales for selected date
+  const [looseSalesForDay, setLooseSalesForDay] = useState<LooseSaleEntry[]>(() => getLooseSalesForDate(format(new Date(), "yyyy-MM-dd")));
+  const looseDayTotal = looseSalesForDay.reduce((s, e) => s + e.amount, 0);
+
+  // ── Single source of truth for the day's collection ──
+  // stats.totalFees ALREADY contains every loose sale that was auto-saved as a
+  // register row. Only loose sales without a register row get added on top
+  // (that covers entries made before auto-save existed).
+  // A record saved in the last few seconds glows green when its row appears.
+  // Keyed off createdAt rather than a render diff, so it still fires when you
+  // save on the registration page and then open the register.
+  const [justSavedId, setJustSavedId] = useState<number | null>(null);
+  useEffect(() => {
+    const now = Date.now();
+    const fresh = (stats?.patients || []).find(
+      p => p.createdAt && now - new Date(p.createdAt).getTime() < 8000,
+    );
+    if (!fresh) return;
+    setJustSavedId(fresh.id);
+    const t = setTimeout(() => setJustSavedId(null), 2400);
+    return () => clearTimeout(t);
+  }, [stats?.patients]);
+
+  const looseRecon = reconcileLoose(looseSalesForDay, stats?.patients || []);
+  const collectionTotal = (stats?.totalFees || 0) + looseRecon.unregisteredTotal;
+
+  const refresh = useCallback(() => {
+    setStats(getDailyStats(selectedDate));
+    setAllDates(getAllDates());
+    setLooseSalesForDay(getLooseSalesForDate(selectedDate));
+  }, [selectedDate]);
+
+  // Keep ref in sync so undo can call refresh after restoring localStorage
+  refreshRef.current = refresh;
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+
+  // ── Global search across all dates ───────────────────────────────────────
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchResults([]); return; }
+    const q = searchQuery.toLowerCase();
+    const dates = getAllDates();
+    const results: (Patient & { visitDate: string })[] = [];
+    for (const { date } of dates) {
+      const dayStats = getDailyStats(date);
+      for (const p of dayStats.patients || []) {
+        if (
+          p.name?.toLowerCase().includes(q) ||
+          p.mobile?.toLowerCase().includes(q) ||
+          p.complaint?.toLowerCase().includes(q) ||
+          p.address?.toLowerCase().includes(q) ||
+          p.treatment?.toLowerCase().includes(q)
+        ) {
+          results.push({ ...p, visitDate: date });
+        }
+      }
+    }
+    setSearchResults(results.slice(0, 50));
+  }, [searchQuery]);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      // Ctrl+F → open search
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault();
+        setSearchOpen(true);
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+      }
+      // Ctrl+G → jump to today
+      if ((e.ctrlKey || e.metaKey) && e.key === "g") {
+        e.preventDefault();
+        setSelectedDate(format(new Date(), "yyyy-MM-dd"));
+        toast({ title: "📅 Jumped to Today" });
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [toast]);
+
+  const editForm = useForm({ resolver: zodResolver(editSchema), values: editingPatient || {} });
+
+  const filteredPatients = (stats?.patients || []).filter(p => {
+    if (filterType === "all") return true;
+    if (filterType === "general") return p.registerType !== "ayurvedic";
+    return p.registerType === "ayurvedic";
+  });
+
+  const monthlyStats = showMonthly ? getMonthlyStats(monthlyYear, monthlyMonth) : null;
+
+  const handleExport = () => {
+    if (!stats?.patients?.length) {
+      toast({ variant: "destructive", title: "No Data", description: "No patients to export for this date." });
+      return;
+    }
+    const exportData = stats.patients.map((p, i) => ({
+      "S.No": i + 1, "Name": p.name,
+      "Age": `${p.age || 0} yrs${p.ageMonths ? ` ${p.ageMonths} mo` : ""}`,
+      "Weight": p.weight || "-", "Address": p.address || "-", "Mobile/Case": p.mobile,
+      "Register": p.registerType === "ayurvedic" ? "Ayurvedic" : "General",
+      "Complaint Code": p.complaintCode || "-", "Complaint": p.complaint || "-",
+      "Treatment": p.treatment || "-", "Advice": p.advice || "-", "Reports": p.reports || "-",
+      "Fees": p.fees || 0, "Date": format(new Date(p.visitDate), "dd-MMM-yyyy"),
+    }));
+    exportToExcel(exportData, `Manglam_Clinic_${selectedDate}`);
+    toast({ title: "Export Successful", description: "Excel file downloaded." });
+  };
+
+  const handleBackup = () => {
+    const json = withAllKeys(exportBackup());
+    if (!json || json.length < 20) {
+      toast({ variant: "destructive", title: "Backup Failed", description: "Backup came out empty — nothing was downloaded." });
+      return;
+    }
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `Manglam_Clinic_Backup_${format(new Date(), "yyyy-MM-dd")}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    toast({ title: "Backup Created", description: describeBackup(json) });
+  };
+
+  const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    // Check the file BEFORE the destructive confirm. Previously a 0-byte or
+    // unreadable file could wipe everything and then fail to restore.
+    if (file.size === 0) {
+      toast({ variant: "destructive", title: "Backup File Is Empty", description: `${file.name} is 0 bytes. Nothing was changed — pick a different backup file.` });
+      if (importRef.current) importRef.current.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => {
+      toast({ variant: "destructive", title: "Could Not Read File", description: "The file could not be opened. Nothing was changed." });
+    };
+    reader.onload = ev => {
+      const text = ev.target?.result as string;
+      if (!text || !text.trim()) {
+        toast({ variant: "destructive", title: "Backup File Is Empty", description: "Nothing was changed." });
+        return;
+      }
+      if (!confirm("This will replace ALL data with the backup. Are you sure?")) return;
+      const result = importBackup(text);
+      if (result.success) {
+        // Anything the store's own import did not cover — token queue,
+        // allergies, recovered total, clinic settings, pending fees, the
+        // Pathya library — is put back here.
+        const extra = restoreExtraKeys(text);
+        toast({
+          title: "Restore Successful",
+          description: result.message + (extra > 0 ? ` Plus ${extra} more setting${extra === 1 ? "" : "s"}.` : ""),
+        });
+        refresh();
+      }
+      else toast({ variant: "destructive", title: "Restore Failed", description: result.message });
+    };
+    reader.readAsText(file);
+    if (importRef.current) importRef.current.value = "";
+  };
+
+  const handleClearAllData = () => {
+    // Clear all clinic data keys — patients, codes, counters, tags, medicine, sales
+    const DATA_KEYS = [
+      "cp_patients", "cp_complaint_codes", "cp_id_counter", "cp_patient_no_counter",
+      "cp_medicines", "cp_purchase_bills", "cp_medicine_bills", "cp_doctors",
+      "cp_stock_ledger", "cp_custom_tags", "cp_patient_tags",
+      "manglam_loose_sales", "manglam_pending_fees", "manglam_clinic_settings",
+      "manglam_clinic_settings_for_print",
+    ];
+    // Also clear any daily case-no keys (cp_case_no_YYYY-MM-DD)
+    const extraKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("cp_case_no_")) extraKeys.push(k);
+    }
+    [...DATA_KEYS, ...extraKeys].forEach(k => localStorage.removeItem(k));
+    setShowClearModal(false);
+    setClearConfirmText("");
+    refresh();
+    toast({ title: "All Data Cleared", description: "Clinic data has been wiped. You can now restore a backup." });
+  };
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    try {
+      const rows = await parseExcelFile(file);
+      let imported = 0;
+      for (const row of rows) {
+        const name = String(row["Name"] || row["name"] || "").trim();
+        const mobile = String(row["Mobile"] || row["mobile"] || row["Mobile/Case"] || "").trim();
+        if (!name || !mobile) continue;
+        const visitDateRaw = String(row["Date"] || row["date"] || row["Visit Date"] || selectedDate);
+        let visitDate = selectedDate;
+        try { const d = new Date(visitDateRaw); if (!isNaN(d.getTime())) visitDate = format(d, "yyyy-MM-dd"); } catch {}
+        addPatient({
+          name, mobile, patientNo: String(row["Pt.No"] || ""),
+          age: Number(row["Age"] || 0) || 0, weight: String(row["Weight"] || ""),
+          address: String(row["Address"] || ""), complaint: String(row["Complaint"] || ""),
+          complaintCode: String(row["Complaint Code"] || ""), treatment: String(row["Treatment"] || ""),
+          advice: String(row["Advice"] || ""), reports: String(row["Reports"] || ""),
+          fees: Number(row["Fees"] || 0) || 0,
+          registerType: String(row["Register"] || "").toLowerCase().includes("ayur") ? "ayurvedic" : "general",
+          visitDate,
+        });
+        imported++;
+      }
+      toast({ title: "Import Successful", description: `${imported} patients imported.` });
+      refresh();
+    } catch { toast({ variant: "destructive", title: "Import Failed", description: "Could not read the Excel file." }); }
+    if (excelImportRef.current) excelImportRef.current.value = "";
+  };
+
+  const onEditSubmit = (data: any) => {
+    if (!editingPatient) return;
+    pushUndo(`Undo edit for ${editingPatient.name}`);
+    // Preserve existing attachments — edit form has no file upload so never wipe them
+    updatePatient(editingPatient.id, {
+      ...data,
+      fees: Number(data.fees || 0),
+      attachments: editingPatient.attachments || [],
+    });
+    toast({ title: "Updated", description: "Patient record updated." });
+    setEditingPatient(null); refresh();
+  };
+
+  const handleDelete = (id: number) => {
+    if (!confirm("Delete this record?")) return;
+    const patient = stats?.patients?.find(p => p.id === id);
+    pushUndo(`Undo delete for ${patient?.name ?? "patient"}`);
+    deletePatient(id);
+    toast({ title: "Deleted", description: "Press Ctrl+Z to undo." });
+    refresh();
+  };
+
+  const exportMonthlyReport = () => {
+    if (!monthlyStats) return;
+    const rows = monthlyStats.dailyBreakdown.map(d => ({
+      "Date": format(new Date(d.date + "T00:00:00"), "dd-MMM-yyyy"),
+      "Patients": d.count, "Total Collection (₹)": d.totalFees,
+      "General (₹)": d.generalFees, "Ayurvedic (₹)": d.ayurvedicFees,
+    }));
+    rows.push({ "Date": "TOTAL", "Patients": monthlyStats.totalPatients, "Total Collection (₹)": monthlyStats.totalFees, "General (₹)": monthlyStats.generalFees, "Ayurvedic (₹)": monthlyStats.ayurvedicFees });
+    rows.push({ "Date": "MANUAL EXPENSES", "Patients": 0, "Total Collection (₹)": -monthlyStats.manualExpenses, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    rows.push({ "Date": "PHARMACY PURCHASES (PAID)", "Patients": 0, "Total Collection (₹)": -monthlyStats.pharmacyExpenses, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    rows.push({ "Date": "TOTAL EXPENSES", "Patients": 0, "Total Collection (₹)": -monthlyStats.totalExpenses, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    rows.push({ "Date": "NET COLLECTION", "Patients": 0, "Total Collection (₹)": monthlyStats.netTotal, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    rows.push({ "Date": `${monthlyStats.doctorSplit.doctor1.name} (${monthlyStats.doctorSplit.doctor1.pct}%)`, "Patients": 0, "Total Collection (₹)": monthlyStats.doctorSplit.doctor1.amount, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    rows.push({ "Date": `${monthlyStats.doctorSplit.doctor2.name} (${monthlyStats.doctorSplit.doctor2.pct}%)`, "Patients": 0, "Total Collection (₹)": monthlyStats.doctorSplit.doctor2.amount, "General (₹)": 0, "Ayurvedic (₹)": 0 });
+    exportToExcel(rows, `Monthly_Report_${MONTHS[monthlyMonth - 1]}_${monthlyYear}`);
+    toast({ title: "Monthly Report Exported" });
+  };
+
+  const openDoctorSplitDialog = () => {
+    const doctors = getDoctors();
+    setD1NameInput(doctors[0]?.name || "Doctor 1");
+    setD1PctInput(doctors[0]?.profitSharePct ?? 80);
+    setD2NameInput(doctors[1]?.name || "Doctor 2");
+    setD2PctInput(doctors[1]?.profitSharePct ?? 20);
+    setDoctorSplitDialogOpen(true);
+  };
+
+  const saveDoctorSplit = () => {
+    const result = updateDoctorSplit(
+      { name: d1NameInput, profitSharePct: d1PctInput },
+      { name: d2NameInput, profitSharePct: d2PctInput }
+    );
+    if (!result.success) {
+      toast({ variant: "destructive", title: "Couldn't save", description: result.message });
+      return;
+    }
+    toast({ title: "Doctor split updated" });
+    setDoctorSplitDialogOpen(false);
+    refresh();
+  };
+
+  const scanForDuplicates = (scope: "day" | "all") => {
+    const groups = findDuplicatePatients(scope === "day" ? selectedDate : undefined);
+    setDuplicateGroups(groups);
+    // Default suggestion: keep the oldest entry in each group, pre-select the rest for deletion.
+    const preselected = new Set<number>();
+    for (const g of groups) {
+      for (const p of g.patients.slice(1)) preselected.add(p.id);
+    }
+    setSelectedDuplicateIds(preselected);
+  };
+
+  // ── Loose-sale audit across ALL past dates ──
+  // Recomputes every day's collection with the corrected formula and reports
+  // how much each day was previously inflated by the double-count.
+  const runLooseAudit = () => {
+    const rows: LooseAuditRow[] = [];
+    for (const { date } of getAllDates()) {
+      const sales = getLooseSalesForDate(date);
+      const dayStats = getDailyStats(date);
+      const patients = dayStats?.patients || [];
+      if (sales.length === 0 && !patients.some(isLooseRow)) continue;
+
+      const rec = reconcileLoose(sales, patients);
+      const base = dayStats?.totalFees || 0;
+      rows.push({
+        date,
+        saleCount: sales.length,
+        saleTotal: rec.saleTotal,
+        registerTotal: rec.matchedTotal + rec.orphanTotal,
+        oldCollection: base + rec.saleTotal,          // buggy formula
+        newCollection: base + rec.unregisteredTotal,  // corrected formula
+        orphanIds: rec.orphanRows.map(p => p.id),
+        orphanTotal: rec.orphanTotal,
+      });
+    }
+    rows.sort((a, b) => b.date.localeCompare(a.date));
+    setLooseAuditRows(rows);
+    setSelectedOrphanIds(new Set());
+    setShowLooseAuditModal(true);
+  };
+
+  const toggleOrphanSelection = (id: number) => {
+    setSelectedOrphanIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleDeleteSelectedOrphans = () => {
+    if (selectedOrphanIds.size === 0) return;
+    pushUndo(`Undo removal of ${selectedOrphanIds.size} orphan loose row(s)`);
+    const removed = deletePatientsByIds(Array.from(selectedOrphanIds));
+    toast({ title: "Orphan loose rows removed", description: `${removed} register row(s) deleted. Collection totals recalculated.` });
+    refresh();
+    runLooseAudit();
+  };
+
+  const openDuplicatesModal = () => {
+    setDuplicateScope("day");
+    scanForDuplicates("day");
+    setShowDuplicatesModal(true);
+  };
+
+  const toggleDuplicateSelection = (id: number) => {
+    setSelectedDuplicateIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleDeleteSelectedDuplicates = () => {
+    if (selectedDuplicateIds.size === 0) return;
+    const removed = deletePatientsByIds(Array.from(selectedDuplicateIds));
+    toast({ title: "Duplicates removed", description: `${removed} duplicate entr${removed === 1 ? "y" : "ies"} permanently deleted — they won't come back on future syncs.` });
+    setShowDuplicatesModal(false);
+    refresh();
+  };
+
+  const buildDailyReportMsg = () => {
+    const generalCount = (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length;
+    const ayurvedicCount = (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length;
+    const generalFees = (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").reduce((s, p) => s + (p.fees || 0), 0);
+    const ayurvedicFees = (stats?.patients || []).filter(p => p.registerType === "ayurvedic").reduce((s, p) => s + (p.fees || 0), 0);
+    const cashFees = (stats?.patients || []).filter(p => p.paymentMode !== "online").reduce((s, p) => s + (p.fees || 0), 0);
+    const onlineFees = (stats?.patients || []).filter(p => p.paymentMode === "online").reduce((s, p) => s + (p.fees || 0), 0);
+    const dateStr = format(new Date(selectedDate + "T00:00:00"), "dd/MM/yyyy");
+    const grandTotal = collectionTotal;
+    const looseLine = looseDayTotal > 0
+      ? `\n🛒 *Loose Medicine Sales:* ₹${looseDayTotal.toLocaleString("en-IN")} (${looseSalesForDay.length} items, included above)`
+      : "";
+    const paymentLine = (cashFees > 0 || onlineFees > 0)
+      ? `\n\n💵 *Cash:* ₹${cashFees.toLocaleString("en-IN")}   📱 *Online:* ₹${onlineFees.toLocaleString("en-IN")}`
+      : "";
+    return `*Manglam Clinic Daily Update*
+
+Date: ${dateStr}
+
+Patients Seen Today: ${stats?.totalPatients || 0}
+
+Today's Collection: ₹${grandTotal.toLocaleString("en-IN")}${paymentLine}
+
+General Cases: ${generalCount} (₹${generalFees.toLocaleString("en-IN")})
+Ayurvedic Cases: ${ayurvedicCount} (₹${ayurvedicFees.toLocaleString("en-IN")})${looseLine}${waCustomNote.trim() ? `\n\nNote: ${waCustomNote.trim()}` : ""}
+
+Thank you everyone for your trust
+Dr. Vijay Girglani
+Manglam Hospital, Morbi`;
+  };
+
+  const handleSendDailyReport = () => {
+    const msg = buildDailyReportMsg();
+    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
+    setShowWaReport(false);
+    setWaCustomNote("");
+    toast({ title: "Opening WhatsApp", description: "Daily report ready to share." });
+  };
+
+  return (
+    <Layout>
+      {printPatient && <PrintPrescription patient={printPatient} />}
+      {cardPatient && <PatientCardModal patient={cardPatient} onClose={() => setCardPatient(null)} />}
+      <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleRestoreFile} />
+      <input ref={excelImportRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportExcel} />
+
+      <div className="space-y-5">
+        {/* ── SHORTCUT HINT BAR ── */}
+        <div className="flex flex-wrap gap-3 text-xs text-slate-400 items-center px-1">
+          {[
+            { keys: "Ctrl+F", label: "Search patients" },
+            { keys: "Ctrl+G", label: "Jump to today" },
+            { keys: "Ctrl+Z", label: "Undo last action" },
+          ].map(({ keys, label }) => (
+            <span key={keys} className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 font-mono text-[11px] text-slate-600">{keys}</kbd>
+              <span>{label}</span>
+            </span>
+          ))}
+        </div>
+
+        {/* ── BACKUP STATUS BAR ── */}
+        {backupFolderName && (
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border ${
+            lastAutoBackup === format(new Date(), "yyyy-MM-dd")
+              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+              : "bg-amber-50 border-amber-200 text-amber-700"
+          }`}>
+            <span>{lastAutoBackup === format(new Date(), "yyyy-MM-dd") ? "✅" : "⚠️"}</span>
+            <span>
+              Auto Backup: <strong>{backupFolderName}</strong>
+              {lastAutoBackup === format(new Date(), "yyyy-MM-dd")
+                ? " · Today's backup saved"
+                : lastAutoBackup
+                  ? ` · Last backup: ${format(new Date(lastAutoBackup + "T00:00:00"), "dd-MMM-yyyy")}`
+                  : " · Not backed up yet today"}
+            </span>
+            <span className="ml-auto text-slate-400 font-normal">
+              Saves to: {format(new Date(), "yyyy")} → {format(new Date(), "MMMM")} → {format(new Date(), "dd-MMM-yyyy")}.json
+            </span>
+          </div>
+        )}
+
+        <div className="sticky top-16 z-30 -mx-4 md:-mx-8 px-4 md:px-8 bg-white/95 backdrop-blur-md border-b border-slate-200/80 py-3 shadow-sm">
+          <div className="flex flex-row flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-display font-bold text-slate-900">Daily Register</h2>
+              <p className="text-slate-500 text-xs">General + Ayurvedic patients for selected date</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => setSelectedDate(format(new Date(), "yyyy-MM-dd"))}
+                title="Jump to today (Ctrl+G)"
+                className="px-3 py-2 rounded-xl font-semibold bg-primary text-white hover:bg-primary/90 shadow-sm text-sm flex items-center gap-1.5">
+                <Calendar className="w-4 h-4" /> Today
+              </button>
+              <button onClick={() => { setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+                title="Global search (Ctrl+F)"
+                className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-sm flex items-center gap-1.5">
+                <Search className="w-4 h-4" /> Search
+              </button>
+              <div className="relative">
+                <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+                  className="pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary shadow-sm text-slate-700 font-medium text-sm" />
+              </div>
+              <button onClick={() => { setShowWaReport(true); setWaCustomNote(""); }}
+                className="px-3 py-2 rounded-xl font-semibold bg-green-500 text-white hover:bg-green-600 shadow-sm text-sm flex items-center gap-1.5">
+                <MessageCircle className="w-4 h-4" /> Daily Report
+              </button>
+              <button onClick={handleExport} className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-sm flex items-center gap-1.5">
+                <Download className="w-4 h-4" /> Export
+              </button>
+              <button onClick={() => excelImportRef.current?.click()} className="px-3 py-2 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-sm flex items-center gap-1.5">
+                <Upload className="w-4 h-4" /> Import
+              </button>
+              {/* ── Folder Backup button ── */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleFolderBackup}
+                  disabled={isBackingUp}
+                  title={backupFolderName ? `Save to folder: ${backupFolderName}` : "Select backup folder first"}
+                  className="px-3 py-2 rounded-xl font-semibold bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 text-sm flex items-center gap-1.5 disabled:opacity-60">
+                  {isBackingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {backupFolderName ? "Daily Backup" : "Setup Backup"}
+                </button>
+                {backupFolderName && (
+                  <button
+                    onClick={handleSelectBackupFolder}
+                    title={`Backup folder: ${backupFolderName}\nAuto-saves each day\nClick to change folder`}
+                    className="px-2 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs flex items-center gap-1 border border-emerald-300 font-semibold">
+                    📁
+                  </button>
+                )}
+              </div>
+              <button onClick={() => importRef.current?.click()} className="px-3 py-2 rounded-xl font-semibold bg-orange-500 text-white shadow-sm hover:bg-orange-600 text-sm flex items-center gap-1.5">
+                <RotateCcw className="w-4 h-4" /> Restore
+              </button>
+              <button onClick={() => { setShowClearModal(true); setClearConfirmText(""); }}
+                className="px-3 py-2 rounded-xl font-semibold bg-red-600 text-white shadow-sm hover:bg-red-700 text-sm flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4" /> Clear Data
+              </button>
+              <button onClick={openDuplicatesModal}
+                className="px-3 py-2 rounded-xl font-semibold bg-amber-500 text-white shadow-sm hover:bg-amber-600 text-sm flex items-center gap-1.5">
+                <Copy className="w-4 h-4" /> Find Duplicates
+              </button>
+              <button onClick={runLooseAudit}
+                className="px-3 py-2 rounded-xl font-semibold bg-violet-600 text-white shadow-sm hover:bg-violet-700 text-sm flex items-center gap-1.5">
+                <ShoppingBag className="w-4 h-4" /> Loose Sale Audit
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── STATS CARDS ── */}
+        {/* compute cash/online splits */}
+        {(() => {
+          const cashFees = (stats?.patients || []).filter(p => p.paymentMode !== "online").reduce((s, p) => s + (p.fees || 0), 0);
+          const onlineFees = (stats?.patients || []).filter(p => p.paymentMode === "online").reduce((s, p) => s + (p.fees || 0), 0);
+          const onlineCount = (stats?.patients || []).filter(p => p.paymentMode === "online").length;
+          return (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[
+                  { label: "Total",      value: stats?.totalPatients || 0, icon: Users,       tone: "blue",
+                    sub: undefined },
+                  { label: "General",    value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, icon: FileText, tone: "slate",
+                    sub: undefined },
+                  { label: "Ayurvedic",  value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, icon: Leaf, tone: "emerald",
+                    sub: undefined },
+                  { label: "Collection", value: collectionTotal, icon: IndianRupee, tone: "emerald", money: true, pulse: true,
+                    sub: looseDayTotal > 0 ? `incl. ₹${looseDayTotal.toLocaleString("en-IN")} loose` : undefined },
+                ].map(({ label, value, icon: Icon, tone, sub, money, pulse }: any) => {
+                  const t = {
+                    blue:    { grad: "from-blue-50 to-blue-100/40 dark:from-blue-500/12 dark:to-blue-500/5",             chip: "bg-blue-500/10 text-blue-600 dark:text-blue-300",         num: "text-blue-700 dark:text-blue-300",       mark: "text-blue-500/10 dark:text-blue-400/10" },
+                    slate:   { grad: "from-slate-50 to-slate-100/50 dark:from-slate-500/12 dark:to-slate-500/5",         chip: "bg-slate-500/10 text-slate-600 dark:text-slate-300",      num: "text-slate-700 dark:text-slate-200",     mark: "text-slate-500/10 dark:text-slate-400/10" },
+                    emerald: { grad: "from-emerald-50 to-emerald-100/40 dark:from-emerald-500/12 dark:to-emerald-500/5", chip: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300", num: "text-emerald-700 dark:text-emerald-300", mark: "text-emerald-500/10 dark:text-emerald-400/10" },
+                  }[tone as "blue" | "slate" | "emerald"];
+                  return (
+                    <motion.div key={label}
+                      initial={motionOff() ? false : { opacity: 0, y: 14 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                      className={`relative overflow-hidden medical-card bg-gradient-to-br ${t.grad} p-4`}>
+                      {/* oversized faint icon behind the figure */}
+                      <Icon className={`absolute -right-3 -bottom-4 w-24 h-24 ${t.mark}`} strokeWidth={1.5} />
+                      <div className="relative flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${t.chip}`}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+                          <p className={`text-2xl font-display font-bold leading-tight ${t.num}`}>
+                            <AnimatedNumber value={value} format={money ? "currency" : "number"} pulse={!!pulse} />
+                          </p>
+                          {sub && <p className="text-[10px] text-violet-600 font-semibold flex items-center gap-0.5"><ShoppingBag className="w-2.5 h-2.5" />{sub}</p>}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+              {/* Cash vs Online split bar */}
+              {(stats?.totalFees || 0) > 0 && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="relative overflow-hidden medical-card bg-gradient-to-br from-emerald-50 to-emerald-100/40 dark:from-emerald-500/12 dark:to-emerald-500/5 p-4 flex items-center gap-3 border-l-4 border-l-emerald-400">
+                    <Banknote className="absolute -right-3 -bottom-4 w-24 h-24 text-emerald-500/10" strokeWidth={1.5} />
+                    <div className="relative w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      <Banknote className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div className="relative">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cash Collection</p>
+                      <p className="text-2xl font-display font-bold text-emerald-700 dark:text-emerald-300 leading-tight">
+                        <AnimatedNumber value={cashFees} format="currency" pulse />
+                      </p>
+                      <p className="text-[10px] text-slate-400">{(stats?.patients || []).filter(p => p.paymentMode !== "online").length} patients</p>
+                    </div>
+                  </div>
+                  <div className="relative overflow-hidden medical-card bg-gradient-to-br from-blue-50 to-blue-100/40 dark:from-blue-500/12 dark:to-blue-500/5 p-4 flex items-center gap-3 border-l-4 border-l-blue-400">
+                    <Wifi className="absolute -right-3 -bottom-4 w-24 h-24 text-blue-500/10" strokeWidth={1.5} />
+                    <div className="relative w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                      <Wifi className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="relative">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Online Collection</p>
+                      <p className="text-2xl font-display font-bold text-blue-700 dark:text-blue-300 leading-tight">
+                        <AnimatedNumber value={onlineFees} format="currency" pulse />
+                      </p>
+                      <p className="text-[10px] text-slate-400">{onlineCount} patients</p>
+                    </div>
+                  </div>
+                  {/* Target ring beside the shape of the day */}
+                  <div className="col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <CollectionRing collected={collectionTotal} />
+                    <DayTimeline patients={stats?.patients || []} />
+                  </div>
+
+                  {/* cash ↔ online proportion, so the split reads at a glance */}
+                  <div className="col-span-2 medical-card p-3">
+                    <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                      <motion.div className="bg-emerald-500"
+                        initial={motionOff() ? false : { width: 0 }}
+                        animate={{ width: `${(cashFees + onlineFees) > 0 ? (cashFees / (cashFees + onlineFees)) * 100 : 0}%` }}
+                        transition={{ duration: 0.7, ease: "easeOut" }} />
+                      <motion.div className="bg-blue-500"
+                        initial={motionOff() ? false : { width: 0 }}
+                        animate={{ width: `${(cashFees + onlineFees) > 0 ? (onlineFees / (cashFees + onlineFees)) * 100 : 0}%` }}
+                        transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }} />
+                    </div>
+                    <div className="flex justify-between mt-1.5 text-[10px] font-semibold">
+                      <span className="text-emerald-600">
+                        Cash {(cashFees + onlineFees) > 0 ? Math.round((cashFees / (cashFees + onlineFees)) * 100) : 0}%
+                      </span>
+                      <span className="text-blue-600">
+                        Online {(cashFees + onlineFees) > 0 ? Math.round((onlineFees / (cashFees + onlineFees)) * 100) : 0}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+        {/* ── FILTER TABS ── */}
+        <div className="flex items-center gap-2">
+          {(["all", "general", "ayurvedic"] as const).map(type => (
+            <button key={type} onClick={() => setFilterType(type)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all capitalize ${
+                filterType === type
+                  ? type === "ayurvedic" ? "bg-emerald-100 text-emerald-700" : "bg-primary/10 text-primary"
+                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}>
+              {type === "all" ? "All Patients" : type === "general" ? "General" : "Ayurvedic"}
+            </button>
+          ))}
+          <span className="text-sm text-slate-400 ml-2">{filteredPatients.length} patients</span>
+        </div>
+
+        {/* ── PATIENT TABLE ── */}
+        <div className="medical-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-slate-50 border-b border-slate-200/60">
+                <tr>
+                  <th className="px-4 py-3 font-semibold text-slate-600">#</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600">Weight</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600">Complaint</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600">Treatment</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600">Type</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600 text-right">Fees</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredPatients.length > 0 ? (
+                  filteredPatients.map((p, i) => (
+                    // The newest record glows green for a moment, so a save
+                    // confirms itself in the place the save actually matters.
+                    <motion.tr key={p.id}
+                      initial={motionOff() ? false : { opacity: 0, y: -10 }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                        backgroundColor: justSavedId === p.id ? ["#d1fae5", "#d1fae5", "rgba(255,255,255,0)"] : undefined,
+                      }}
+                      transition={{
+                        opacity: { duration: 0.25, delay: motionOff() ? 0 : Math.min(i * 0.02, 0.25) },
+                        y: { duration: 0.25, delay: motionOff() ? 0 : Math.min(i * 0.02, 0.25) },
+                        backgroundColor: { duration: 1.8, times: [0, 0.35, 1] },
+                      }}
+                      className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-400">{i + 1}</td>
+                      <td className="px-4 py-3">
+                        <p className="font-bold text-slate-900">{p.name}</p>
+                        <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                          {p.age ? `${p.age}y` : ""}{p.ageMonths ? ` ${p.ageMonths}m` : ""}
+                          {p.age && p.mobile ? " · " : ""}{p.mobile}
+                        </p>
+                        {(() => {
+                          try {
+                            const sjf = JSON.parse(localStorage.getItem("cp_seen_by_jenit") || "{}");
+                            if (!sjf[String(p.id)]) return null;
+                            return (
+                              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-300 text-[9px] font-bold uppercase tracking-wide">
+                                🩺 SEEN BY DR. JENIT
+                              </span>
+                            );
+                          } catch { return null; }
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{p.weight || "-"}</td>
+                      <td className="px-4 py-3 max-w-[150px] truncate text-slate-600">
+                        {p.complaintCode && <span className="font-bold text-primary mr-1">[{p.complaintCode}]</span>}
+                        {p.complaint || "-"}
+                      </td>
+                      <td className="px-4 py-3 max-w-[150px] text-slate-600">
+                        <p className="truncate">{p.treatment || "-"}</p>
+                        {(() => {
+                          try {
+                            const kf = JSON.parse(localStorage.getItem("cp_key_findings") || "{}");
+                            const findings = kf[p.mobile];
+                            if (!findings) return null;
+                            return (
+                              <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-md">
+                                🔴 {findings.length > 30 ? findings.slice(0, 30) + "…" : findings}
+                              </span>
+                            );
+                          } catch { return null; }
+                        })()}
+                      </td>
+                      <td className="px-4 py-3">
+                        {p.registerType === "ayurvedic"
+                          ? <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700">Ayurvedic</span>
+                          : <span className="text-xs font-bold px-2 py-1 rounded-md bg-blue-100 text-blue-700">General</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {p.fees ? (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="font-bold text-slate-900">₹{p.fees}</span>
+                            {p.paymentMode === "online"
+                              ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 flex items-center gap-0.5"><Wifi className="w-2.5 h-2.5" />Online</span>
+                              : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-600 flex items-center gap-0.5"><Banknote className="w-2.5 h-2.5" />Cash</span>
+                            }
+                          </div>
+                        ) : "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Attachments button — only shows if patient has files */}
+                          {p.attachments && p.attachments.length > 0 && (
+                            <button
+                              onClick={() => setViewingAttachments({ files: p.attachments!, patientName: p.name, date: p.visitDate })}
+                              title={`View ${p.attachments.length} report${p.attachments.length > 1 ? "s" : ""}`}
+                              className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors relative">
+                              <Paperclip className="w-4 h-4" />
+                              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                                {p.attachments.length}
+                              </span>
+                            </button>
+                          )}
+                          <button onClick={() => setCardPatient(p)}
+                            title="Send Patient Card"
+                            className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
+                            <WalletCards className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => { setPrintPatient(p); setTimeout(() => printPatientPrescription(p), 50); }}
+                            className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              localStorage.setItem("manglam_edit_patient", JSON.stringify(p));
+                              window.location.href = "/";
+                            }}
+                            title="Edit on Home screen"
+                            className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(p.id)}
+                            className="p-2 text-slate-400 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-16 text-center">
+                      <div className="flex flex-col items-center text-slate-400">
+                        <FileText className="w-12 h-12 mb-3 text-slate-300" />
+                        <p className="font-medium">No patients for this date</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── MONTHLY REPORT ── */}
+        <div className="medical-card overflow-hidden">
+          <button onClick={() => setShowMonthly(v => !v)}
+            className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50/50 transition-colors">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              <span className="font-semibold text-slate-800">Monthly Collection Report</span>
+            </div>
+            {showMonthly ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+          </button>
+
+          {showMonthly && (
+            <div className="border-t border-slate-100">
+              <div className="px-6 py-4 bg-slate-50 flex flex-wrap items-center gap-3">
+                <select value={monthlyMonth} onChange={e => setMonthlyMonth(Number(e.target.value))}
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold focus:outline-none focus:border-primary">
+                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+                <select value={monthlyYear} onChange={e => setMonthlyYear(Number(e.target.value))}
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold focus:outline-none focus:border-primary">
+                  {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <button onClick={exportMonthlyReport}
+                  className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 flex items-center gap-1.5 shadow-sm">
+                  <Download className="w-4 h-4" /> Export Monthly
+                </button>
+                <button onClick={() => setShowReportCard(s => !s)}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-colors
+                    ${showReportCard ? "bg-violet-600 text-white hover:bg-violet-700" : "bg-violet-100 text-violet-700 hover:bg-violet-200"}`}>
+                  <Sparkles className="w-4 h-4" /> {showReportCard ? "Hide" : "Month"} Report Card
+                </button>
+              </div>
+
+              {/* The month, played back — figures counting up, bars growing,
+                  top complaints sliding in. Prints as its own sheet. */}
+              {monthlyStats && showReportCard && (
+                <div className="px-6 py-5 bg-slate-50 border-b border-slate-100">
+                  <MonthReportCard stats={monthlyStats} year={monthlyYear} month={monthlyMonth} />
+                </div>
+              )}
+
+              {monthlyStats && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 px-6 py-4 bg-gradient-to-br from-primary/5 to-emerald-50/40 border-b border-slate-100">
+                    {[
+                      { label: "Total Patients", value: monthlyStats.totalPatients, money: false },
+                      { label: "General Pts.", value: monthlyStats.generalPatients, money: false },
+                      { label: "Ayurvedic Pts.", value: monthlyStats.ayurvedicPatients, money: false },
+                      { label: "Total Collection", value: monthlyStats.totalFees, money: true },
+                      { label: "Ayurvedic Fees", value: monthlyStats.ayurvedicFees, money: true },
+                    ].map((item, i) => (
+                      <motion.div key={i} className="text-center"
+                        initial={motionOff() ? false : { opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: motionOff() ? 0 : i * 0.05 }}>
+                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{item.label}</p>
+                        <p className="text-xl font-display font-bold mt-1 text-slate-900">
+                          <AnimatedNumber value={item.value} format={item.money ? "currency" : "number"} />
+                        </p>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  <div className="px-6 py-4 border-b border-slate-100">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Expenses</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {[
+                        { label: "Manual Expenses", value: monthlyStats.manualExpenses, color: "text-rose-700" },
+                        { label: "Pharmacy Purchases (paid)", value: monthlyStats.pharmacyExpenses, color: "text-rose-700" },
+                        { label: "Total Expenses", value: monthlyStats.totalExpenses, color: "text-rose-800" },
+                        { label: "Net Collection", value: monthlyStats.netTotal, color: "text-emerald-700" },
+                      ].map((item, i) => (
+                        <div key={i} className="text-center">
+                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{item.label}</p>
+                          <p className={`text-xl font-display font-bold mt-1 ${item.color}`}>
+                            <AnimatedNumber value={item.value} format="currency" />
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Doctor Split (of Net Collection)</p>
+                      <button onClick={openDoctorSplitDialog} className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                        <Percent className="w-3.5 h-3.5" /> Edit split
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {[monthlyStats.doctorSplit.doctor1, monthlyStats.doctorSplit.doctor2].map((d, i) => (
+                        <div key={i} className="p-4 rounded-xl bg-white border border-slate-200 flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                            <Stethoscope className="w-4.5 h-4.5" />
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 font-medium">{d.name} · {d.pct}%</p>
+                            <p className="text-lg font-display font-bold text-slate-900">{formatCurrency(d.amount)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {monthlyStats.dailyBreakdown.length > 0 ? (
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-6 py-3 font-semibold text-slate-500">Date</th>
+                          <th className="px-6 py-3 font-semibold text-slate-500 text-center">Patients</th>
+                          <th className="px-6 py-3 font-semibold text-slate-500 text-right">General</th>
+                          <th className="px-6 py-3 font-semibold text-slate-500 text-right">Ayurvedic</th>
+                          <th className="px-6 py-3 font-semibold text-slate-500 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {monthlyStats.dailyBreakdown.map(d => (
+                          <tr key={d.date} onClick={() => { setSelectedDate(d.date); setShowMonthly(false); }}
+                            className="hover:bg-primary/5 transition-colors cursor-pointer">
+                            <td className="px-6 py-2.5 font-medium text-slate-700">
+                              {format(new Date(d.date + "T00:00:00"), "dd MMM yyyy (EEE)")}
+                              {d.date === format(new Date(), "yyyy-MM-dd") && (
+                                <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-bold">Today</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-2.5 text-center text-slate-600">{d.count}</td>
+                            <td className="px-6 py-2.5 text-right text-blue-700 font-medium">{d.generalFees > 0 ? formatCurrency(d.generalFees) : "—"}</td>
+                            <td className="px-6 py-2.5 text-right text-emerald-700 font-medium">{d.ayurvedicFees > 0 ? formatCurrency(d.ayurvedicFees) : "—"}</td>
+                            <td className="px-6 py-2.5 text-right font-bold text-slate-900">{formatCurrency(d.totalFees)}</td>
+                          </tr>
+                        ))}
+                        <tr className="bg-slate-50 border-t-2 border-slate-300">
+                          <td className="px-6 py-3 font-bold text-slate-800">TOTAL</td>
+                          <td className="px-6 py-3 text-center font-bold text-slate-800">{monthlyStats.totalPatients}</td>
+                          <td className="px-6 py-3 text-right font-bold text-blue-700">{formatCurrency(monthlyStats.generalFees)}</td>
+                          <td className="px-6 py-3 text-right font-bold text-emerald-700">{formatCurrency(monthlyStats.ayurvedicFees)}</td>
+                          <td className="px-6 py-3 text-right font-bold text-slate-900 text-base">{formatCurrency(monthlyStats.totalFees)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="px-6 py-10 text-center text-slate-400">
+                      <BarChart2 className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                      <p>No data for {MONTHS[monthlyMonth - 1]} {monthlyYear}</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── DAY-WISE SUMMARY ── */}
+        <div className="medical-card overflow-hidden">
+          <button onClick={() => setShowSummary(v => !v)}
+            className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50/50 transition-colors">
+            <div className="flex items-center gap-2">
+              <BarChart2 className="w-5 h-5 text-emerald-600" />
+              <span className="font-semibold text-slate-800">Day-wise Collection Summary</span>
+              <span className="text-xs text-slate-500 ml-1">({allDates.length} days)</span>
+            </div>
+            {showSummary ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+          </button>
+          {showSummary && (
+            <div className="border-t border-slate-100">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-6 py-3 font-semibold text-slate-500">Date</th>
+                    <th className="px-6 py-3 font-semibold text-slate-500">Patients</th>
+                    <th className="px-6 py-3 font-semibold text-slate-500 text-right">Collection</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {allDates.length === 0
+                    ? <tr><td colSpan={3} className="px-6 py-6 text-center text-slate-400">No data yet</td></tr>
+                    : allDates.map(d => (
+                      <tr key={d.date} onClick={() => setSelectedDate(d.date)}
+                        className="hover:bg-slate-50/80 transition-colors cursor-pointer">
+                        <td className="px-6 py-3 font-medium text-slate-700">
+                          {format(new Date(d.date + "T00:00:00"), "dd MMM yyyy")}
+                          {d.date === format(new Date(), "yyyy-MM-dd") && (
+                            <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-bold">Today</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3 text-slate-600">{d.count} patients</td>
+                        <td className="px-6 py-3 text-right font-semibold text-emerald-700">{formatCurrency(d.totalFees)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+      </div>
+      {searchOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-20 px-4"
+          onClick={() => { setSearchOpen(false); setSearchQuery(""); setSearchDetailPatient(null); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[70vh]"
+            onClick={e => e.stopPropagation()}>
+            {/* Search input */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+              <Search className="w-5 h-5 text-slate-400 shrink-0" />
+              <input
+                ref={searchInputRef}
+                value={searchQuery}
+                onChange={e => { setSearchQuery(e.target.value); setSearchDetailPatient(null); }}
+                placeholder="Search by name, mobile, complaint, address…"
+                className="flex-1 text-sm outline-none text-slate-800 placeholder:text-slate-400"
+              />
+              <button onClick={() => { setSearchOpen(false); setSearchQuery(""); setSearchDetailPatient(null); }}
+                className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            {/* Results */}
+            <div className="overflow-y-auto flex-1">
+              {searchDetailPatient ? (
+                <div className="p-5 space-y-3">
+                  <button onClick={() => setSearchDetailPatient(null)} className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">← Back to results</button>
+                  <div className="rounded-xl bg-slate-50 p-4 space-y-2 text-sm">
+                    <p className="font-bold text-lg text-slate-900">{searchDetailPatient.name}</p>
+                    <p className="text-slate-500 font-mono text-xs">{searchDetailPatient.mobile}</p>
+                    {searchDetailPatient.age ? <p><span className="text-slate-400 text-xs">Age:</span> {searchDetailPatient.age}y{searchDetailPatient.ageMonths ? ` ${searchDetailPatient.ageMonths}m` : ""}</p> : null}
+                    {searchDetailPatient.address && <p><span className="text-slate-400 text-xs">Address:</span> {searchDetailPatient.address}</p>}
+                    {searchDetailPatient.complaint && <p><span className="text-slate-400 text-xs">Complaint:</span> {searchDetailPatient.complaint}</p>}
+                    {searchDetailPatient.treatment && <p><span className="text-slate-400 text-xs">Treatment:</span> {searchDetailPatient.treatment}</p>}
+                    {searchDetailPatient.advice && <p><span className="text-slate-400 text-xs">Advice:</span> {searchDetailPatient.advice}</p>}
+                    {searchDetailPatient.fees ? <p><span className="text-slate-400 text-xs">Fees:</span> ₹{searchDetailPatient.fees}</p> : null}
+                    <p><span className="text-slate-400 text-xs">Visit:</span> {format(new Date(searchDetailPatient.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedDate(searchDetailPatient.visitDate); setSearchOpen(false); setSearchQuery(""); setSearchDetailPatient(null); }}
+                    className="w-full py-2.5 rounded-xl bg-primary text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-primary/90">
+                    <Calendar className="w-4 h-4" /> Go to {format(new Date(searchDetailPatient.visitDate + "T00:00:00"), "dd MMM yyyy")}
+                  </button>
+                </div>
+              ) : searchQuery.trim() === "" ? (
+                <div className="px-5 py-10 text-center text-slate-400 text-sm">Type to search all patients across all dates</div>
+              ) : searchResults.length === 0 ? (
+                <div className="px-5 py-10 text-center text-slate-400 text-sm">No patients found for "{searchQuery}"</div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {searchResults.map(p => (
+                    <li key={`${p.id}-${p.visitDate}`}
+                      onClick={() => setSearchDetailPatient(p)}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-primary font-bold text-sm">{p.name?.[0]?.toUpperCase()}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-900 text-sm truncate">{p.name}</p>
+                        <p className="text-xs text-slate-400 font-mono">{p.mobile} · {format(new Date(p.visitDate + "T00:00:00"), "dd MMM yyyy")}</p>
+                        {p.complaint && <p className="text-xs text-slate-500 truncate">{p.complaint}</p>}
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-300 shrink-0" />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── WHATSAPP DAILY REPORT MODAL ── */}
+      {showWaReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-green-50 rounded-t-2xl">
+              <div className="w-9 h-9 rounded-xl bg-green-500 flex items-center justify-center shrink-0">
+                <MessageCircle className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-slate-900">Send Daily Report</p>
+                <p className="text-xs text-slate-500">
+                  {format(new Date(selectedDate + "T00:00:00"), "dd MMM yyyy")}
+                </p>
+              </div>
+              <button onClick={() => setShowWaReport(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+              {/* Preview */}
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Report Preview</p>
+                <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
+                  {buildDailyReportMsg()}
+                </div>
+              </div>
+
+              {/* Optional note */}
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">
+                  Add a Note (optional)
+                </label>
+                <textarea
+                  value={waCustomNote}
+                  onChange={e => setWaCustomNote(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Camp tomorrow, Holiday notice..."
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-100 text-sm resize-none"
+                />
+              </div>
+
+              {/* Stats summary strip */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: "Total", value: stats?.totalPatients || 0, color: "bg-blue-50 text-blue-700" },
+                  { label: "General", value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, color: "bg-slate-50 text-slate-700" },
+                  { label: "Ayurvedic", value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, color: "bg-emerald-50 text-emerald-700" },
+                ].map(s => (
+                  <div key={s.label} className={`rounded-xl p-3 text-center ${s.color}`}>
+                    <p className="text-xl font-bold">{s.value}</p>
+                    <p className="text-xs font-semibold mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-xl bg-amber-50 p-3 text-center">
+                <p className="text-xl font-bold text-amber-700">₹{(stats?.totalFees || 0).toLocaleString("en-IN")}</p>
+                <p className="text-xs font-semibold text-amber-600 mt-0.5">Total Collection</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-emerald-50 p-3 text-center border border-emerald-100">
+                  <p className="text-lg font-bold text-emerald-700">₹{(stats?.patients || []).filter(p => p.paymentMode !== "online").reduce((s, p) => s + (p.fees || 0), 0).toLocaleString("en-IN")}</p>
+                  <p className="text-xs font-semibold text-emerald-600 mt-0.5">💵 Cash</p>
+                </div>
+                <div className="rounded-xl bg-blue-50 p-3 text-center border border-blue-100">
+                  <p className="text-lg font-bold text-blue-700">₹{(stats?.patients || []).filter(p => p.paymentMode === "online").reduce((s, p) => s + (p.fees || 0), 0).toLocaleString("en-IN")}</p>
+                  <p className="text-xs font-semibold text-blue-600 mt-0.5">📱 Online</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-slate-100 flex gap-3">
+              <button onClick={() => setShowWaReport(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all text-sm">
+                Cancel
+              </button>
+              <button onClick={handleSendDailyReport}
+                className="flex-1 py-2.5 rounded-xl bg-green-500 text-white font-bold hover:bg-green-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-500/25 text-sm">
+                <Send className="w-4 h-4" /> Send on WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT DIALOG ── */}
+      <Dialog open={!!editingPatient} onOpenChange={open => !open && setEditingPatient(null)}>
+        <DialogContent className="max-w-md bg-white rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl">Edit Patient Visit</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Name</label>
+                <input {...editForm.register("name")} className="w-full px-3 py-2 rounded-xl border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Mobile / Case No.</label>
+                <input {...editForm.register("mobile")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none font-mono" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Age (yrs / mo)</label>
+                <div className="flex gap-1">
+                  <input type="number" {...editForm.register("age")} className="w-full px-2 py-2 rounded-xl border focus:border-primary outline-none" placeholder="yrs" />
+                  <input type="number" {...editForm.register("ageMonths")} className="w-16 px-2 py-2 rounded-xl border focus:border-primary outline-none" placeholder="mo" min={0} max={11} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Weight</label>
+                <input {...editForm.register("weight")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" placeholder="e.g. 65 kg" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Address</label>
+              <input {...editForm.register("address")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Complaint Code</label>
+              <input {...editForm.register("complaintCode")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none uppercase" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Complaint</label>
+              <input {...editForm.register("complaint")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Treatment</label>
+              <textarea {...editForm.register("treatment")} rows={2} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none resize-none" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Advice Code <span className="text-slate-400 font-normal">(auto-fills Advice below, e.g. F5)</span></label>
+              <input {...editForm.register("adviceCode")} onChange={(e) => {
+                editForm.setValue("adviceCode", e.target.value);
+                const rec = findAdviceCode(e.target.value);
+                if (rec) editForm.setValue("advice", rec.advice);
+              }} className="w-24 px-3 py-2 rounded-xl border focus:border-primary outline-none uppercase font-bold text-center" placeholder="CODE" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Advice (use F5 for follow-up after 5 days)</label>
+              <input {...editForm.register("advice")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Reports</label>
+              <input {...editForm.register("reports")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Fees (₹)</label>
+              <input type="number" {...editForm.register("fees")} className="w-full px-3 py-2 rounded-xl border focus:border-primary outline-none" />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <button type="button" onClick={() => setEditingPatient(null)} className="px-4 py-2 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700">Cancel</button>
+              <button type="submit" className="px-4 py-2 rounded-xl font-medium bg-primary text-white shadow-md hover:bg-primary/90">Save Changes</button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Doctor Split Edit Dialog ── */}
+      <Dialog open={doctorSplitDialogOpen} onOpenChange={setDoctorSplitDialogOpen}>
+        <DialogContent className="max-w-sm bg-white rounded-2xl p-6">
+          <DialogHeader><DialogTitle className="font-display text-xl">Edit Doctor Split</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Doctor 1 name</label>
+                <input value={d1NameInput} onChange={e => setD1NameInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-primary outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">%</label>
+                <input type="number" value={d1PctInput} onChange={e => setD1PctInput(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-primary outline-none" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Doctor 2 name</label>
+                <input value={d2NameInput} onChange={e => setD2NameInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-primary outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">%</label>
+                <input type="number" value={d2PctInput} onChange={e => setD2PctInput(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-primary outline-none" />
+              </div>
+            </div>
+            <p className={`text-xs ${d1PctInput + d2PctInput === 100 ? "text-slate-400" : "text-destructive font-semibold"}`}>
+              Total: {d1PctInput + d2PctInput}% {d1PctInput + d2PctInput !== 100 && "— must add up to 100%"}
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setDoctorSplitDialogOpen(false)} className="px-4 py-2 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700">Cancel</button>
+              <button type="button" onClick={saveDoctorSplit} className="px-4 py-2 rounded-xl font-medium bg-primary text-white shadow-md hover:bg-primary/90">Save</button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Loose Sale Audit Dialog ── */}
+      <Dialog open={showLooseAuditModal} onOpenChange={setShowLooseAuditModal}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="font-display text-xl flex items-center gap-2"><ShoppingBag className="w-5 h-5 text-violet-500" /> Loose Sale Audit</DialogTitle></DialogHeader>
+
+          {(() => {
+            const inflated = looseAuditRows.filter(r => r.oldCollection !== r.newCollection);
+            const totalInflation = inflated.reduce((s, r) => s + (r.oldCollection - r.newCollection), 0);
+            const allOrphans = looseAuditRows.flatMap(r => r.orphanIds);
+            return (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-violet-50 border border-violet-200 space-y-1.5">
+                  <p className="text-sm text-violet-900">
+                    Scanned <strong>{looseAuditRows.length}</strong> day(s) with loose medicine activity.
+                  </p>
+                  <p className="text-sm text-violet-900">
+                    <strong>{inflated.length}</strong> day(s) were previously over-reported by a combined{" "}
+                    <strong>{formatCurrency(totalInflation)}</strong>.
+                  </p>
+                  <p className="text-xs text-violet-700">
+                    Collections are recalculated at display time, so every date below already shows the corrected figure.
+                    No stored record was altered by this scan.
+                  </p>
+                </div>
+
+                {looseAuditRows.length === 0 ? (
+                  <div className="text-center py-10 text-slate-500">
+                    <ShoppingBag className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">No loose medicine sales found in any date.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50">
+                        <tr className="text-left text-xs uppercase tracking-wider text-slate-500">
+                          <th className="px-4 py-2.5">Date</th>
+                          <th className="px-4 py-2.5 text-right">Loose sales</th>
+                          <th className="px-4 py-2.5 text-right">Was showing</th>
+                          <th className="px-4 py-2.5 text-right">Correct</th>
+                          <th className="px-4 py-2.5 text-right">Difference</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {looseAuditRows.map(r => {
+                          const diff = r.oldCollection - r.newCollection;
+                          return (
+                            <tr key={r.date} className={diff !== 0 ? "bg-amber-50/50" : ""}>
+                              <td className="px-4 py-2.5 font-medium text-slate-800">
+                                {format(new Date(r.date + "T00:00:00"), "dd/MM/yyyy")}
+                              </td>
+                              <td className="px-4 py-2.5 text-right text-slate-600">
+                                {formatCurrency(r.saleTotal)} <span className="text-xs text-slate-400">({r.saleCount})</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-right text-red-600 line-through">{formatCurrency(r.oldCollection)}</td>
+                              <td className="px-4 py-2.5 text-right font-bold text-emerald-700">{formatCurrency(r.newCollection)}</td>
+                              <td className="px-4 py-2.5 text-right font-semibold text-amber-700">
+                                {diff === 0 ? "—" : `−${formatCurrency(diff)}`}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {allOrphans.length > 0 && (
+                  <div className="p-4 rounded-xl bg-red-50 border border-red-200 space-y-3">
+                    <p className="text-sm text-red-900 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>
+                        Found <strong>{allOrphans.length}</strong> loose-medicine register row(s) with no matching entry in the
+                        loose sales panel — usually left behind when a sale was deleted from the panel only. These still
+                        add {formatCurrency(looseAuditRows.reduce((s, r) => s + r.orphanTotal, 0))} to collections.
+                      </span>
+                    </p>
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                      {looseAuditRows.filter(r => r.orphanIds.length > 0).map(r => (
+                        <div key={r.date} className="text-xs">
+                          <p className="font-semibold text-red-800 mb-1">{format(new Date(r.date + "T00:00:00"), "dd/MM/yyyy")}</p>
+                          {r.orphanIds.map(id => (
+                            <label key={id} className="flex items-center gap-2 pl-3 py-1 cursor-pointer text-slate-700">
+                              <input type="checkbox" checked={selectedOrphanIds.has(id)} onChange={() => toggleOrphanSelection(id)}
+                                className="w-4 h-4 rounded border-slate-300" />
+                              Register row #{id}
+                            </label>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <button onClick={() => setSelectedOrphanIds(new Set(allOrphans))}
+                        className="text-xs font-semibold text-red-700 underline">Select all</button>
+                      <button onClick={handleDeleteSelectedOrphans} disabled={selectedOrphanIds.size === 0}
+                        className="px-4 py-2 rounded-xl font-semibold bg-red-600 text-white text-sm disabled:opacity-40 flex items-center gap-1.5">
+                        <Trash2 className="w-4 h-4" /> Delete Selected ({selectedOrphanIds.size})
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button onClick={() => setShowLooseAuditModal(false)}
+                    className="px-4 py-2 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700">Close</button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Duplicate Patients Dialog ── */}
+      <Dialog open={showDuplicatesModal} onOpenChange={setShowDuplicatesModal}>
+        <DialogContent className="max-w-2xl bg-white rounded-2xl p-6 max-h-[85vh] flex flex-col">
+          <DialogHeader><DialogTitle className="font-display text-xl flex items-center gap-2"><Copy className="w-5 h-5 text-amber-500" /> Duplicate Patients</DialogTitle></DialogHeader>
+
+          <div className="flex items-center gap-2 mt-2 mb-3">
+            <button onClick={() => { setDuplicateScope("day"); scanForDuplicates("day"); }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${duplicateScope === "day" ? "bg-primary/10 text-primary" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              {format(new Date(selectedDate + "T00:00:00"), "dd MMM yyyy")} only
+            </button>
+            <button onClick={() => { setDuplicateScope("all"); scanForDuplicates("all"); }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${duplicateScope === "all" ? "bg-primary/10 text-primary" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              All dates
+            </button>
+          </div>
+
+          {duplicateGroups.length === 0 ? (
+            <div className="py-12 text-center text-slate-400">
+              <Copy className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+              <p>No duplicate patients found {duplicateScope === "day" ? "for this date" : "in your records"}.</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-slate-500 mb-3">
+                Found <strong>{duplicateGroups.length}</strong> group(s) — matched by same date, mobile &amp; name.
+                The oldest entry in each group is pre-selected to <strong>keep</strong>; the rest are checked for deletion. Review and adjust before deleting.
+              </p>
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                {duplicateGroups.map(g => (
+                  <div key={g.key} className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-600 flex items-center justify-between">
+                      <span>{g.patients[0].name} · {g.patients[0].mobile} · {format(new Date(g.patients[0].visitDate + "T00:00:00"), "dd MMM yyyy")}</span>
+                      <span className="text-amber-700">{g.patients.length} entries</span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {g.patients.map((p, idx) => (
+                        <label key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50">
+                          <input type="checkbox" checked={selectedDuplicateIds.has(p.id)} onChange={() => toggleDuplicateSelection(p.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-destructive focus:ring-destructive/30" />
+                          <span className="flex-1">
+                            <span className="font-medium text-slate-800">{p.complaint || p.complaintCode || "-"}</span>
+                            <span className="text-slate-400"> · Fees ₹{p.fees || 0} · {p.registerType === "ayurvedic" ? "Ayurvedic" : "General"}</span>
+                          </span>
+                          {idx === 0 && !selectedDuplicateIds.has(p.id) && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">KEEP</span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-4">
+                <span className="text-sm text-slate-500">{selectedDuplicateIds.size} selected for deletion</span>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowDuplicatesModal(false)} className="px-4 py-2 rounded-xl font-medium bg-slate-100 hover:bg-slate-200 text-slate-700">Cancel</button>
+                  <button onClick={handleDeleteSelectedDuplicates} disabled={selectedDuplicateIds.size === 0}
+                    className="px-4 py-2 rounded-xl font-medium bg-destructive text-white shadow-md hover:bg-destructive/90 disabled:opacity-50 flex items-center gap-1.5">
+                    <Trash2 className="w-4 h-4" /> Delete Selected ({selectedDuplicateIds.size})
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Clear All Data Modal ── */}
+      <AnimatePresence>
+        {showClearModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowClearModal(false)}>
+            <motion.div initial={{ scale: 0.92, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.92, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
+
+              {/* Header */}
+              <div className="bg-red-600 px-6 py-5 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                  <ShieldAlert className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-bold text-white text-base leading-none">Clear All Data</p>
+                  <p className="text-red-100 text-xs mt-0.5">This action cannot be undone</p>
+                </div>
+                <button onClick={() => setShowClearModal(false)} className="ml-auto w-8 h-8 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center">
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-5 space-y-4">
+                {/* Warning box */}
+                <div className="flex gap-3 p-4 bg-red-50 rounded-2xl border border-red-200">
+                  <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                  <div className="text-sm text-red-700 space-y-1">
+                    <p className="font-bold">The following will be permanently deleted:</p>
+                    <ul className="text-xs space-y-0.5 mt-1 list-disc list-inside text-red-600">
+                      <li>All patient records &amp; visit history</li>
+                      <li>Complaint codes</li>
+                      <li>Loose medicine sales</li>
+                      <li>Patient tags</li>
+                      <li>Pending fees</li>
+                      <li>Medicine &amp; purchase bills</li>
+                    </ul>
+                    <p className="text-xs font-semibold mt-2 text-red-700">⚠️ Take a Backup first if you haven't already.</p>
+                  </div>
+                </div>
+
+                {/* Confirm input */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Type <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-red-600">CLEAR</span> to confirm
+                  </label>
+                  <input
+                    value={clearConfirmText}
+                    onChange={e => setClearConfirmText(e.target.value)}
+                    placeholder="Type CLEAR here..."
+                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none text-sm font-mono tracking-widest text-center uppercase"
+                    autoComplete="off"
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-1">
+                  <button onClick={() => { setShowClearModal(false); setClearConfirmText(""); }}
+                    className="flex-1 py-3 rounded-2xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleClearAllData}
+                    disabled={clearConfirmText.trim().toUpperCase() !== "CLEAR"}
+                    className="flex-1 py-3 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all
+                      bg-red-600 hover:bg-red-700 disabled:opacity-30 disabled:cursor-not-allowed">
+                    <Trash2 className="w-4 h-4" /> Yes, Clear All Data
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Report Attachment Viewer Modal ── */}
+      <AnimatePresence>
+        {viewingAttachments && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex flex-col bg-black/90 backdrop-blur-sm"
+            onClick={() => setViewingAttachments(null)}>
+            <motion.div
+              initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              onClick={e => e.stopPropagation()}
+              className="flex flex-col h-full max-w-3xl w-full mx-auto">
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-700 shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+                  <Paperclip className="w-4 h-4 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-white text-sm truncate">{viewingAttachments.patientName}</p>
+                  <p className="text-xs text-slate-400">
+                    {viewingAttachments.date} · {viewingAttachments.files.length} report{viewingAttachments.files.length > 1 ? "s" : ""}
+                  </p>
+                </div>
+                <button onClick={() => setViewingAttachments(null)}
+                  className="w-8 h-8 rounded-xl bg-slate-700 hover:bg-slate-600 flex items-center justify-center transition-colors">
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+              {/* Files */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {viewingAttachments.files.map((src, i) => {
+                  const isPdf = src.startsWith("data:application/pdf");
+                  return (
+                    <div key={i} className="rounded-2xl overflow-hidden border border-slate-700 bg-slate-800">
+                      <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-700/60 border-b border-slate-600">
+                        {isPdf
+                          ? <FileText className="w-4 h-4 text-rose-400 shrink-0" />
+                          : <Paperclip className="w-4 h-4 text-blue-400 shrink-0" />}
+                        <span className="text-xs font-semibold text-slate-200 flex-1">
+                          {isPdf ? `Report PDF ${i + 1}` : `Report Image ${i + 1}`}
+                        </span>
+                        <a href={src}
+                          download={isPdf
+                            ? `report_${viewingAttachments.patientName}_${i + 1}.pdf`
+                            : `report_${viewingAttachments.patientName}_${i + 1}.jpg`}
+                          onClick={e => e.stopPropagation()}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-200 text-xs font-semibold transition-colors">
+                          ↓ Save
+                        </a>
+                      </div>
+                      {isPdf ? (
+                        <iframe
+                          src={src}
+                          className="w-full bg-white"
+                          style={{ height: "70vh", border: "none" }}
+                          title={`Report PDF ${i + 1}`}
+                        />
+                      ) : (
+                        <img
+                          src={src}
+                          className="w-full object-contain bg-slate-900"
+                          style={{ maxHeight: "70vh" }}
+                          alt={`Report ${i + 1}`}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+    </Layout>
+  );
+}
