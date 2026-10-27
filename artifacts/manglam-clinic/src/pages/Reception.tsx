@@ -173,7 +173,9 @@ export default function Reception() {
    * instead, which still works.
    */
   const openDisplayWindow = () => {
-    const url = `${window.location.origin}/display`;
+    // "/?display=1" rather than "/display": the root path is served by every
+    // host, so this window can never land on a 404 page in the waiting room.
+    const url = `${window.location.origin}/?display=1`;
     const w = window.open(url, "clinic-display", "width=1280,height=760,menubar=no,toolbar=no");
     if (!w) {
       window.open(url, "_blank");
