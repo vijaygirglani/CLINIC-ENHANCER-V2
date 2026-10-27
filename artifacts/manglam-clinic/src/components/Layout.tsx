@@ -1,12 +1,19 @@
 import { Link, useLocation } from "wouter";
 import {
   UserPlus, BookOpen, Leaf, Code2, BookMarked, ClipboardList, MessageCircle, Menu, X,
-  Package, Wallet,
+  Package, Wallet, Users, Hourglass,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getQueueStats, subscribeQueue } from "@/lib/queue";
+import { motionOff } from "@/components/AnimatedNumber";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { IdleScreen } from "@/components/IdleScreen";
+import { ShortcutRail } from "@/components/ShortcutRail";
+import { motion } from "framer-motion";
 
 const NAV = [
   { to: "/",                  label: "Patient Registration", icon: UserPlus },
+  { to: "/queue",             label: "Token Queue",          icon: Users },
   { to: "/daily-register",    label: "Daily Register",       icon: BookOpen },
   { to: "/ayurvedic-register",label: "Ayurvedic Register",   icon: Leaf },
   { to: "/complaint-codes",   label: "Complaint Codes",      icon: Code2 },
@@ -16,6 +23,59 @@ const NAV = [
   { to: "/inventory",         label: "Inventory",            icon: Package },
   { to: "/expenses",          label: "Expenses",             icon: Wallet },
 ];
+
+/**
+ * Live "N waiting" pill in the header, so the doctor can see the queue
+ * building up from any page without switching to it. Pops when the number
+ * changes, and disappears entirely when nobody is waiting.
+ */
+function QueueBadge() {
+  const [, setTick] = useState(0);
+  const [bump, setBump] = useState(0);
+  const [prev, setPrev] = useState(0);
+
+  useEffect(() => {
+    const un = subscribeQueue(() => setTick(t => t + 1));
+    const i = setInterval(() => setTick(t => t + 1), 20000);
+    return () => { un(); clearInterval(i); };
+  }, []);
+
+  const stats = getQueueStats();
+  const waiting = stats.waiting;
+
+  useEffect(() => {
+    if (waiting !== prev) {
+      setPrev(waiting);
+      if (waiting > prev && !motionOff()) setBump(b => b + 1);
+    }
+  }, [waiting, prev]);
+
+  if (waiting === 0 && !stats.nowServing) return null;
+
+  const hot = stats.longestWaitMin >= 30;
+
+  return (
+    <Link href="/queue"
+      className={`shrink-0 flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-xl text-xs font-bold transition-colors
+        ${hot ? "bg-rose-100 text-rose-700 hover:bg-rose-200" : "bg-amber-100 text-amber-700 hover:bg-amber-200"}`}
+      title={stats.nowServing ? `Now serving token ${stats.nowServing.token}` : "Open the token queue"}>
+      <Hourglass className="w-3.5 h-3.5" />
+      <span
+        key={bump}
+        className="tabular-nums"
+        style={bump && !motionOff() ? { animation: "cp-badge-pop 0.4s ease-out" } : undefined}>
+        {waiting}
+      </span>
+      <span className="hidden 2xl:inline font-semibold opacity-70">waiting</span>
+      {stats.nowServing && (
+        <span className="hidden 2xl:inline pl-2 ml-0.5 border-l border-current/25 font-semibold opacity-70">
+          #{stats.nowServing.token} in
+        </span>
+      )}
+      <style>{`@keyframes cp-badge-pop{0%{transform:scale(1)}40%{transform:scale(1.5)}100%{transform:scale(1)}}`}</style>
+    </Link>
+  );
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -55,6 +115,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 );
               })}
             </nav>
+
+            {/* Live queue pill */}
+            <QueueBadge />
+
+            {/* Light / Dark / Auto */}
+            <ThemeToggle />
 
             {/* More menu — always-visible dropdown fallback for narrower desktop windows */}
             <div className="hidden lg:block shrink-0">
@@ -106,9 +172,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* ── PAGE CONTENT — offset by header height ── */}
+      {/* The key makes the content re-mount per route, so each section slides
+          in. 150 ms and a 6 px lift: enough to feel deliberate, short enough
+          that it never gets in the way of typing. */}
       <main className="pt-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
+        <motion.div
+          key={location}
+          initial={motionOff() ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+        >
+          {children}
+        </motion.div>
       </main>
+
+      {/* Hold Ctrl for the shortcut rail */}
+      <ShortcutRail />
+
+      {/* Clock screen after a few idle minutes — also hides patient details
+          from anyone walking past the desk */}
+      <IdleScreen />
     </div>
   );
 }
