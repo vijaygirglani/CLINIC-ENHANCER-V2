@@ -88,6 +88,7 @@ import { exportToExcel, parseExcelFile } from "@/lib/export";
 import { motion, AnimatePresence } from "framer-motion";
 import { AnimatedNumber, motionOff } from "@/components/AnimatedNumber";
 import { MonthReportCard } from "@/components/MonthReportCard";
+import { MonthTrends } from "@/components/MonthTrends";
 import { CollectionRing } from "@/components/CollectionRing";
 import { DayTimeline } from "@/components/DayTimeline";
 
@@ -1623,8 +1624,10 @@ Manglam Hospital, Morbi`;
               {/* The month, played back — figures counting up, bars growing,
                   top complaints sliding in. Prints as its own sheet. */}
               {monthlyStats && showReportCard && (
-                <div className="px-6 py-5 bg-slate-50 border-b border-slate-100">
+                <div className="px-6 py-5 bg-slate-50 border-b border-slate-100 space-y-5">
                   <MonthReportCard stats={monthlyStats} year={monthlyYear} month={monthlyMonth} />
+                  {/* This month against last, day by day, plus a year of months */}
+                  <MonthTrends year={monthlyYear} month={monthlyMonth} />
                 </div>
               )}
 

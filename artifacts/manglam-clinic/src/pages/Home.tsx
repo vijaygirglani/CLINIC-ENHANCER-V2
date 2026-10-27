@@ -20,6 +20,7 @@ import { completeCurrent, type QueueEntry } from "@/lib/queue";
 import { GrowthChart, looksLikeChild, hasGrowthData } from "@/components/GrowthChart";
 import { AllergyBanner } from "@/components/AllergyBanner";
 import { SaveTick } from "@/components/SaveTick";
+import { PrescriptionFly } from "@/components/PrescriptionFly";
 import { AnimatedNumber, motionOff } from "@/components/AnimatedNumber";
 import { addRecovered, getRecovered } from "@/lib/clinicExtras";
 import {
@@ -1519,6 +1520,10 @@ export default function Home() {
   // Bumped on a successful save so SaveTick plays once over the right button.
   const [savedTickGen, setSavedTickGen] = useState(0);
   const [savedTickAyu, setSavedTickAyu] = useState(0);
+  // Drives the prescription that lifts off the desk and flies to the register.
+  const [flyTick, setFlyTick] = useState(0);
+  const [flyName, setFlyName] = useState("");
+  const [flyAyur, setFlyAyur] = useState(false);
   // Running total of pending fees actually recovered.
   const [recovered, setRecovered] = useState(() => getRecovered());
 
@@ -1935,6 +1940,9 @@ export default function Home() {
       // Only on a clean save — a throw below skips this and shows the error.
       if (registerType === "ayurvedic") setSavedTickAyu(n => n + 1);
       else setSavedTickGen(n => n + 1);
+      setFlyName(data.name || "");
+      setFlyAyur(registerType === "ayurvedic");
+      setFlyTick(n => n + 1);
     } catch (err) {
       // Previously any throw in here died silently: no toast, no save, and the
       // form just sat there. Now the real reason is shown.
@@ -2182,6 +2190,9 @@ export default function Home() {
       {showCard && lastSaved && <PatientCardModal patient={lastSaved} onClose={() => setShowCard(false)} />}
       {showGlobalSearch && <GlobalSearchModal onClose={() => setShowGlobalSearch(false)} />}
       {showClinicSettings && <ClinicSettingsModal onClose={() => setShowClinicSettings(false)} />}
+
+      {/* The prescription lifts off and flies to the register on a save */}
+      <PrescriptionFly trigger={flyTick} patientName={flyName} ayurvedic={flyAyur} />
 
       {/* ── TOKEN QUEUE STRIP — hidden until a token is issued today ── */}
       <QueueStrip onCalled={handleQueueCalled} />

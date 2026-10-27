@@ -45,11 +45,13 @@ import {
   type QueueEntry,
 } from "@/lib/queue";
 import { playChime } from "@/lib/chime";
+import { WalkingPatient } from "@/components/WalkingPatient";
 import { getExtras, saveExtras } from "@/lib/clinicExtras";
+import { getSavedSheetId, syncQueueFromSheet } from "@/lib/sheet";
 import {
   Users, UserPlus, PlayCircle, SkipForward, CheckCircle2, RotateCcw,
   Trash2, Monitor, Clock, Volume2, Leaf, Stethoscope, Hourglass,
-  Zap, ChevronRight, Bell, Sparkles, ExternalLink,
+  Zap, ChevronRight, Bell, Sparkles, ExternalLink, RefreshCw, Sheet as SheetIcon,
 } from "lucide-react";
 
 /* ── wait-time colour: green under 10 min, amber to 30, red past that ────── */
@@ -132,6 +134,15 @@ export default function Reception() {
   const [showFinished, setShowFinished] = useState(false);
   const [idleMins, setIdleMins] = useState(() => getExtras().idleMinutes);
 
+  // ── Sheet sync ──────────────────────────────────────────────────────────
+  // Your staff type arriving patients into the same Google Sheet the
+  // registration page already uses. This pulls them in and hands out tokens,
+  // so the queue builds itself and you only press Call Next.
+  const [sheetId] = useState(() => getSavedSheetId());
+  const [syncing, setSyncing] = useState(false);
+  const [autoSync, setAutoSync] = useState(() => getExtras().queueAutoSync !== false);
+  const [lastSync, setLastSync] = useState<string>("");
+
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
   const [age, setAge] = useState("");
@@ -174,6 +185,57 @@ export default function Reception() {
       description: "Drag that window to your second screen or TV, then press F11 for full screen.",
     });
   };
+
+  const runSheetSync = useCallback(async (quiet: boolean) => {
+    if (!sheetId) {
+      if (!quiet) {
+        toast({
+          variant: "destructive",
+          title: "No sheet connected",
+          description: "Connect the Google Sheet on the Patient Registration page first.",
+        });
+      }
+      return;
+    }
+    setSyncing(true);
+    try {
+      const res = await syncQueueFromSheet(sheetId);
+      setLastSync(new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true }));
+      if (res.added > 0) {
+        if (chimeOn) playChime(0.14);
+        toast({
+          title: `${res.added} patient${res.added === 1 ? "" : "s"} added from the sheet`,
+          description: res.firstToken !== null
+            ? `Tokens ${res.firstToken} onward. ${res.skipped} already had one.`
+            : undefined,
+        });
+      } else if (!quiet) {
+        toast({
+          title: "Nothing new in the sheet",
+          description: `All ${res.total} row${res.total === 1 ? "" : "s"} already have a token.`,
+        });
+      }
+    } catch (err: any) {
+      // A background sync that fails stays quiet — the clinic's internet
+      // dropping for a minute should not throw a red box across the screen
+      // every minute. A sync you asked for always reports.
+      if (!quiet) {
+        toast({ variant: "destructive", title: "Sheet sync failed", description: err?.message || "Could not read the sheet." });
+      } else {
+        console.warn("Background sheet sync failed:", err);
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }, [sheetId, toast, chimeOn]);
+
+  // Auto-sync once a minute while the page is open.
+  useEffect(() => {
+    if (!autoSync || !sheetId) return;
+    runSheetSync(true);
+    const t = setInterval(() => runSheetSync(true), 60000);
+    return () => clearInterval(t);
+  }, [autoSync, sheetId, runSheetSync]);
 
   const handleIssue = () => {
     if (!name.trim()) {
@@ -229,6 +291,7 @@ export default function Reception() {
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
             {" · "}Next token <span className="font-semibold text-slate-700 dark:text-slate-200">{stats.nextToken}</span>
+            {lastSync && <span className="text-slate-400"> · sheet read {lastSync}</span>}
           </p>
         </div>
 
@@ -247,6 +310,24 @@ export default function Reception() {
               : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"}`}
           title="Turn every animation off — for older PCs">
           <Zap className="w-3.5 h-3.5" /> {lite ? "Lite mode on" : "Lite mode off"}
+        </button>
+
+        {/* Sheet sync — the staff's list becomes the queue */}
+        <button onClick={() => runSheetSync(false)} disabled={syncing}
+          title={sheetId
+            ? "Read the staff sheet now and give a token to anyone new"
+            : "Connect the Google Sheet on the Patient Registration page first"}
+          className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-60
+            ${sheetId ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" : "bg-slate-100 text-slate-400"}`}>
+          <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+          {syncing ? "Reading sheet…" : "Sync sheet"}
+        </button>
+
+        <button onClick={() => { const v = !autoSync; setAutoSync(v); saveExtras({ ...getExtras(), queueAutoSync: v }); }}
+          title="Check the sheet every minute on its own"
+          className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors
+            ${autoSync ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+          <SheetIcon className="w-3.5 h-3.5" /> {autoSync ? "Auto on" : "Auto off"}
         </button>
 
         {/* Idle screen delay — the one place it needs to be settable */}
@@ -307,10 +388,14 @@ export default function Reception() {
                   exit={motionOff() ? undefined : { opacity: 0, x: -40 }}
                   transition={{ type: "spring", stiffness: 260, damping: 28 }}
                   className="p-5 flex flex-wrap items-center gap-5">
-                  <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-primary to-cyan-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-primary/25">
-                    <span className="font-display font-extrabold text-5xl tabular-nums">
-                      <FlipNumber key={`${now.token}-${now.announceCount}`} value={now.token} />
-                    </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* walks in each time a new token is called */}
+                    <WalkingPatient trigger={`${now.token}-${now.announceCount}`} size={52} />
+                    <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-primary to-cyan-500 text-white flex items-center justify-center shadow-lg shadow-primary/25">
+                      <span className="font-display font-extrabold text-5xl tabular-nums">
+                        <FlipNumber key={`${now.token}-${now.announceCount}`} value={now.token} />
+                      </span>
+                    </div>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-display font-bold text-2xl text-slate-900 truncate">{now.name}</p>

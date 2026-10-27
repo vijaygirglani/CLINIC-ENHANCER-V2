@@ -22,6 +22,7 @@ import {
 } from "@/lib/queue";
 import { playChime } from "@/lib/chime";
 import { motionOff } from "@/components/AnimatedNumber";
+import { WalkingPatient } from "@/components/WalkingPatient";
 import {
   getDisplayClinic, getDisplaySettings, saveDisplaySettings, getDisplayTips,
   LOOKS, DISPLAY_TEXT,
@@ -334,16 +335,21 @@ export default function Display() {
                 ? <TokenNumber value={now.token} flashKey={announceId} color={look.ink} />
                 : <span style={{ color: look.divider }}>—</span>}
             </div>
-            <AnimatePresence mode="wait">
-              <motion.p key={now?.id || "none"}
-                initial={motionOff() ? false : { opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={motionOff() ? undefined : { opacity: 0, y: -12 }}
-                className="mt-[2vh] font-semibold text-center truncate max-w-full"
-                style={{ fontSize: "clamp(1.6rem,3.4vw,3rem)", color: look.accent }}>
-                {now ? now.name : (stats.total === 0 ? T.takeToken : T.pleaseWait)}
-              </motion.p>
-            </AnimatePresence>
+            <div className="mt-[2vh] flex items-center justify-center gap-[1.5vw] max-w-full">
+              {now && (
+                <WalkingPatient key={announceId} trigger={announceId} size={64} color={look.accent} />
+              )}
+              <AnimatePresence mode="wait">
+                <motion.p key={now?.id || "none"}
+                  initial={motionOff() ? false : { opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={motionOff() ? undefined : { opacity: 0, y: -12 }}
+                  className="font-semibold text-center truncate"
+                  style={{ fontSize: "clamp(1.6rem,3.4vw,3rem)", color: look.accent }}>
+                  {now ? now.name : (stats.total === 0 ? T.takeToken : T.pleaseWait)}
+                </motion.p>
+              </AnimatePresence>
+            </div>
           </div>
 
           {/* up next */}
