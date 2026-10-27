@@ -45,12 +45,39 @@ function Router() {
   );
 }
 
+/**
+ * The waiting-room screen opens in a second window. Asking the server for
+ * "/display" only works if the host is configured to send every path to
+ * index.html — and when it is not, you get a 404 page on the TV.
+ *
+ * "/?display=1" asks for the root, which every host serves, so the window
+ * can never 404: not on Vercel, not from a local build, not offline.
+ * The /display route still works for anyone who types it.
+ */
+const wantsDisplay = (() => {
+  try {
+    return new URLSearchParams(window.location.search).get("display") === "1";
+  } catch {
+    return false;
+  }
+})();
+
 function App() {
   useEffect(() => { repairMalformedPatients(); migrateLegacyPatientsKey(); }, []);
   // Theme init lives here rather than in main.tsx, so this set of files never
   // has to replace main.tsx — which on your machine also starts the offline
   // persistence layer. Nothing here runs unless a theme has been chosen.
   useEffect(() => initTheme(), []);
+
+  // The waiting-room window, served from the root path so it cannot 404.
+  if (wantsDisplay) {
+    return (
+      <TooltipProvider>
+        <Display />
+      </TooltipProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
