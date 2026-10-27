@@ -24,7 +24,7 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
-import { TrendingUp, TrendingDown, Baby, AlertTriangle } from "lucide-react";
+import { TrendingUp, TrendingDown, Baby, AlertTriangle, Weight as WeightIcon } from "lucide-react";
 import { motionOff } from "@/components/AnimatedNumber";
 import { parseWeightKg, ageInMonths } from "@/lib/clinicExtras";
 
@@ -75,7 +75,30 @@ export function GrowthChart({ visits, name }: { visits: GrowthVisit[]; name?: st
     return out.sort((a, b) => a.t - b.t);
   }, [visits]);
 
-  if (points.length < 2) return null;
+  // Is this a child? Only decides the wording and the icon now — the chart
+  // itself is drawn for anybody with two weights on record, because weight
+  // over time matters just as much for a diabetic or a thyroid patient.
+  const latestMonths = visits.length ? ageInMonths(visits[0].age, visits[0].ageMonths) : null;
+  const isChild = latestMonths !== null && latestMonths <= 12 * 12;
+  const Icon = isChild ? Baby : WeightIcon;
+  const heading = isChild ? "Growth" : "Weight";
+
+  // Nothing recorded at all — stay out of the way.
+  if (points.length === 0) return null;
+
+  // Exactly one weight: no line to draw yet, but say so, otherwise the
+  // feature is invisible and nobody knows to record it again next time.
+  if (points.length === 1) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 flex items-center gap-2.5">
+        <Icon className="w-4 h-4 text-slate-400 shrink-0" />
+        <p className="text-xs text-slate-500">
+          <b className="text-slate-700">{points[0].kg} kg</b> on {points[0].label}.
+          Record the weight once more and a {heading.toLowerCase()} chart appears here.
+        </p>
+      </div>
+    );
+  }
 
   /* ── geometry ───────────────────────────────────────────────────────── */
   const W = 460;
@@ -126,8 +149,8 @@ export function GrowthChart({ visits, name }: { visits: GrowthVisit[]; name?: st
   return (
     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
       <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2 bg-gradient-to-r from-sky-50 to-white">
-        <Baby className="w-4 h-4 text-sky-600" />
-        <p className="text-sm font-bold text-slate-800">Growth</p>
+        <Icon className="w-4 h-4 text-sky-600" />
+        <p className="text-sm font-bold text-slate-800">{heading}</p>
         <span className="ml-auto text-[11px] text-slate-400">
           {points.length} weights recorded
         </span>
