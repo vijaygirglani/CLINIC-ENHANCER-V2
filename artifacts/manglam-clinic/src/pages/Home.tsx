@@ -21,6 +21,7 @@ import { GrowthChart } from "@/components/GrowthChart";
 import { AllergyBanner } from "@/components/AllergyBanner";
 import { SaveTick } from "@/components/SaveTick";
 import { PrescriptionFly } from "@/components/PrescriptionFly";
+import { DoctorBuddyLive } from "@/components/DoctorBuddyLive";
 import { AnimatedNumber, motionOff } from "@/components/AnimatedNumber";
 import { addRecovered, getRecovered } from "@/lib/clinicExtras";
 import {
@@ -2333,6 +2334,9 @@ export default function Home() {
                     <input type="date" {...form.register("visitDate")}
                       className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800" />
                   </div>
+                  {/* The empty half of this row — he reacts to what you are
+                      actually doing, so a glance tells you something true. */}
+                  <DoctorBuddyLive control={form.control} savedTick={savedTickGen + savedTickAyu} className="self-end pb-0.5" />
                 </div>
 
                 {/* Mobile / Case No */}
