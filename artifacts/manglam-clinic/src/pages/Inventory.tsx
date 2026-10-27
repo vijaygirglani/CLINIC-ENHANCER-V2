@@ -22,6 +22,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
+import { motion } from "framer-motion";
+import { motionOff } from "@/components/AnimatedNumber";
 // ── Money display for inventory ──
 // Per-unit purchasing costs are routinely under ₹1 (e.g. ₹0.70 a tablet), and
 // the app-wide formatCurrency rounds to whole rupees — which turned 0.70 into
@@ -235,6 +237,9 @@ export default function Inventory() {
   });
   const filteredStockQty = filteredMedicines.reduce((s, m) => s + (m.currentStock || 0), 0);
   const filteredStockValue = filteredMedicines.reduce((s, m) => s + (m.currentStock || 0) * m.landingCost, 0);
+  // The bars are drawn relative to the biggest stock on screen, so the
+  // comparison stays meaningful whatever the filter.
+  const maxStockQty = Math.max(1, ...filteredMedicines.map(m => m.currentStock || 0));
 
   // ── Medicine dialog — name + pharmacy + purchasing cost + quantity ──
   const [medDialogOpen, setMedDialogOpen] = useState(false);
@@ -651,8 +656,31 @@ export default function Inventory() {
                           : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-700">{formatMoney(m.landingCost)}</td>
-                      <td className={`px-4 py-3 text-right font-medium ${(m.currentStock || 0) <= 0 ? "text-red-500" : "text-slate-700"}`}>
-                        {m.currentStock || 0}
+                      {/* Quantity with a bar — the whole shelf reads at a
+                          glance instead of column by column. Out of stock is
+                          red, under ten amber, the rest green. */}
+                      <td className="px-4 py-3 text-right">
+                        {(() => {
+                          const qty = m.currentStock || 0;
+                          const tone =
+                            qty <= 0 ? { text: "text-red-500", bar: "bg-red-400" }
+                            : qty < 10 ? { text: "text-amber-600", bar: "bg-amber-400" }
+                            : { text: "text-slate-700", bar: "bg-emerald-400" };
+                          const pct = maxStockQty > 0 ? Math.min(100, (qty / maxStockQty) * 100) : 0;
+                          return (
+                            <div className="flex flex-col items-end gap-1">
+                              <span className={`font-medium ${tone.text}`}>{qty}</span>
+                              <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <motion.div
+                                  className={`h-full rounded-full ${tone.bar}`}
+                                  initial={motionOff() ? false : { width: 0 }}
+                                  animate={{ width: `${Math.max(qty > 0 ? 6 : 0, pct)}%` }}
+                                  transition={{ duration: 0.6, ease: "easeOut" }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-emerald-700">
                         {formatMoney((m.currentStock || 0) * m.landingCost)}
@@ -938,7 +966,46 @@ export default function Inventory() {
                         <td className="px-4 py-3 text-slate-500">{e.batchNo}</td>
                         <td className="px-4 py-3 text-slate-500">{e.expiryDate}</td>
                         <td className="px-4 py-3 text-right text-slate-700">{e.qty}</td>
-                        <td className="px-4 py-3 text-right text-slate-700">{e.daysToExpiry}</td>
+                        {/* Days left as a draining bar: a year out is a full
+                            green bar, a month out is a short amber one, and
+                            anything inside 30 days pulses so it cannot be
+                            scrolled past. */}
+                        <td className="px-4 py-3 text-right">
+                          {(() => {
+                            const days = Number(e.daysToExpiry);
+                            const safe = isFinite(days) ? days : 0;
+                            const urgent = safe <= 30;
+                            const tone =
+                              safe <= 0 ? { text: "text-rose-600", bar: "bg-rose-500" }
+                              : safe <= 30 ? { text: "text-rose-600", bar: "bg-rose-400" }
+                              : safe <= 90 ? { text: "text-amber-600", bar: "bg-amber-400" }
+                              : { text: "text-emerald-700", bar: "bg-emerald-400" };
+                            const pct = Math.max(0, Math.min(100, (safe / 365) * 100));
+                            return (
+                              <div className="flex flex-col items-end gap-1">
+                                <span className={`font-semibold ${tone.text}`}>
+                                  {safe <= 0 ? "expired" : safe}
+                                </span>
+                                <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                  <motion.div
+                                    className={`h-full rounded-full ${tone.bar}`}
+                                    initial={motionOff() ? false : { width: 0 }}
+                                    animate={
+                                      urgent && !motionOff()
+                                        ? { width: `${Math.max(4, pct)}%`, opacity: [1, 0.45, 1] }
+                                        : { width: `${Math.max(safe > 0 ? 4 : 0, pct)}%` }
+                                    }
+                                    transition={
+                                      urgent && !motionOff()
+                                        ? { width: { duration: 0.6 }, opacity: { duration: 1.8, repeat: Infinity, ease: "easeInOut" } }
+                                        : { duration: 0.6, ease: "easeOut" }
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`text-xs font-bold px-2 py-1 rounded-md border ${EXPIRY_STATUS_STYLE[e.status]}`}>{EXPIRY_STATUS_LABEL[e.status]}</span>
                         </td>

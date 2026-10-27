@@ -15,6 +15,13 @@ import {
   getPatientTags, savePatientTags,
 } from "@/lib/store";
 import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
+import { QueueStrip } from "@/components/QueueStrip";
+import { completeCurrent, type QueueEntry } from "@/lib/queue";
+import { GrowthChart, looksLikeChild, hasGrowthData } from "@/components/GrowthChart";
+import { AllergyBanner } from "@/components/AllergyBanner";
+import { SaveTick } from "@/components/SaveTick";
+import { AnimatedNumber, motionOff } from "@/components/AnimatedNumber";
+import { addRecovered, getRecovered } from "@/lib/clinicExtras";
 import {
   Loader2, User, Phone, MapPin, Activity, Save, RefreshCw,
   FileText, Printer, X, Leaf, Weight, Calendar,
@@ -1509,6 +1516,12 @@ export default function Home() {
   refreshLooseSalesRef.current = refreshLooseSales;
   const looseTodayTotal = looseSales.reduce((s, e) => s + e.amount, 0);
 
+  // Bumped on a successful save so SaveTick plays once over the right button.
+  const [savedTickGen, setSavedTickGen] = useState(0);
+  const [savedTickAyu, setSavedTickAyu] = useState(0);
+  // Running total of pending fees actually recovered.
+  const [recovered, setRecovered] = useState(() => getRecovered());
+
   // ── Auto-refresh at midnight so the panel resets without page reload ──
   useEffect(() => {
     const checkMidnight = setInterval(() => {
@@ -1788,6 +1801,51 @@ export default function Home() {
     if (match) setPendingAlert(match);
   }, [form, toast]);
 
+  // ── Token queue ───────────────────────────────────────────────────────────
+  // Bringing a patient in from the queue should leave nothing to re-type.
+  const fillFromToken = useCallback((e: { name: string; mobile?: string; age?: string; registerType?: string }) => {
+    form.setValue("name", e.name || "");
+    if (e.mobile) form.setValue("mobile", e.mobile);
+    const ageNum = Number(e.age);
+    if (e.age && !isNaN(ageNum) && ageNum > 0) form.setValue("age", ageNum);
+    if (nameRef.current) nameRef.current.value = e.name || "";
+    if (mobileRef.current && e.mobile) mobileRef.current.value = e.mobile;
+
+    // Pull up their history if we have seen them before.
+    if (e.mobile && e.mobile.replace(/\D/g, "").length >= 10) {
+      const result = lookupByMobile(e.mobile);
+      if (result.history.length) {
+        setPatientHistory(result.history);
+        setHistoryName(e.name || "");
+        setHistoryMobile(e.mobile);
+        setPatientTags(getPatientTags(e.mobile));
+        setFilterMode("history");
+      }
+      const match = getPendingFees().find(p => p.mobile.replace(/\D/g, "") === e.mobile!.replace(/\D/g, ""));
+      if (match) setPendingAlert(match);
+    }
+    toast({ title: "Patient called in", description: `${e.name} loaded into the form.` });
+  }, [form, toast]);
+
+  const handleQueueCalled = useCallback((entry: QueueEntry) => {
+    fillFromToken(entry);
+  }, [fillFromToken]);
+
+  // A token called from the Queue page hands the patient over through
+  // localStorage; pick it up once, then clear it so a refresh does not refill.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cp_queue_prefill");
+      if (!raw) return;
+      localStorage.removeItem("cp_queue_prefill");
+      const p = JSON.parse(raw);
+      if (p && p.name) fillFromToken(p);
+    } catch {
+      /* nothing handed over */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Google Sheet handlers ──
   const handleSaveSheet = () => {
     const id = extractSheetId(sheetInput);
@@ -1874,6 +1932,9 @@ export default function Home() {
   const savePatient = (data: PatientFormValues, registerType: "general" | "ayurvedic") => {
     try {
       savePatientInner(data, registerType);
+      // Only on a clean save — a throw below skips this and shows the error.
+      if (registerType === "ayurvedic") setSavedTickAyu(n => n + 1);
+      else setSavedTickGen(n => n + 1);
     } catch (err) {
       // Previously any throw in here died silently: no toast, no save, and the
       // form just sat there. Now the real reason is shown.
@@ -1934,9 +1995,13 @@ export default function Home() {
         kf[data.mobile] = keyFindings.trim();
         localStorage.setItem("cp_key_findings", JSON.stringify(kf));
       }
+      // Close off whoever is in the room — the consultation is written up, so
+      // the token is finished. A no-op when the queue is not in use.
+      const closed = completeCurrent(saved.id);
       toast({
         title: "Saved!",
-        description: registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.",
+        description: (registerType === "ayurvedic" ? "Saved to Ayurvedic Register." : "Saved to Daily Register.")
+          + (closed ? ` Token ${closed.token} marked done.` : ""),
       });
     }
 
@@ -2118,6 +2183,9 @@ export default function Home() {
       {showGlobalSearch && <GlobalSearchModal onClose={() => setShowGlobalSearch(false)} />}
       {showClinicSettings && <ClinicSettingsModal onClose={() => setShowClinicSettings(false)} />}
 
+      {/* ── TOKEN QUEUE STRIP — hidden until a token is issued today ── */}
+      <QueueStrip onCalled={handleQueueCalled} />
+
       {/* ── EDIT MODE BANNER ── */}
       {editingPatientId !== null && (
         <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-2xl border-2 border-amber-400 bg-amber-50">
@@ -2243,8 +2311,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* autoComplete="off" on the form as well: Chrome honours the form-level
-                setting in some versions where it ignores the per-input one. */}
             <form onSubmit={form.handleSubmit(onSubmit)} autoComplete="off" className="space-y-6">
               {/* Visit Date */}
               <div className="bg-gradient-to-br from-blue-50/60 to-slate-50/40 p-6 rounded-2xl border border-blue-100 border-l-4 border-l-blue-400 space-y-4">
@@ -2268,9 +2334,6 @@ export default function Home() {
                       <div className="relative flex-1">
                         <input
                           {...mobileRest}
-                          autoComplete="off"
-                          autoCorrect="off"
-                          spellCheck={false}
                           ref={(el) => {
                             mobileRHFRef(el);
                             (mobileRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
@@ -2286,6 +2349,7 @@ export default function Home() {
                           onKeyDown={e => {
                             if (e.key === "Enter") { e.preventDefault(); runMobileLookup(); }
                           }}
+                          autoComplete="off" autoCorrect="off" spellCheck={false}
                           className="w-full pl-4 pr-10 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800 font-mono"
                           placeholder="Mobile or Case No."
                         />
@@ -2315,13 +2379,6 @@ export default function Home() {
                       <div className="flex gap-2">
                         <input
                           {...nameRest}
-                          // Chrome was stacking its own autofill list (the small
-                          // grey column with an X on each row) on top of the app's
-                          // patient suggestions. These three attributes suppress
-                          // the browser list and leave only our dropdown.
-                          autoComplete="off"
-                          autoCorrect="off"
-                          spellCheck={false}
                           ref={(el) => {
                             nameRHFRef(el);
                             (nameRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
@@ -2331,6 +2388,7 @@ export default function Home() {
                             if (e.key === "Escape") setShowNameDropdown(false);
                           }}
                           onBlur={() => setTimeout(() => setShowNameDropdown(false), 200)}
+                          autoComplete="off" autoCorrect="off" spellCheck={false}
                           className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-blue-50/30 transition-all text-slate-800"
                           placeholder="Full Name"
                         />
@@ -2923,14 +2981,22 @@ export default function Home() {
                     <WalletCards className="w-5 h-5" /> Share Card
                   </button>
                 )}
-                <button type="button" onClick={onSaveAyurvedic}
-                  className="px-5 py-3 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
-                  <Leaf className="w-5 h-5" /> Save Ayurvedic
-                </button>
-                <button type="submit"
-                  className="px-7 py-3 rounded-xl font-semibold bg-gradient-to-r from-primary via-blue-500 to-indigo-600 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
-                  <Save className="w-5 h-5" /> Save General
-                </button>
+                {/* The tick draws itself over whichever button was pressed —
+                    a toast in the corner gets read by nobody mid-OPD. */}
+                <div className="relative">
+                  <button type="button" onClick={onSaveAyurvedic}
+                    className="px-5 py-3 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
+                    <Leaf className="w-5 h-5" /> Save Ayurvedic
+                  </button>
+                  <SaveTick trigger={savedTickAyu} label="Saved" />
+                </div>
+                <div className="relative">
+                  <button type="submit"
+                    className="px-7 py-3 rounded-xl font-semibold bg-gradient-to-r from-primary via-blue-500 to-indigo-600 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2">
+                    <Save className="w-5 h-5" /> Save General
+                  </button>
+                  <SaveTick trigger={savedTickGen} label="Saved" />
+                </div>
               </div>
             </form>
           </div>
@@ -2984,21 +3050,49 @@ export default function Home() {
                           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
                             <User className="w-4 h-4" />
                           </div>
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <p className="font-bold text-slate-900 truncate">{historyName || patientHistory[0]?.name}</p>
                             <p className="text-xs font-mono text-slate-500">{historyMobile || patientHistory[0]?.mobile}</p>
                             {patientTags.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1.5">
-                                {patientTags.map(tag => <TagPill key={tag.id} tag={tag} />)}
+                                {patientTags.map((tag, ti) => (
+                                  <motion.span key={tag.id}
+                                    initial={motionOff() ? false : { opacity: 0, scale: 0.6, y: 4 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    transition={{ delay: motionOff() ? 0 : ti * 0.06, type: "spring", stiffness: 500, damping: 22 }}
+                                    className="inline-block">
+                                    <TagPill tag={tag} />
+                                  </motion.span>
+                                ))}
                               </div>
                             )}
+                            {/* The one fact that can hurt a patient */}
+                            <AllergyBanner mobile={historyMobile || patientHistory[0]?.mobile || ""} />
                           </div>
-                          <span className="ml-auto text-xs text-slate-400 shrink-0">{patientHistory.length} visits</span>
+                          <span className="ml-auto text-xs text-slate-400 shrink-0 self-start">{patientHistory.length} visits</span>
                         </div>
                       </div>
-                      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+
+                      {/* ── GROWTH CHART — only for children with two or more weights ── */}
+                      {looksLikeChild(patientHistory) && hasGrowthData(patientHistory) && (
+                        <div className="px-4 pt-4 shrink-0">
+                          <GrowthChart visits={patientHistory} name={historyName || patientHistory[0]?.name} />
+                        </div>
+                      )}
+
+                      {/* ── VISIT TIMELINE ── the rail runs down the left, a node per visit ── */}
+                      <div className="flex-1 overflow-y-auto p-4 space-y-3 relative">
+                        <span className="absolute left-[25px] top-6 bottom-6 w-px bg-slate-200 pointer-events-none" aria-hidden="true" />
                         {patientHistory.map((visit, i) => (
-                          <div key={i} className="p-3 rounded-xl border border-slate-100 bg-white hover:bg-gradient-to-r hover:from-blue-50/60 hover:to-slate-50 transition-all hover:border-blue-100 hover:shadow-sm">
+                          <motion.div key={i}
+                            initial={motionOff() ? false : { opacity: 0, x: 18 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: motionOff() ? 0 : Math.min(i * 0.05, 0.4), duration: 0.3, ease: "easeOut" }}
+                            className="relative pl-7">
+                            {/* the node — the most recent visit is filled, older ones hollow */}
+                            <span className={`absolute left-[5px] top-4 w-[11px] h-[11px] rounded-full ring-[3px] ring-white
+                              ${i === 0 ? "bg-primary" : "bg-slate-300"}`} aria-hidden="true" />
+                            <div className="p-3 rounded-xl border border-slate-100 bg-white hover:bg-gradient-to-r hover:from-blue-50/60 hover:to-slate-50 transition-all hover:border-blue-100 hover:shadow-sm">
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-xs font-bold px-2 py-1 bg-white rounded-md border border-slate-200 text-slate-600">
                                 {format(new Date(visit.visitDate), "dd MMM yyyy")}
@@ -3055,7 +3149,8 @@ export default function Home() {
                                 <Printer className="w-3 h-3" /> Print
                               </button>
                             </div>
-                          </div>
+                            </div>
+                          </motion.div>
                         ))}
                       </div>
                     </>
@@ -3184,7 +3279,8 @@ export default function Home() {
                       <ShoppingBag className="w-3 h-3" /> Today's Total ({looseSales.length} item{looseSales.length !== 1 ? "s" : ""})
                     </span>
                     <span className="font-bold text-violet-700 flex items-center gap-0.5">
-                      <IndianRupee className="w-3.5 h-3.5" />{looseTodayTotal.toLocaleString("en-IN")}
+                      <IndianRupee className="w-3.5 h-3.5" />
+                      <AnimatedNumber value={looseTodayTotal} pulse />
                     </span>
                   </div>
                 </div>
@@ -3365,7 +3461,13 @@ export default function Home() {
                       </div>
                       <p className="font-black text-amber-600 text-base shrink-0">₹{e.fees.toLocaleString("en-IN")}</p>
                       <button
-                        onClick={() => { removePendingFee(e.patientId); refreshPending(); setPendingAlert(null); toast({ title: "✅ Marked as Paid", description: `${e.name}'s fees cleared.` }); }}
+                        onClick={() => {
+                          removePendingFee(e.patientId); refreshPending(); setPendingAlert(null);
+                          // Count it. After a few months this total is the
+                          // plainest answer to "what did this app do for me".
+                          setRecovered(addRecovered(e.fees));
+                          toast({ title: "✅ Marked as Paid", description: `${e.name}'s fees cleared.` });
+                        }}
                         className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-bold text-xs transition-colors"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" /> Paid
@@ -3378,6 +3480,19 @@ export default function Home() {
                     </span>
                     <span className="font-black text-amber-600 text-base">₹{pendingFees.reduce((s, e) => s + e.fees, 0).toLocaleString("en-IN")}</span>
                   </div>
+                </div>
+              )}
+              {/* Recovered since install — the number worth showing another
+                  doctor, because it is money that was already written off. */}
+              {recovered.total > 0 && (
+                <div className="px-5 py-3 border-t border-slate-100 bg-emerald-50/60 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span className="text-xs text-emerald-800">
+                    <b className="font-black text-sm">
+                      <AnimatedNumber value={recovered.total} format="currency" pulse />
+                    </b>
+                    {" "}recovered so far, across {recovered.count} patient{recovered.count === 1 ? "" : "s"}
+                  </span>
                 </div>
               )}
               <div className="px-5 py-4 border-t border-slate-100">
@@ -3441,6 +3556,7 @@ export default function Home() {
                   onClick={() => {
                     removePendingFee(pendingAlert.patientId);
                     refreshPending();
+                    setRecovered(addRecovered(pendingAlert.fees));
                     setPendingAlert(null);
                     toast({ title: "✅ Fees Cleared", description: `${pendingAlert.name}'s pending fees marked as paid.` });
                   }}

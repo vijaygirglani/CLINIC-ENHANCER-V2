@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { Layout } from "@/components/Layout";
 import {
   getDailyStats, updatePatient, deletePatient, deletePatientsByIds, getAllDates,
-  exportBackup, importBackup, summariseBackup, addPatient, getMonthlyStats, findAdviceCode,
+  exportBackup, importBackup, addPatient, getMonthlyStats, findAdviceCode,
   getDoctors, updateDoctorSplit, findDuplicatePatients,
   type Patient, type DailyStats, type DuplicatePatientGroup,
 } from "@/lib/store";
@@ -12,7 +12,7 @@ import {
   ChevronDown, ChevronUp, Printer, Upload, Save, RotateCcw, BarChart2,
   TrendingUp, Leaf, MessageCircle, Send, X, ShoppingBag, Wifi, Banknote,
   WalletCards, Loader2, MessageSquare, Search, ArrowRight, ShieldAlert, AlertTriangle, Paperclip,
-  Stethoscope, Percent, Copy,
+  Stethoscope, Percent, Copy, Sparkles,
 } from "lucide-react";
 
 // ── Loose Medicine Sale helpers (mirrors Home.tsx) ────────────────────────────
@@ -86,6 +86,136 @@ function reconcileLoose(sales: LooseSaleEntry[], patients: Patient[]): LooseReco
 
 import { exportToExcel, parseExcelFile } from "@/lib/export";
 import { motion, AnimatePresence } from "framer-motion";
+import { AnimatedNumber, motionOff } from "@/components/AnimatedNumber";
+import { MonthReportCard } from "@/components/MonthReportCard";
+import { CollectionRing } from "@/components/CollectionRing";
+import { DayTimeline } from "@/components/DayTimeline";
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   BACKUP COMPLETENESS
+   ─────────────────────────────────────────────────────────────────────────────
+
+   store.ts's exportBackup writes a set of NAMED sections (patients, medicines,
+   expenses…). Newer versions of it also write `allKeys`, a sweep of every app
+   key, which is what makes a backup lossless.
+
+   These two helpers make the backup lossless whichever version of store.ts you
+   are running: before writing, `withAllKeys` adds the sweep if it is missing;
+   after restoring, `restoreExtraKeys` puts back anything the store's own
+   importBackup did not know about — the token queue, allergies, the recovered
+   total, clinic settings, pending fees, the Pathya library.
+
+   Both are additive. Neither deletes anything.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/** Keys that belong to THIS machine and must never travel in a backup. */
+const DEVICE_ONLY_KEYS = new Set([
+  "manglam_backup_folder_name",
+  "manglam_auto_backup_enabled",
+  "manglam_last_auto_backup",
+  "manglam_backup_db",
+  "manglam_edit_patient",
+  "cp_attachments_purged_v1",
+  "cp_legacy_patients_migrated",
+  "cp_theme",
+  "cp_lite_mode",
+]);
+
+function isAppDataKey(key: string): boolean {
+  if (DEVICE_ONLY_KEYS.has(key)) return false;
+  return key.startsWith("cp_") || key.startsWith("manglam_") || key.startsWith("mc_") || key.startsWith("pa_");
+}
+
+function snapshotAppKeys(): Record<string, string> {
+  const out: Record<string, string> = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !isAppDataKey(k)) continue;
+      const v = localStorage.getItem(k);
+      if (v !== null) out[k] = v;
+    }
+  } catch {
+    /* storage unreadable — the named sections still make it into the file */
+  }
+  return out;
+}
+
+/** Add the full key sweep to a backup that does not already carry one. */
+function withAllKeys(jsonStr: string): string {
+  try {
+    const data = JSON.parse(jsonStr);
+    if (data && typeof data === "object" && !data.allKeys) {
+      data.allKeys = snapshotAppKeys();
+      return JSON.stringify(data, null, 2);
+    }
+  } catch {
+    /* not parseable — hand back untouched and let the caller's checks fire */
+  }
+  return jsonStr;
+}
+
+/** Put back any key the store's own importBackup did not restore. */
+function restoreExtraKeys(jsonStr: string): number {
+  let restored = 0;
+  try {
+    const data = JSON.parse(jsonStr);
+    const all = data?.allKeys;
+    if (!all || typeof all !== "object") return 0;
+    for (const [k, v] of Object.entries(all)) {
+      if (!isAppDataKey(k) || typeof v !== "string") continue;
+      if (localStorage.getItem(k) === v) continue;   // already restored
+      localStorage.setItem(k, v);
+      restored++;
+    }
+  } catch {
+    /* nothing extra to restore */
+  }
+  return restored;
+}
+
+/**
+ * Describe what actually went into a backup file, by reading the file itself.
+ *
+ * Deliberately independent of store.ts: it inspects the JSON that was just
+ * produced rather than asking the store what it exported. So an empty or
+ * half-written backup is obvious at a glance — "0 patients" in the toast is
+ * the warning you want before you drive home trusting that file.
+ */
+function describeBackup(jsonStr: string): string {
+  try {
+    const d = JSON.parse(jsonStr);
+    const parts: string[] = [];
+    const count = (v: any) => (Array.isArray(v) ? v.length : 0);
+
+    // Named sections, in the order that matters if you are checking by eye.
+    const sections: [string, any, string][] = [
+      ["patient", d.patients, "patients"],
+      ["medicine", d.medicines, "medicines"],
+      ["pending fee", d.pendingFees, "pending fees"],
+      ["loose sale", d.looseSales, "loose sales"],
+      ["expense", d.expenses, "expenses"],
+      ["stock audit", d.stockAudits, "stock audits"],
+    ];
+    for (const [singular, value] of sections) {
+      const n = count(value);
+      if (n > 0) parts.push(`${n} ${singular}${n === 1 ? "" : singular === "pending fee" ? "s" : "s"}`);
+    }
+
+    // allKeys is the lossless sweep in the newer backup format — if it is
+    // there, say so, because it is what guarantees nothing was dropped.
+    if (d.allKeys && typeof d.allKeys === "object") {
+      parts.push(`${Object.keys(d.allKeys).length} keys (full snapshot)`);
+    }
+
+    if (parts.length === 0) {
+      return "⚠ Backup looks empty — check it before relying on it.";
+    }
+    return parts.join(" · ");
+  } catch {
+    return `${Math.round(jsonStr.length / 1024)} KB written.`;
+  }
+}
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -454,6 +584,7 @@ export default function DailyRegister() {
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   const [showMonthly, setShowMonthly] = useState(false);
+  const [showReportCard, setShowReportCard] = useState(false);
   const [doctorSplitDialogOpen, setDoctorSplitDialogOpen] = useState(false);
   const [d1NameInput, setD1NameInput] = useState("");
   const [d1PctInput, setD1PctInput] = useState(80);
@@ -533,59 +664,55 @@ export default function DailyRegister() {
     const dayLabel = format(date, "dd-MMM-yyyy"); // e.g. "23-Jun-2026"
     const fileName = `Manglam_Backup_${dayLabel}.json`;
 
-    // ── Build and validate the payload BEFORE touching any file ──
-    // createWritable() truncates the target file to 0 bytes the moment it is
-    // called. The old code opened the file first, so if anything failed after
-    // that — the tab closing mid-write, an error inside exportBackup — the
-    // previous good backup was already destroyed and all that remained was an
-    // empty file. Nothing is opened now until valid JSON is in hand.
-    const json = exportBackup();
-    if (!json || json.trim().length < 2) {
-      throw new Error("Backup was empty — nothing written, previous backup left intact.");
+    // ── Build and validate BEFORE touching any file on disk ───────────────
+    // createWritable() truncates the target the moment it opens. So if the
+    // export threw, or the tab closed mid-write, the old good backup was
+    // already gone and nothing replaced it — that is how a 0-byte backup
+    // file happens. Everything below is ordered so the existing file is only
+    // replaced once a complete, verified new one exists beside it.
+    const json = withAllKeys(exportBackup());
+    if (!json || json.length < 20) {
+      throw new Error("Backup came out empty — nothing was written, your previous backup is untouched.");
     }
-    let patientCount = 0;
     try {
-      const parsed = JSON.parse(json);
-      if (!Array.isArray(parsed.patients)) throw new Error("no patient list");
-      patientCount = parsed.patients.length;
+      JSON.parse(json);
     } catch {
-      throw new Error("Backup data was malformed — nothing written, previous backup left intact.");
+      throw new Error("Backup data is corrupt — nothing was written, your previous backup is untouched.");
     }
 
     // Navigate / create: MANGLAM CLINIC DAILY BACKUP / 2026 / June /
     const yearDir = await handle.getDirectoryHandle(year, { create: true });
     const monthDir = await yearDir.getDirectoryHandle(monthName, { create: true });
 
-    // Write to a temp file first, then copy across. If the write is
-    // interrupted, the damage is limited to the .tmp file and today's real
-    // backup is still whatever was there before.
+    // Write to a temporary file first.
     const tmpName = `${fileName}.tmp`;
     const tmpHandle = await monthDir.getFileHandle(tmpName, { create: true });
-    const tmpWritable = await (tmpHandle as any).createWritable();
-    await tmpWritable.write(json);
-    await tmpWritable.close();
+    const writable = await (tmpHandle as any).createWritable();
+    await writable.write(json);
+    await writable.close();
 
-    // Verify what actually landed on disk before promoting it.
+    // Verify what actually landed on disk before trusting it.
     const written = await tmpHandle.getFile();
     if (written.size < json.length * 0.5) {
-      throw new Error(`Backup wrote only ${written.size} bytes of ${json.length} — kept the previous backup instead.`);
+      throw new Error(`Backup write was incomplete (${written.size} bytes) — your previous backup is untouched.`);
     }
 
+    // Promote: copy the verified bytes onto the real file, then drop the tmp.
+    const verified = await written.text();
     const fileHandle = await monthDir.getFileHandle(fileName, { create: true });
-    const writable = await (fileHandle as any).createWritable();
-    await writable.write(await written.text());
-    await writable.close();
-    try { await monthDir.removeEntry(tmpName); } catch { /* tidy-up only */ }
+    const finalWritable = await (fileHandle as any).createWritable();
+    await finalWritable.write(verified);
+    await finalWritable.close();
+    try {
+      await (monthDir as any).removeEntry(tmpName);
+    } catch {
+      /* tmp left behind is harmless — the real backup is already in place */
+    }
 
     const key = format(date, "yyyy-MM-dd");
     localStorage.setItem("manglam_last_auto_backup", key);
     setLastAutoBackup(key);
-    if (!silent) {
-      toast({
-        title: "✅ Backup Saved",
-        description: `${summariseBackup(json)} · ${(written.size / 1024).toFixed(0)} KB → ${year}/${monthName}/${fileName}`,
-      });
-    }
+    if (!silent) toast({ title: "✅ Backup Saved", description: `${year}/${monthName}/${fileName} — ${describeBackup(json)}` });
   };
 
   // ── Select backup folder ──────────────────────────────────────────────────
@@ -649,13 +776,13 @@ export default function DailyRegister() {
         await writeBackupToFolder(handle, new Date(), true);
         toast({ title: "🔄 Auto Backup Done", description: `Today's backup saved automatically.` });
       } catch (err: any) {
-        // This used to fail silently, so a backup could be broken for weeks
-        // without anyone knowing until a restore was actually needed.
-        console.error("[auto-backup] failed:", err);
+        // This used to fail silently, which meant the auto-backup could be
+        // dead for weeks without anyone knowing. It now says so out loud.
+        console.error("Auto backup failed:", err);
         toast({
           variant: "destructive",
           title: "Auto Backup Failed",
-          description: String(err?.message || err) + " — use Daily Backup to retry.",
+          description: (err?.message || "Could not write today's backup.") + " Use Backup Now to save manually.",
         });
       }
     };
@@ -686,6 +813,21 @@ export default function DailyRegister() {
   // stats.totalFees ALREADY contains every loose sale that was auto-saved as a
   // register row. Only loose sales without a register row get added on top
   // (that covers entries made before auto-save existed).
+  // A record saved in the last few seconds glows green when its row appears.
+  // Keyed off createdAt rather than a render diff, so it still fires when you
+  // save on the registration page and then open the register.
+  const [justSavedId, setJustSavedId] = useState<number | null>(null);
+  useEffect(() => {
+    const now = Date.now();
+    const fresh = (stats?.patients || []).find(
+      p => p.createdAt && now - new Date(p.createdAt).getTime() < 8000,
+    );
+    if (!fresh) return;
+    setJustSavedId(fresh.id);
+    const t = setTimeout(() => setJustSavedId(null), 2400);
+    return () => clearTimeout(t);
+  }, [stats?.patients]);
+
   const looseRecon = reconcileLoose(looseSalesForDay, stats?.patients || []);
   const collectionTotal = (stats?.totalFees || 0) + looseRecon.unregisteredTotal;
 
@@ -774,44 +916,55 @@ export default function DailyRegister() {
   };
 
   const handleBackup = () => {
-    const json = exportBackup();
+    const json = withAllKeys(exportBackup());
+    if (!json || json.length < 20) {
+      toast({ variant: "destructive", title: "Backup Failed", description: "Backup came out empty — nothing was downloaded." });
+      return;
+    }
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `Manglam_Clinic_Backup_${format(new Date(), "yyyy-MM-dd")}.json`;
     a.click(); URL.revokeObjectURL(url);
-    toast({ title: "Backup Created", description: "All patient data backed up." });
+    toast({ title: "Backup Created", description: describeBackup(json) });
   };
 
   const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
-    if (importRef.current) importRef.current.value = "";
-
-    // Check the file before asking the scary "replace ALL data" question —
-    // there is no point confirming a wipe for a file that holds nothing.
+    // Check the file BEFORE the destructive confirm. Previously a 0-byte or
+    // unreadable file could wipe everything and then fail to restore.
     if (file.size === 0) {
-      toast({
-        variant: "destructive",
-        title: "Backup File Is Empty",
-        description: `"${file.name}" is 0 bytes — it never finished writing. Open the backup folder and pick an earlier date from the Year/Month folder.`,
-      });
+      toast({ variant: "destructive", title: "Backup File Is Empty", description: `${file.name} is 0 bytes. Nothing was changed — pick a different backup file.` });
+      if (importRef.current) importRef.current.value = "";
       return;
     }
-
     const reader = new FileReader();
-    reader.onerror = () => toast({
-      variant: "destructive",
-      title: "Could Not Read File",
-      description: "Windows would not let the file be read. Copy it to your Desktop and try again.",
-    });
+    reader.onerror = () => {
+      toast({ variant: "destructive", title: "Could Not Read File", description: "The file could not be opened. Nothing was changed." });
+    };
     reader.onload = ev => {
       const text = ev.target?.result as string;
-      if (!confirm(`Replace ALL current data with "${file.name}" (${(file.size / 1024).toFixed(0)} KB)?\n\nThis cannot be undone.`)) return;
+      if (!text || !text.trim()) {
+        toast({ variant: "destructive", title: "Backup File Is Empty", description: "Nothing was changed." });
+        return;
+      }
+      if (!confirm("This will replace ALL data with the backup. Are you sure?")) return;
       const result = importBackup(text);
-      if (result.success) { toast({ title: "Restore Successful", description: result.message }); refresh(); }
+      if (result.success) {
+        // Anything the store's own import did not cover — token queue,
+        // allergies, recovered total, clinic settings, pending fees, the
+        // Pathya library — is put back here.
+        const extra = restoreExtraKeys(text);
+        toast({
+          title: "Restore Successful",
+          description: result.message + (extra > 0 ? ` Plus ${extra} more setting${extra === 1 ? "" : "s"}.` : ""),
+        });
+        refresh();
+      }
       else toast({ variant: "destructive", title: "Restore Failed", description: result.message });
     };
     reader.readAsText(file);
+    if (importRef.current) importRef.current.value = "";
   };
 
   const handleClearAllData = () => {
@@ -1173,44 +1326,98 @@ Manglam Hospital, Morbi`;
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                  { label: "Total", value: stats?.totalPatients || 0, icon: Users, color: "bg-blue-100 text-primary" },
-                  { label: "General", value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, icon: FileText, color: "bg-slate-100 text-slate-600" },
-                  { label: "Ayurvedic", value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, icon: Leaf, color: "bg-emerald-100 text-emerald-600" },
-                  { label: "Collection", value: formatCurrency(collectionTotal), icon: IndianRupee, color: "bg-emerald-100 text-emerald-600", sub: looseDayTotal > 0 ? `incl. ₹${looseDayTotal.toLocaleString("en-IN")} loose` : undefined },
-                ].map(({ label, value, icon: Icon, color, sub }: any) => (
-                  <div key={label} className="medical-card p-4 flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
-                      <p className="text-2xl font-display font-bold text-slate-900">{value}</p>
-                      {sub && <p className="text-[10px] text-violet-600 font-semibold flex items-center gap-0.5"><ShoppingBag className="w-2.5 h-2.5" />{sub}</p>}
-                    </div>
-                  </div>
-                ))}
+                  { label: "Total",      value: stats?.totalPatients || 0, icon: Users,       tone: "blue",
+                    sub: undefined },
+                  { label: "General",    value: (stats?.patients || []).filter(p => p.registerType !== "ayurvedic").length, icon: FileText, tone: "slate",
+                    sub: undefined },
+                  { label: "Ayurvedic",  value: (stats?.patients || []).filter(p => p.registerType === "ayurvedic").length, icon: Leaf, tone: "emerald",
+                    sub: undefined },
+                  { label: "Collection", value: collectionTotal, icon: IndianRupee, tone: "emerald", money: true, pulse: true,
+                    sub: looseDayTotal > 0 ? `incl. ₹${looseDayTotal.toLocaleString("en-IN")} loose` : undefined },
+                ].map(({ label, value, icon: Icon, tone, sub, money, pulse }: any) => {
+                  const t = {
+                    blue:    { grad: "from-blue-50 to-blue-100/40 dark:from-blue-500/12 dark:to-blue-500/5",             chip: "bg-blue-500/10 text-blue-600 dark:text-blue-300",         num: "text-blue-700 dark:text-blue-300",       mark: "text-blue-500/10 dark:text-blue-400/10" },
+                    slate:   { grad: "from-slate-50 to-slate-100/50 dark:from-slate-500/12 dark:to-slate-500/5",         chip: "bg-slate-500/10 text-slate-600 dark:text-slate-300",      num: "text-slate-700 dark:text-slate-200",     mark: "text-slate-500/10 dark:text-slate-400/10" },
+                    emerald: { grad: "from-emerald-50 to-emerald-100/40 dark:from-emerald-500/12 dark:to-emerald-500/5", chip: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300", num: "text-emerald-700 dark:text-emerald-300", mark: "text-emerald-500/10 dark:text-emerald-400/10" },
+                  }[tone as "blue" | "slate" | "emerald"];
+                  return (
+                    <motion.div key={label}
+                      initial={motionOff() ? false : { opacity: 0, y: 14 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                      className={`relative overflow-hidden medical-card bg-gradient-to-br ${t.grad} p-4`}>
+                      {/* oversized faint icon behind the figure */}
+                      <Icon className={`absolute -right-3 -bottom-4 w-24 h-24 ${t.mark}`} strokeWidth={1.5} />
+                      <div className="relative flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${t.chip}`}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+                          <p className={`text-2xl font-display font-bold leading-tight ${t.num}`}>
+                            <AnimatedNumber value={value} format={money ? "currency" : "number"} pulse={!!pulse} />
+                          </p>
+                          {sub && <p className="text-[10px] text-violet-600 font-semibold flex items-center gap-0.5"><ShoppingBag className="w-2.5 h-2.5" />{sub}</p>}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
               {/* Cash vs Online split bar */}
               {(stats?.totalFees || 0) > 0 && (
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="medical-card p-4 flex items-center gap-3 border-l-4 border-l-emerald-400">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+                  <div className="relative overflow-hidden medical-card bg-gradient-to-br from-emerald-50 to-emerald-100/40 dark:from-emerald-500/12 dark:to-emerald-500/5 p-4 flex items-center gap-3 border-l-4 border-l-emerald-400">
+                    <Banknote className="absolute -right-3 -bottom-4 w-24 h-24 text-emerald-500/10" strokeWidth={1.5} />
+                    <div className="relative w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
                       <Banknote className="w-5 h-5 text-emerald-600" />
                     </div>
-                    <div>
+                    <div className="relative">
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cash Collection</p>
-                      <p className="text-2xl font-display font-bold text-emerald-700">{formatCurrency(cashFees)}</p>
+                      <p className="text-2xl font-display font-bold text-emerald-700 dark:text-emerald-300 leading-tight">
+                        <AnimatedNumber value={cashFees} format="currency" pulse />
+                      </p>
                       <p className="text-[10px] text-slate-400">{(stats?.patients || []).filter(p => p.paymentMode !== "online").length} patients</p>
                     </div>
                   </div>
-                  <div className="medical-card p-4 flex items-center gap-3 border-l-4 border-l-blue-400">
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+                  <div className="relative overflow-hidden medical-card bg-gradient-to-br from-blue-50 to-blue-100/40 dark:from-blue-500/12 dark:to-blue-500/5 p-4 flex items-center gap-3 border-l-4 border-l-blue-400">
+                    <Wifi className="absolute -right-3 -bottom-4 w-24 h-24 text-blue-500/10" strokeWidth={1.5} />
+                    <div className="relative w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
                       <Wifi className="w-5 h-5 text-blue-600" />
                     </div>
-                    <div>
+                    <div className="relative">
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Online Collection</p>
-                      <p className="text-2xl font-display font-bold text-blue-700">{formatCurrency(onlineFees)}</p>
+                      <p className="text-2xl font-display font-bold text-blue-700 dark:text-blue-300 leading-tight">
+                        <AnimatedNumber value={onlineFees} format="currency" pulse />
+                      </p>
                       <p className="text-[10px] text-slate-400">{onlineCount} patients</p>
+                    </div>
+                  </div>
+                  {/* Target ring beside the shape of the day */}
+                  <div className="col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <CollectionRing collected={collectionTotal} />
+                    <DayTimeline patients={stats?.patients || []} />
+                  </div>
+
+                  {/* cash ↔ online proportion, so the split reads at a glance */}
+                  <div className="col-span-2 medical-card p-3">
+                    <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                      <motion.div className="bg-emerald-500"
+                        initial={motionOff() ? false : { width: 0 }}
+                        animate={{ width: `${(cashFees + onlineFees) > 0 ? (cashFees / (cashFees + onlineFees)) * 100 : 0}%` }}
+                        transition={{ duration: 0.7, ease: "easeOut" }} />
+                      <motion.div className="bg-blue-500"
+                        initial={motionOff() ? false : { width: 0 }}
+                        animate={{ width: `${(cashFees + onlineFees) > 0 ? (onlineFees / (cashFees + onlineFees)) * 100 : 0}%` }}
+                        transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }} />
+                    </div>
+                    <div className="flex justify-between mt-1.5 text-[10px] font-semibold">
+                      <span className="text-emerald-600">
+                        Cash {(cashFees + onlineFees) > 0 ? Math.round((cashFees / (cashFees + onlineFees)) * 100) : 0}%
+                      </span>
+                      <span className="text-blue-600">
+                        Online {(cashFees + onlineFees) > 0 ? Math.round((onlineFees / (cashFees + onlineFees)) * 100) : 0}%
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1253,7 +1460,21 @@ Manglam Hospital, Morbi`;
               <tbody className="divide-y divide-slate-100">
                 {filteredPatients.length > 0 ? (
                   filteredPatients.map((p, i) => (
-                    <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                    // The newest record glows green for a moment, so a save
+                    // confirms itself in the place the save actually matters.
+                    <motion.tr key={p.id}
+                      initial={motionOff() ? false : { opacity: 0, y: -10 }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                        backgroundColor: justSavedId === p.id ? ["#d1fae5", "#d1fae5", "rgba(255,255,255,0)"] : undefined,
+                      }}
+                      transition={{
+                        opacity: { duration: 0.25, delay: motionOff() ? 0 : Math.min(i * 0.02, 0.25) },
+                        y: { duration: 0.25, delay: motionOff() ? 0 : Math.min(i * 0.02, 0.25) },
+                        backgroundColor: { duration: 1.8, times: [0, 0.35, 1] },
+                      }}
+                      className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-4 py-3 font-medium text-slate-400">{i + 1}</td>
                       <td className="px-4 py-3">
                         <p className="font-bold text-slate-900">{p.name}</p>
@@ -1347,7 +1568,7 @@ Manglam Hospital, Morbi`;
                           </button>
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))
                 ) : (
                   <tr>
@@ -1392,22 +1613,40 @@ Manglam Hospital, Morbi`;
                   className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 flex items-center gap-1.5 shadow-sm">
                   <Download className="w-4 h-4" /> Export Monthly
                 </button>
+                <button onClick={() => setShowReportCard(s => !s)}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-colors
+                    ${showReportCard ? "bg-violet-600 text-white hover:bg-violet-700" : "bg-violet-100 text-violet-700 hover:bg-violet-200"}`}>
+                  <Sparkles className="w-4 h-4" /> {showReportCard ? "Hide" : "Month"} Report Card
+                </button>
               </div>
+
+              {/* The month, played back — figures counting up, bars growing,
+                  top complaints sliding in. Prints as its own sheet. */}
+              {monthlyStats && showReportCard && (
+                <div className="px-6 py-5 bg-slate-50 border-b border-slate-100">
+                  <MonthReportCard stats={monthlyStats} year={monthlyYear} month={monthlyMonth} />
+                </div>
+              )}
 
               {monthlyStats && (
                 <>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 px-6 py-4 bg-gradient-to-br from-primary/5 to-emerald-50/40 border-b border-slate-100">
                     {[
-                      { label: "Total Patients", value: monthlyStats.totalPatients },
-                      { label: "General Pts.", value: monthlyStats.generalPatients },
-                      { label: "Ayurvedic Pts.", value: monthlyStats.ayurvedicPatients },
-                      { label: "Total Collection", value: formatCurrency(monthlyStats.totalFees) },
-                      { label: "Ayurvedic Fees", value: formatCurrency(monthlyStats.ayurvedicFees) },
+                      { label: "Total Patients", value: monthlyStats.totalPatients, money: false },
+                      { label: "General Pts.", value: monthlyStats.generalPatients, money: false },
+                      { label: "Ayurvedic Pts.", value: monthlyStats.ayurvedicPatients, money: false },
+                      { label: "Total Collection", value: monthlyStats.totalFees, money: true },
+                      { label: "Ayurvedic Fees", value: monthlyStats.ayurvedicFees, money: true },
                     ].map((item, i) => (
-                      <div key={i} className="text-center">
+                      <motion.div key={i} className="text-center"
+                        initial={motionOff() ? false : { opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: motionOff() ? 0 : i * 0.05 }}>
                         <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{item.label}</p>
-                        <p className="text-xl font-display font-bold mt-1 text-slate-900">{item.value}</p>
-                      </div>
+                        <p className="text-xl font-display font-bold mt-1 text-slate-900">
+                          <AnimatedNumber value={item.value} format={item.money ? "currency" : "number"} />
+                        </p>
+                      </motion.div>
                     ))}
                   </div>
 
@@ -1415,14 +1654,16 @@ Manglam Hospital, Morbi`;
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Expenses</p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       {[
-                        { label: "Manual Expenses", value: formatCurrency(monthlyStats.manualExpenses), color: "text-rose-700" },
-                        { label: "Pharmacy Purchases (paid)", value: formatCurrency(monthlyStats.pharmacyExpenses), color: "text-rose-700" },
-                        { label: "Total Expenses", value: formatCurrency(monthlyStats.totalExpenses), color: "text-rose-800" },
-                        { label: "Net Collection", value: formatCurrency(monthlyStats.netTotal), color: "text-emerald-700" },
+                        { label: "Manual Expenses", value: monthlyStats.manualExpenses, color: "text-rose-700" },
+                        { label: "Pharmacy Purchases (paid)", value: monthlyStats.pharmacyExpenses, color: "text-rose-700" },
+                        { label: "Total Expenses", value: monthlyStats.totalExpenses, color: "text-rose-800" },
+                        { label: "Net Collection", value: monthlyStats.netTotal, color: "text-emerald-700" },
                       ].map((item, i) => (
                         <div key={i} className="text-center">
                           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{item.label}</p>
-                          <p className={`text-xl font-display font-bold mt-1 ${item.color}`}>{item.value}</p>
+                          <p className={`text-xl font-display font-bold mt-1 ${item.color}`}>
+                            <AnimatedNumber value={item.value} format="currency" />
+                          </p>
                         </div>
                       ))}
                     </div>

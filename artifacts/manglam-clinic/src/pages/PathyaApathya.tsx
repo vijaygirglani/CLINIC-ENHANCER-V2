@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { Printer, Search, BookOpen, ChevronDown, ChevronRight, Share2, User, X } from "lucide-react";
 import { format } from "date-fns";
+import { motion } from "framer-motion";
+import { PathyaFlipCard } from "@/components/PathyaFlipCard";
+import { motionOff } from "@/components/AnimatedNumber";
 
 type Lang = "gu" | "hi";
 
@@ -886,6 +889,9 @@ export default function PathyaApathya() {
   const [patientMobile, setPatientMobile] = useState("");
   const [diseaseSearch, setDiseaseSearch] = useState("");
   const [selected, setSelected]       = useState<Disease>(diseases[0]);
+  // Side-by-side stays the default; the flip card is for turning the
+  // monitor towards the patient.
+  const [patientView, setPatientView] = useState(false);
 
   // ─── JSON Import panel ────────────────────────────────────────────────────
   const [importedDiseases, setImportedDiseases] = useState<Disease[]>(() => loadImportedDiseases());
@@ -1808,8 +1814,31 @@ export default function PathyaApathya() {
               </div>
             </div>
 
+            {/* View switch — desk view vs patient view */}
+            <div className="px-5 pt-4 flex items-center gap-2">
+              <button onClick={() => setPatientView(false)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${!patientView ? "bg-amber-100 text-amber-800 ring-2 ring-amber-300" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                Desk view
+              </button>
+              <button onClick={() => setPatientView(true)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${patientView ? "bg-amber-100 text-amber-800 ring-2 ring-amber-300" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                Patient view (flip card)
+              </button>
+            </div>
+
+            {patientView && (
+              <PathyaFlipCard
+                title={getName()}
+                subtitle={selected.nameEn}
+                pathyaTitle={pathyaTitle}
+                apathyaTitle={apathyaTitle}
+                pathya={getPathya()}
+                apathya={getApathya()}
+              />
+            )}
+
             {/* Pathya / Apathya */}
-            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200">
+            <div className={`${patientView ? "hidden" : "grid"} grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200`}>
               <div className="p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="text-lg">✅</span>
@@ -1820,9 +1849,12 @@ export default function PathyaApathya() {
                 </div>
                 <ul className="space-y-2.5">
                   {getPathya().map((item,j) => (
-                    <li key={j} className="text-sm text-slate-700 flex items-start gap-2 leading-snug">
+                    <motion.li key={j} className="text-sm text-slate-700 flex items-start gap-2 leading-snug"
+                      initial={motionOff() ? false : { opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: motionOff() ? 0 : Math.min(j * 0.04, 0.4), duration: 0.25 }}>
                       <span className="text-emerald-500 shrink-0 mt-0.5 font-bold">•</span>{item}
-                    </li>
+                    </motion.li>
                   ))}
                 </ul>
               </div>
