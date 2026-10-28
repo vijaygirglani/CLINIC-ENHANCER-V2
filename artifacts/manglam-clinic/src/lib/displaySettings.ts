@@ -20,6 +20,11 @@ export interface DisplayClinic {
   tagline: string;
   logoLetter: string;
   footerCity: string;
+  /* Read for the credentials card. The settings form already saves these. */
+  specialization: string;
+  timing: string;
+  phone: string;
+  address: string;
 }
 
 const CLINIC_KEY = "manglam_clinic_settings";
@@ -31,6 +36,10 @@ const CLINIC_FALLBACK: DisplayClinic = {
   tagline: "AYURVEDIC & GENERAL PRACTICE",
   logoLetter: "M",
   footerCity: "Morbi, Gujarat",
+  specialization: "",
+  timing: "",
+  phone: "",
+  address: "",
 };
 
 export function getDisplayClinic(): DisplayClinic {
@@ -43,6 +52,10 @@ export function getDisplayClinic(): DisplayClinic {
       tagline: raw.tagline || CLINIC_FALLBACK.tagline,
       logoLetter: raw.logoLetter || CLINIC_FALLBACK.logoLetter,
       footerCity: raw.footerCity || CLINIC_FALLBACK.footerCity,
+      specialization: raw.specialization || "",
+      timing: raw.timing || "",
+      phone: raw.phone || "",
+      address: raw.footerAddress || raw.address || "",
     };
   } catch {
     return CLINIC_FALLBACK;
@@ -62,6 +75,10 @@ export interface DisplaySettings {
   /** seconds a tip stays on screen */
   tipSeconds: number;
   chime: boolean;
+  /** Cycle the doctor's credentials card in between tokens. */
+  showCard: boolean;
+  /** How often the card appears, in seconds. */
+  cardEverySeconds: number;
 }
 
 const SETTINGS_KEY = "cp_display_settings";
@@ -73,6 +90,8 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   showTips: true,
   tipSeconds: 20,
   chime: true,
+  showCard: true,
+  cardEverySeconds: 90,
 };
 
 export function getDisplaySettings(): DisplaySettings {
@@ -222,6 +241,9 @@ export const DISPLAY_TEXT: Record<DisplayLang, Record<string, string>> = {
     pleaseWait: "કૃપા કરી રાહ જુઓ",
     takeToken: "કૃપા કરી ટોકન લો",
     open: "દવાખાનું ચાલુ છે",
+    cardTimings: "દવાખાનાનો સમય",
+    cardContact: "સંપર્ક",
+    cardAbout: "અમારા ડૉક્ટર",
   },
   hi: {
     nowServing: "अभी चल रहा है",
@@ -231,6 +253,9 @@ export const DISPLAY_TEXT: Record<DisplayLang, Record<string, string>> = {
     pleaseWait: "कृपया प्रतीक्षा करें",
     takeToken: "कृपया टोकन लें",
     open: "क्लिनिक खुला है",
+    cardTimings: "क्लिनिक का समय",
+    cardContact: "संपर्क",
+    cardAbout: "हमारे डॉक्टर",
   },
   en: {
     nowServing: "NOW SERVING",
@@ -240,5 +265,8 @@ export const DISPLAY_TEXT: Record<DisplayLang, Record<string, string>> = {
     pleaseWait: "Please wait",
     takeToken: "Please take a token",
     open: "Clinic is open",
+    cardTimings: "Clinic timings",
+    cardContact: "Contact",
+    cardAbout: "Your doctor",
   },
 };
