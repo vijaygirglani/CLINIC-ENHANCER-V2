@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { migrateLegacyPatientsKey, repairMalformedPatients } from "@/lib/store";
 import { initTheme } from "@/lib/theme";
+import { Splash } from "@/components/Splash";
 
 import Home from "@/pages/Home";
 import Reception from "@/pages/Reception";
@@ -81,6 +82,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        {/* Opening animation. Not reached by the display screen above, which
+            is opened once and left running on a wall. Shows once per browser
+            session, skips on any key or click, silent in Lite mode. */}
+        <Splash />
         <WouterRouter base="">
           <Router />
         </WouterRouter>
