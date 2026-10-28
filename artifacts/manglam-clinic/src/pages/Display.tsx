@@ -22,6 +22,7 @@ import {
 } from "@/lib/queue";
 import { playChime } from "@/lib/chime";
 import { motionOff } from "@/components/AnimatedNumber";
+import { CredentialsCard } from "@/components/CredentialsCard";
 import { WalkingPatient } from "@/components/WalkingPatient";
 import {
   getDisplayClinic, getDisplaySettings, saveDisplaySettings, getDisplayTips,
@@ -122,6 +123,17 @@ function SettingsPanel({
           <Pill on={settings.chime} onClick={() => set("chime", true)}>On</Pill>
           <Pill on={!settings.chime} onClick={() => set("chime", false)}>Off</Pill>
         </Row>
+        <Row label="Doctor's card">
+          <Pill on={settings.showCard} onClick={() => set("showCard", true)}>On</Pill>
+          <Pill on={!settings.showCard} onClick={() => set("showCard", false)}>Off</Pill>
+        </Row>
+        <Row label="Card appears every">
+          {[60, 90, 180].map(s => (
+            <Pill key={s} on={settings.cardEverySeconds === s} onClick={() => set("cardEverySeconds", s)}>
+              {s < 120 ? `${s}s` : `${s / 60}m`}
+            </Pill>
+          ))}
+        </Row>
       </div>
 
       <p className="mt-5 text-xs text-slate-400 leading-relaxed">
@@ -149,6 +161,7 @@ export default function Display() {
   const [isFull, setIsFull] = useState(false);
   const [tipIdx, setTipIdx] = useState(0);
   const [flash, setFlash] = useState(0);
+  const [cardOn, setCardOn] = useState(false);
 
   const tipsRef = useRef<string[]>(getDisplayTips(getDisplaySettings().lang));
   const lastAnnounce = useRef<string>("");
@@ -177,6 +190,25 @@ export default function Display() {
     );
     return () => clearInterval(t);
   }, [settings.showTips, settings.tipSeconds]);
+
+  /* The credentials card cycles in, stays ~14s, goes away again. Turned off
+     entirely from the settings panel for a clinic that does not want it. */
+  useEffect(() => {
+    if (!settings.showCard) { setCardOn(false); return; }
+    const every = Math.max(30, settings.cardEverySeconds) * 1000;
+    let hide: any;
+    const show = () => {
+      setCardOn(true);
+      hide = setTimeout(() => setCardOn(false), 14000);
+    };
+    const t = setInterval(show, every);
+    const first = setTimeout(show, 12000);
+    return () => { clearInterval(t); clearTimeout(first); clearTimeout(hide); };
+  }, [settings.showCard, settings.cardEverySeconds]);
+
+  /* A token has just been called — get the card out of the way so the
+     number has the screen to itself. */
+  useEffect(() => { if (flash) setCardOn(false); }, [flash]);
 
   /* hide the buttons after a few still seconds — it is a wall screen */
   useEffect(() => {
@@ -246,6 +278,9 @@ export default function Display() {
 
   return (
     <div className="fixed inset-0 overflow-hidden select-none" style={{ background: look.background, color: look.ink }}>
+
+      {/* the doctor's card, cycling in between tokens */}
+      <CredentialsCard show={cardOn} clinic={clinic} lang={settings.lang} look={look} />
 
       {/* slow drifting glow, so a static wall screen is not dead */}
       {!motionOff() && (

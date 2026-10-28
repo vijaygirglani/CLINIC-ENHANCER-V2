@@ -15,8 +15,7 @@ import {
   getPatientTags, savePatientTags,
 } from "@/lib/store";
 import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
-import { QueueStrip } from "@/components/QueueStrip";
-import { completeCurrent, type QueueEntry } from "@/lib/queue";
+import { completeCurrent } from "@/lib/queue";
 import { GrowthChart } from "@/components/GrowthChart";
 import { AllergyBanner } from "@/components/AllergyBanner";
 import { SaveTick } from "@/components/SaveTick";
@@ -52,6 +51,13 @@ interface ClinicSettings {
   mapsUrl: string;
   footerCity: string;
   logoLetter: string;
+  /* The settings form has always written these three, but they were missing
+     from the type — which is where four of the long-standing type errors came
+     from. They are declared now, so the saved values are typed, and the
+     waiting-room credentials card can read them. */
+  specialization: string;
+  timing: string;
+  footerAddress: string;
 }
 const DEFAULT_CLINIC_SETTINGS: ClinicSettings = {
   clinicName:   "Manglam Clinic",
@@ -63,6 +69,9 @@ const DEFAULT_CLINIC_SETTINGS: ClinicSettings = {
   mapsUrl:      "https://www.google.com/maps/place/Mangalm+Hospital/@22.9329183,70.672955,17z",
   footerCity:   "Morbi, Gujarat",
   logoLetter:   "M",
+  specialization: "",
+  timing:         "",
+  footerAddress:  "",
 };
 function getClinicSettings(): ClinicSettings {
   try {
@@ -1833,10 +1842,6 @@ export default function Home() {
     toast({ title: "Patient called in", description: `${e.name} loaded into the form.` });
   }, [form, toast]);
 
-  const handleQueueCalled = useCallback((entry: QueueEntry) => {
-    fillFromToken(entry);
-  }, [fillFromToken]);
-
   // A token called from the Queue page hands the patient over through
   // localStorage; pick it up once, then clear it so a refresh does not refill.
   useEffect(() => {
@@ -2195,8 +2200,9 @@ export default function Home() {
       {/* The prescription lifts off and flies to the register on a save */}
       <PrescriptionFly trigger={flyTick} patientName={flyName} ayurvedic={flyAyur} />
 
-      {/* ── TOKEN QUEUE STRIP — hidden until a token is issued today ── */}
-      <QueueStrip onCalled={handleQueueCalled} />
+      {/* The queue strip used to sit here. Removed as asked — the queue now
+          has its own tab beside Patient Registration. Calling a patient there
+          still fills this form, through the cp_queue_prefill handover below. */}
 
       {/* ── EDIT MODE BANNER ── */}
       {editingPatientId !== null && (
