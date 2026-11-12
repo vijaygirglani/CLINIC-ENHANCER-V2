@@ -16,6 +16,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
+import { StaffLeave } from "@/components/StaffLeave";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -33,6 +34,7 @@ export default function Expenses() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [tab, setTab] = useState<"expenses" | "leave">("expenses");
   const { toast } = useToast();
 
   const refresh = useCallback(() => { setExpenses(getExpenses()); }, []);
@@ -112,11 +114,17 @@ export default function Expenses() {
               <Wallet className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-2xl font-display text-slate-900">Expenses</h2>
-              <p className="text-slate-500 text-sm">Track clinic expenses and see monthly totals.</p>
+              <h2 className="text-2xl font-display text-slate-900">
+                {tab === "expenses" ? "Expenses" : "Staff Leave"}
+              </h2>
+              <p className="text-slate-500 text-sm">
+                {tab === "expenses"
+                  ? "Track clinic expenses and see monthly totals."
+                  : "Who was off, and how many days, this month."}
+              </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className={`flex flex-wrap gap-2 ${tab === "leave" ? "hidden" : ""}`}>
             <button onClick={handleExport} className="px-3 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm transition-all flex items-center gap-1.5 text-sm">
               <Download className="w-4 h-4" /> Export
             </button>
@@ -126,7 +134,22 @@ export default function Expenses() {
           </div>
         </div>
 
-        {/* Month selector */}
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 rounded-xl bg-slate-100 w-fit">
+          {([["expenses", "Expenses"], ["leave", "Staff Leave"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                tab === id ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Month selector — shared by both tabs, so they always agree */}
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-slate-400" />
           <select value={month} onChange={e => setMonth(Number(e.target.value))}
@@ -139,6 +162,9 @@ export default function Expenses() {
           </select>
         </div>
 
+        {tab === "leave" && <StaffLeave year={year} month={month} />}
+
+        {tab === "expenses" && <>
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
@@ -235,6 +261,7 @@ export default function Expenses() {
             </table>
           </div>
         </div>
+        </>}
       </div>
 
       {/* Add/Edit Dialog */}
