@@ -14,7 +14,8 @@ import {
   saveCustomTag, deleteCustomTag,
   getPatientTags, savePatientTags,
 } from "@/lib/store";
-import { PrintPrescription, printPatientPrescription } from "@/components/PrintPrescription";
+import { PrintPrescription, printPatientPrescription, getPrintLang, setPrintLang,
+         PRINT_LANG_LABEL, type PrescriptionLang } from "@/components/PrintPrescription";
 import { completeCurrent } from "@/lib/queue";
 import { GrowthChart } from "@/components/GrowthChart";
 import { AllergyBanner } from "@/components/AllergyBanner";
@@ -797,6 +798,9 @@ function drawPatientCard(patient: Patient, lang: CardLang = "en"): HTMLCanvasEle
 // ── Clinic Settings Modal ──────────────────────────────────────────────────
 function ClinicSettingsModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<ClinicSettings>(() => getClinicSettings());
+  // Kept outside `form` on purpose: the print language is its own setting and
+  // saves the moment it is tapped, rather than waiting for Save on this modal.
+  const [printLangState, setPrintLangState] = useState<PrescriptionLang>(() => getPrintLang());
   const [saved, setSaved] = useState(false);
 
   const field = (
@@ -890,6 +894,35 @@ function ClinicSettingsModal({ onClose }: { onClose: () => void }) {
             {field("Footer Address (print)", "footerAddress", "e.g. Krishna Hotel Same, Pipaliya Char Rasta", "Shown at bottom of printed prescription")}
             {field("City / Footer Text", "footerCity", "e.g. Morbi, Gujarat")}
             {field("Google Maps URL", "mapsUrl", "Paste full Google Maps link", "Used as tappable link in patient card PDF")}
+          </div>
+
+          {/* Prescription language — one setting, followed by every Print
+              button in the app. Only the labels change; what you typed is
+              printed exactly as you wrote it. */}
+          <div className="mx-6 mb-4 shrink-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+              Prescription language
+            </p>
+            <div className="flex gap-2">
+              {(["gu", "hi", "en"] as PrescriptionLang[]).map(l => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => { setPrintLang(l); setPrintLangState(l); }}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${
+                    printLangState === l
+                      ? "bg-primary text-white shadow-md"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {PRINT_LANG_LABEL[l]}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">
+              Changes the printed labels only — Patient Name, Age, Advice and so
+              on. Medicines and complaints print exactly as you typed them.
+            </p>
           </div>
 
           {/* Preview strip */}
