@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import {
   UserPlus, BookOpen, Leaf, Code2, BookMarked, ClipboardList, MessageCircle, Menu, X,
-  Package, Wallet, Users, Hourglass,
+  Package, Wallet, Users, Hourglass, Activity,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { getQueueStats, subscribeQueue } from "@/lib/queue";
@@ -24,6 +24,7 @@ const NAV = [
   { to: "/pathya-apathya",    label: "Pathya-Apathya",       icon: BookMarked },
   { to: "/inventory",         label: "Inventory",            icon: Package },
   { to: "/expenses",          label: "Expenses",             icon: Wallet },
+  { to: "/symptom-tracker",   label: "Symptom Tracker",      icon: Activity },
 ];
 
 /**
