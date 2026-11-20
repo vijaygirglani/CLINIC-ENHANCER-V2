@@ -18,6 +18,7 @@ import Broadcast from "@/pages/Broadcast";
 import PathyaApathya from "@/pages/PathyaApathya";
 import Inventory from "@/pages/Inventory";
 import Expenses from "@/pages/Expenses";
+import SymptomTracker from "@/pages/SymptomTracker";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -41,6 +42,7 @@ function Router() {
       <Route path="/pathya-apathya" component={PathyaApathya} />
       <Route path="/inventory" component={Inventory} />
       <Route path="/expenses" component={Expenses} />
+      <Route path="/symptom-tracker" component={SymptomTracker} />
       <Route component={NotFound} />
     </Switch>
   );
