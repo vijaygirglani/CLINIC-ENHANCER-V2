@@ -97,7 +97,7 @@ export function waNumber(mobile: string): string {
   if (d.length === 12 && d.startsWith("91")) return d;
   if (d.length === 11 && d.startsWith("0")) return "91" + d.slice(1);
   return d;
-}a
+}
 
 /** "+91 98765 43210" — how a number should look on screen. */
 export function prettyNumber(mobile: string): string {
